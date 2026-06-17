@@ -31,12 +31,12 @@ def test_target_ids_mask_prompt_region(monkeypatch):
         tokenizer=tok,
         model_name="meta-llama/Llama-3.1-8B-Instruct",
     )
-    # full = "U" + "ab" + "R" + "xy" + "E"  -> 6 tokens
-    assert input_ids.shape == (1, 6)
+    # full = "U" + "ab" + "R" + "xy" + "E"  -> "UabRxyE" -> 7 tokens
+    assert input_ids.shape == (1, 7)
     # prompt_with_key = "U" + "ab" + "R" -> prompt_len = 4
-    # target_ids: first 4 zeroed, rest = response-region token ids
-    assert target_ids[0].tolist() == [0, 0, 0, 0, ord("y"), ord("E")]
-    assert attention_mask[0].tolist() == [1, 1, 1, 1, 1, 1]
+    # target_ids: first 4 zeroed, rest = response-region token ids ("x", "y", "E")
+    assert target_ids[0].tolist() == [0, 0, 0, 0, ord("x"), ord("y"), ord("E")]
+    assert attention_mask[0].tolist() == [1, 1, 1, 1, 1, 1, 1]
 
 
 def test_batch_is_right_padded_with_zero(monkeypatch):

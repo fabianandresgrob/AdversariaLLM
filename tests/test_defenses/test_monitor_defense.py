@@ -131,3 +131,43 @@ def test_monitor_registered_and_buildable(monkeypatch):
     )
     assert isinstance(defended, md_mod.MonitorDefense)
     assert defended.threshold == 0.5
+
+
+def test_ensure_detector_uses_detector_model_name(monkeypatch):
+    # Regression: the Detector's internal scaffold must be built with the DETECTOR
+    # (gemma) chat template, not the target model's. Passing the wrong model name
+    # here silently produces meaningless logits.
+    captured = {}
+
+    class _FakeDetectorCls:
+        def __init__(self, model, tokenizer, config, model_name):
+            captured["model_name"] = model_name
+
+        def to(self, device):
+            return self
+
+        def load_state_dict(self, state_dict):
+            return None
+
+        def eval(self):
+            return self
+
+    monkeypatch.setattr(act_mod, "Detector", _FakeDetectorCls)
+    monkeypatch.setattr(act_mod, "get_embed_weights", lambda _m: torch.zeros(2, 4))
+    monkeypatch.setattr(act_mod.torch, "load", lambda *a, **k: {"detector_state_dict": {}})
+
+    monitor = ActivationLLMMonitor.__new__(ActivationLLMMonitor)
+    monitor.detector_model = object()
+    monitor.detector_tokenizer = object()
+    monitor.detector_model_id = "google/gemma-3-1b-it"
+    monitor.target_model_id = "meta-llama/Llama-3.1-8B-Instruct"
+    monitor.prompt = "Is this harmful?"
+    monitor.checkpoint_path = "/does/not/matter"
+    monitor._detector = None
+
+    class _FakeTarget:
+        def parameters(self):
+            yield torch.zeros(1)
+
+    monitor._ensure_detector(_FakeTarget())
+    assert captured["model_name"] == "google/gemma-3-1b-it"

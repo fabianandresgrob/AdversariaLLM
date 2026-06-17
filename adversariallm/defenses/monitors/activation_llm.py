@@ -25,6 +25,7 @@ class ActivationLLMMonitor(Monitor):
         checkpoint_path: str,
         prompt: str,
         target_model_id: str,
+        detector_model_id: str,
         index_hidden_layer_detector: int = -1,
         batch_size: int = 16,
     ):
@@ -33,6 +34,7 @@ class ActivationLLMMonitor(Monitor):
         self.checkpoint_path = checkpoint_path
         self.prompt = prompt
         self.target_model_id = target_model_id
+        self.detector_model_id = detector_model_id
         self.index_hidden_layer_detector = index_hidden_layer_detector
         self.batch_size = batch_size
         self._detector = None  # lazily built once target hidden dim is known
@@ -67,6 +69,7 @@ class ActivationLLMMonitor(Monitor):
             checkpoint_path=cfg["checkpoint_path"],
             prompt=cfg["prompt"],
             target_model_id=cfg["target_model_id"],
+            detector_model_id=cfg["detector_model_id"],
             index_hidden_layer_detector=cfg.get("index_hidden_layer_detector", -1),
             batch_size=cfg.get("batch_size", 16),
         )
@@ -82,7 +85,11 @@ class ActivationLLMMonitor(Monitor):
             "projected_shape": projected_shape,
             "debug": False,
         }
-        detector = Detector(self.detector_model, self.detector_tokenizer, detector_config, self.target_model_id)
+        # NB: the Detector's own "Is this harmful?" scaffold is tokenized/embedded with
+        # the DETECTOR (gemma) tokenizer, so it must use the detector model's chat
+        # template — not the target model's. The input hidden states fed in are still
+        # built with the target model's template (see build_detector_batch in score()).
+        detector = Detector(self.detector_model, self.detector_tokenizer, detector_config, self.detector_model_id)
         device = next(target_model.parameters()).device
         detector.to(device)
         checkpoint = torch.load(self.checkpoint_path, map_location="cpu", weights_only=False)

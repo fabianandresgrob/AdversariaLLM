@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import torch
-
 from ..lm_utils import LocalTextGenerator
 from ..lm_utils.text_generation import GenerationResult, RetryOverrides
 from ..types import Conversation

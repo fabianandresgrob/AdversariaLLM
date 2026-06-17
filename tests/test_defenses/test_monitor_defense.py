@@ -99,3 +99,35 @@ def test_monitor_defense_overwrites_above_threshold():
     assert result.defense_decisions[0][0]["applied"] is True
     assert result.defense_decisions[0][1]["applied"] is False
     assert result.input_ids == [[10], [20]]
+
+
+def test_monitor_registered_and_buildable(monkeypatch):
+    from adversariallm.defenses import DEFENSE_COMPATIBLE_ATTACKS, build_target_system
+    from adversariallm.defenses import monitor_defense as md_mod
+
+    # NB: DEFENSE_COMPATIBLE_ATTACKS lists *attacks*, not defenses. A monitor defense
+    # works with any attack already in that set; just sanity-check the set is intact.
+    assert "pair" in DEFENSE_COMPATIBLE_ATTACKS
+
+    class _StubMonitor:
+        def score(self, prompts, responses, *, target_model, target_tokenizer):
+            return [0.0 for _ in prompts]
+
+    monkeypatch.setattr(md_mod, "build_monitor", lambda _cfg: _StubMonitor())
+    monkeypatch.setattr(
+        md_mod, "LocalTextGenerator",
+        lambda _m, _t, default_generate_kwargs=None: object(),
+    )
+
+    defended = build_target_system(
+        {
+            "name": "monitor",
+            "threshold": 0.5,
+            "refusal_text": "REFUSED",
+            "monitor": {"name": "activation_llm"},
+        },
+        model=object(),
+        tokenizer=object(),
+    )
+    assert isinstance(defended, md_mod.MonitorDefense)
+    assert defended.threshold == 0.5

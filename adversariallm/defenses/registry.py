@@ -6,11 +6,13 @@ from omegaconf import DictConfig, OmegaConf
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 
 from .base import TargetSystem, UndefendedTarget
+from .monitor_defense import MonitorDefense
 from .polyguard import PolyGuardDefense
 
 
 _DEFENSE_REGISTRY: dict[str, type[TargetSystem]] = {
     UndefendedTarget.NAME: UndefendedTarget,
+    MonitorDefense.NAME: MonitorDefense,
     PolyGuardDefense.NAME: PolyGuardDefense,
 }
 

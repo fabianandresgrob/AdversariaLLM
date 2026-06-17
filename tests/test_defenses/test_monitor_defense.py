@@ -57,3 +57,45 @@ def test_activation_monitor_score_returns_p_yes(monkeypatch):
     )
     assert scores[0] > 0.9   # harmful
     assert scores[1] < 0.1   # safe
+
+
+from adversariallm.defenses.monitor_defense import MonitorDefense
+from adversariallm.lm_utils.text_generation import GenerationResult
+
+
+class _RaggedGenerator:
+    def generate(self, convs, **kwargs):
+        return GenerationResult(
+            gen=[["harmful-text", "safe-text"], ["safe-text"]],
+            input_ids=[[10], [20]],
+        )
+
+
+class _ScriptedMonitor:
+    def score(self, prompts, responses, *, target_model, target_tokenizer):
+        # harmful only when the response contains "harmful"
+        return [0.99 if "harmful" in r else 0.01 for r in responses]
+
+
+def test_monitor_defense_overwrites_above_threshold():
+    defense = object.__new__(MonitorDefense)
+    defense.text_generator = _RaggedGenerator()
+    defense.monitor = _ScriptedMonitor()
+    defense.threshold = 0.5
+    defense.refusal_text = "REFUSED"
+    defense.model = object()
+    defense.tokenizer = object()
+
+    result = defense.generate(
+        [
+            [{"role": "user", "content": "p0"}],
+            [{"role": "user", "content": "p1"}],
+        ],
+        num_return_sequences=2,
+    )
+
+    assert result.gen == [["REFUSED", "safe-text"], ["safe-text"]]
+    assert result.raw_gen == [["harmful-text", "safe-text"], ["safe-text"]]
+    assert result.defense_decisions[0][0]["applied"] is True
+    assert result.defense_decisions[0][1]["applied"] is False
+    assert result.input_ids == [[10], [20]]

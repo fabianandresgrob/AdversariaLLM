@@ -28,6 +28,7 @@ or_bench:
   shuffle: true
 xs_test:
   name: xs_test
+  categories: ['privacy_fictional', 'homonyms', 'safe_contexts', 'safe_targets', 'figurative_language', 'privacy_public', 'historical_events', 'real_group_nons_discr', 'definitions', 'nons_group_real_discr']
   seed: 0
   idx: null
   shuffle: true

@@ -42,3 +42,22 @@ def utility_kl(model_logits: torch.Tensor, ref_logits: torch.Tensor) -> torch.Te
     logq = F.log_softmax(ref_logits, dim=-1)
     p = logp.exp()
     return (p * (logp - logq)).sum(-1).mean()
+
+
+def sequence_logprob(logits: torch.Tensor, targets: torch.Tensor, ignore_index: int = -100) -> torch.Tensor:
+    """Sum of log p(target_token) over the response tokens. Returns (B,)."""
+    logp = F.log_softmax(logits, dim=-1)
+    tok_logp = logp.gather(-1, targets.clamp_min(0).unsqueeze(-1)).squeeze(-1)  # (B,T)
+    mask = targets != ignore_index
+    return (tok_logp * mask).sum(-1)
+
+
+def ipo_preference(
+    pi_chosen: torch.Tensor, pi_rejected: torch.Tensor,
+    ref_chosen: torch.Tensor, ref_rejected: torch.Tensor,
+    beta: float = 0.1,
+) -> torch.Tensor:
+    """IPO loss (Azar et al.): (h - 1/(2*beta))^2, h = (pi_c-pi_r) - (ref_c-ref_r).
+    chosen = y_benign, rejected = y_harmful. Inputs are sequence log-probs (B,)."""
+    h = (pi_chosen - pi_rejected) - (ref_chosen - ref_rejected)
+    return ((h - 1.0 / (2.0 * beta)) ** 2).mean()

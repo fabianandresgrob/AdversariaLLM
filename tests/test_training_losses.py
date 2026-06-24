@@ -5,6 +5,7 @@ import torch.nn.functional as F
 
 from adversariallm.training.losses import (
     away_from_harmful, toward_benign, utility_kl,
+    sequence_logprob, ipo_preference,
 )
 
 
@@ -44,3 +45,20 @@ def test_utility_kl_zero_for_identical_and_nonnegative():
     assert abs(utility_kl(logits, logits.clone()).item()) < 1e-6
     other = torch.randn(2, 4, 16)
     assert utility_kl(logits, other).item() >= 0.0
+
+
+def test_sequence_logprob_sums_target_logprobs():
+    logits = torch.zeros(1, 3, 4)          # uniform -> logp = log(1/4) per token
+    targets = torch.tensor([[0, 1, 2]])
+    out = sequence_logprob(logits, targets)
+    assert torch.allclose(out, torch.tensor([3 * torch.log(torch.tensor(0.25))]), atol=1e-5)
+
+
+def test_ipo_matches_formula():
+    beta = 0.5
+    pi_c, pi_r = torch.tensor([-1.0]), torch.tensor([-3.0])      # model: benign>harmful
+    ref_c, ref_r = torch.tensor([-2.0]), torch.tensor([-2.0])    # ref: indifferent
+    h = (pi_c - pi_r) - (ref_c - ref_r)                          # = 2.0
+    expected = ((h - 1.0 / (2 * beta)) ** 2).mean()
+    out = ipo_preference(pi_c, pi_r, ref_c, ref_r, beta=beta)
+    assert torch.allclose(out, expected, atol=1e-6)

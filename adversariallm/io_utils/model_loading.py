@@ -165,6 +165,14 @@ def load_model_and_tokenizer(
         tokenizer.pad_token = tokenizer.eos_token
 
     assert tokenizer.pad_token is not None, "pad_token is not set"
+
+    # Optionally load a trained PEFT/LoRA adapter on top (e.g. a CAT-hardened model
+    # produced by run_train.py) so it can be used as the eval target.
+    adapter_path = model_params.get("adapter_path", None)
+    if adapter_path:
+        from peft import PeftModel
+        model = PeftModel.from_pretrained(model, adapter_path).eval()
+
     return model, tokenizer
 
 

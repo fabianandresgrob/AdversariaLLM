@@ -1,0 +1,73 @@
+from __future__ import annotations
+
+import json
+import os
+import torch
+import pandas as pd
+from torch.utils.data import Dataset
+
+from ..defenses.monitors._activation_detector_model import get_chat_template
+
+
+def build_supervised_example(prompt, response, tokenizer, model_name):
+    """Return (input_ids, labels) with prompt tokens set to -100 in labels."""
+    first_user_msg, response_template, response_key, _, _ = get_chat_template(model_name)
+    full = first_user_msg.format(instruction=prompt) + response_template.format(target=response)
+    input_ids = torch.tensor(tokenizer(full)["input_ids"], dtype=torch.long)
+    prompt_len = len(tokenizer(first_user_msg.format(instruction=prompt) + response_key)["input_ids"])
+    labels = input_ids.clone()
+    labels[:prompt_len] = -100
+    return input_ids, labels
+
+
+class AdvTupleStream(Dataset):
+    """(x, y_harmful, y_benign) per behavior, tokenized for the model."""
+
+    def __init__(self, data_dir, behaviors_csv, targets_json, safe_csv, tokenizer, model_name):
+        beh = pd.read_csv(os.path.join(data_dir, behaviors_csv), usecols=["Behavior", "BehaviorID"])
+        targets = pd.read_json(os.path.join(data_dir, targets_json), typ="series").reset_index()
+        targets.columns = ["BehaviorID", "target"]
+        safe = pd.read_csv(os.path.join(data_dir, safe_csv))  # columns: Behavior, Safe_Response
+        df = beh.merge(targets, on="BehaviorID")
+        safe_map = dict(zip(safe["Behavior"], safe["Safe_Response"]))
+        self.rows = [(r["Behavior"], r["target"], safe_map.get(r["Behavior"], "I can't help with that."))
+                     for _, r in df.iterrows()]
+        self.tokenizer, self.model_name = tokenizer, model_name
+
+    def __len__(self):
+        return len(self.rows)
+
+    def __getitem__(self, i):
+        x, y_h, y_b = self.rows[i]
+        h_ids, h_lab = build_supervised_example(x, y_h, self.tokenizer, self.model_name)
+        b_ids, b_lab = build_supervised_example(x, y_b, self.tokenizer, self.model_name)
+        return {"prompt": x, "h_ids": h_ids, "h_labels": h_lab, "b_ids": b_ids, "b_labels": b_lab}
+
+
+class UtilityStream(Dataset):
+    """UltraChat (x, y) for the KL term: first user turn + first model reply."""
+
+    def __init__(self, tokenizer, model_name, fraction=0.01):
+        from datasets import load_dataset
+        ds = load_dataset("stingning/ultrachat", split="train")
+        if 0 < fraction < 1.0:
+            ds = ds.select(range(int(fraction * len(ds))))
+        self.rows = [(d["data"][0], d["data"][1]) for d in ds if len(d["data"]) >= 2]
+        self.tokenizer, self.model_name = tokenizer, model_name
+
+    def __len__(self):
+        return len(self.rows)
+
+    def __getitem__(self, i):
+        x, y = self.rows[i]
+        ids, lab = build_supervised_example(x, y, self.tokenizer, self.model_name)
+        return {"input_ids": ids, "labels": lab}
+
+
+def pad_collate(batch, keys, pad_id=0):
+    from torch.nn.utils.rnn import pad_sequence
+    out = {}
+    for k in keys:
+        seqs = [b[k] for b in batch]
+        out[k] = pad_sequence(seqs, batch_first=True, padding_value=(-100 if "labels" in k else pad_id))
+    return out

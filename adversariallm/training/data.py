@@ -30,7 +30,13 @@ class AdvTupleStream(Dataset):
         safe = pd.read_csv(os.path.join(data_dir, safe_csv))  # columns: Behavior, Safe_Response
         df = beh.merge(targets, on="BehaviorID")
         safe_map = dict(zip(safe["Behavior"], safe["Safe_Response"]))
-        self.rows = [(r["Behavior"], r["target"], safe_map.get(r["Behavior"], "I can't help with that."))
+
+        def _first_target(t):
+            # adv_training_targets.json stores a list of targets per behavior;
+            # advbench_targets.json stores a single string. Use the first either way.
+            return t[0] if isinstance(t, (list, tuple)) else t
+
+        self.rows = [(r["Behavior"], _first_target(r["target"]), safe_map.get(r["Behavior"], "I can't help with that."))
                      for _, r in df.iterrows()]
         self.tokenizer, self.model_name = tokenizer, model_name
 

@@ -155,7 +155,7 @@ def train_step(model, ref, attack, objective, adv_batch, util_batch, device):
         r_logits = ref.logits(
             inputs_embeds=model.get_input_embeddings()(u_ids), attention_mask=util_batch["attn"]
         )
-        k = utility_kl(u_logits, r_logits)
+        k = utility_kl(u_logits, r_logits, attention_mask=util_batch["attn"])
         total = total + objective.lambda_kl * k
         logs["kl"] = k.item()
 

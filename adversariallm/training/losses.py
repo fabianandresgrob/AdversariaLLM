@@ -36,12 +36,18 @@ def away_from_harmful(
     raise ValueError(f"unknown away variant: {variant}")
 
 
-def utility_kl(model_logits: torch.Tensor, ref_logits: torch.Tensor) -> torch.Tensor:
-    """KL(model || ref) averaged over tokens. Both (B,T,V)."""
+def utility_kl(model_logits: torch.Tensor, ref_logits: torch.Tensor, attention_mask: torch.Tensor | None = None) -> torch.Tensor:
+    """KL(model || ref) averaged over tokens. Both (B,T,V).
+    If attention_mask (B,T) is given, only attended positions are averaged so
+    right-padding doesn't leak into the utility term."""
     logp = F.log_softmax(model_logits, dim=-1)
     logq = F.log_softmax(ref_logits, dim=-1)
     p = logp.exp()
-    return (p * (logp - logq)).sum(-1).mean()
+    kl_tok = (p * (logp - logq)).sum(-1)  # (B, T)
+    if attention_mask is not None:
+        m = attention_mask.to(kl_tok.dtype)
+        return (kl_tok * m).sum() / m.sum().clamp_min(1)
+    return kl_tok.mean()
 
 
 def sequence_logprob(logits: torch.Tensor, targets: torch.Tensor, ignore_index: int = -100) -> torch.Tensor:

@@ -1,0 +1,46 @@
+defaults:
+  - paths
+  - _self_
+
+mode: model_cat
+
+name: cat_run
+
+model:
+  # NOTE: get_chat_template() matches this exact string ("meta-llama/Llama-3.1-8B-Instruct").
+  # The repo's models.yaml uses "meta-llama/Meta-Llama-3.1-8B-Instruct" for loading; that
+  # id is NOT recognised by get_chat_template (would raise NotImplementedError), so we use
+  # the template-supported id here.
+  id: meta-llama/Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Llama-3.1-8B-Instruct
+  dtype: bfloat16
+  trust_remote_code: true
+  update_mode: lora        # lora | full
+
+model_objective: ce        # ce | ul | ipo
+lambda_away: 1.0
+lambda_toward: 1.0
+lambda_kl: 1.0
+beta: 0.1
+
+attack:
+  iters: 100
+  eps: 1.0
+  lr: 0.01
+
+data:
+  dir: ${root_dir}/data
+  behaviors: behavior_datasets/extra_behavior_datasets/adv_training_behaviors.csv
+  targets: optimizer_targets/extra_targets/adv_training_targets.json
+  safe: safe_responses/adv_training_behaviors_safe_responses.csv
+  utility_fraction: 0.01
+  harmful_batch_size: 8
+  utility_batch_size: 8
+
+training:
+  lr: 5.0e-5
+  n_steps: 450
+  val_every: 25
+
+output:
+  checkpoint_path: ${root_dir}/checkpoints_cat

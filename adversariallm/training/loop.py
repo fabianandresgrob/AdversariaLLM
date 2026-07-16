@@ -194,16 +194,12 @@ def run_training(cfg):
 
     container = OmegaConf.to_container(cfg, resolve=True)
 
-    model_params = {
-        "id": cfg.model.id,
-        "tokenizer_id": cfg.model.tokenizer_id,
-        "dtype": cfg.model.dtype,
-        "trust_remote_code": cfg.model.trust_remote_code,
-    }
+    model_params = cfg.models[cfg.model]
+    template_id = cfg.chat_template_id
     model, tokenizer = load_model_and_tokenizer(model_params)
     device = next(model.parameters()).device
 
-    update_mode = cfg.model.update_mode
+    update_mode = cfg.update_mode
     if update_mode == "lora":
         import peft
         from peft import LoraConfig
@@ -239,9 +235,9 @@ def run_training(cfg):
         targets_json=cfg.data.targets,
         safe_csv=cfg.data.safe,
         tokenizer=tokenizer,
-        model_name=cfg.model.id,
+        model_name=template_id,
     )
-    util_ds = UtilityStream(tokenizer, cfg.model.id, fraction=cfg.data.utility_fraction)
+    util_ds = UtilityStream(tokenizer, template_id, fraction=cfg.data.utility_fraction)
 
     adv_train_ds, adv_val_ds = split_adv_stream(
         adv_ds, val_size=cfg.data.val_size, seed=cfg.data.val_seed
@@ -262,7 +258,7 @@ def run_training(cfg):
     )
 
     # attack
-    _, _, response_key, _, _ = get_chat_template(cfg.model.id)
+    _, _, response_key, _, _ = get_chat_template(template_id)
     attack = ContinuousEmbeddingAttack(
         model.get_input_embeddings().weight,
         response_key,

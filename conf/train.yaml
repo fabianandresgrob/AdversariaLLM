@@ -1,4 +1,5 @@
 defaults:
+  - models: models
   - paths
   - _self_
 
@@ -6,16 +7,13 @@ mode: model_cat
 
 name: cat_run
 
-model:
-  # NOTE: get_chat_template() matches this exact string ("meta-llama/Llama-3.1-8B-Instruct").
-  # The repo's models.yaml uses "meta-llama/Meta-Llama-3.1-8B-Instruct" for loading; that
-  # id is NOT recognised by get_chat_template (would raise NotImplementedError), so we use
-  # the template-supported id here.
-  id: meta-llama/Llama-3.1-8B-Instruct
-  tokenizer_id: meta-llama/Llama-3.1-8B-Instruct
-  dtype: bfloat16
-  trust_remote_code: true
-  update_mode: lora        # lora | full
+# Key into models.yaml, which supplies the full schema load_model_and_tokenizer expects.
+model: meta-llama/Meta-Llama-3.1-8B-Instruct
+# Same weights, but get_chat_template() matches this id by exact string equality and does
+# not recognise the models.yaml spelling.
+chat_template_id: meta-llama/Llama-3.1-8B-Instruct
+
+update_mode: lora          # lora | full
 
 model_objective: ce        # ce | ul | ipo
 lambda_away: 1.0

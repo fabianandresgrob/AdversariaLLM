@@ -4,9 +4,22 @@ import json
 import os
 import torch
 import pandas as pd
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, Subset
 
 from ..defenses.monitors._activation_detector_model import get_chat_template
+
+
+def split_adv_stream(dataset, val_size, seed=0):
+    """Split adversarial behaviors into disjoint (train, val) subsets.
+
+    The split is behavior-level and seeded, so the held-out behaviors used for
+    best-checkpoint selection stay fixed across runs.
+    """
+    if not 0 < val_size < len(dataset):
+        raise ValueError(f"val_size must be in (0, {len(dataset)}), got {val_size}")
+    g = torch.Generator().manual_seed(seed)
+    perm = torch.randperm(len(dataset), generator=g).tolist()
+    return Subset(dataset, perm[val_size:]), Subset(dataset, perm[:val_size])
 
 
 def build_supervised_example(prompt, response, tokenizer, model_name):

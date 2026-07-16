@@ -111,9 +111,10 @@ def train_step(model, ref, attack, objective, adv_batch, util_batch, device):
     logs = {}
     total = torch.zeros((), device=device)
 
-    # adversarial input embeddings for the harmful prompt
-    # (gradient does NOT flow through the attack; attack returns detached embeds).
+    # The attack optimizes its perturbation by backward()ing through the model, which
+    # accumulates into the model's parameters; those grads must not reach opt.step().
     adv_embeds = attack.attack(model, adv_batch, detector=None, use_detector=False)
+    model.zero_grad(set_to_none=True)
 
     if {"away", "toward"} & objective.active_terms:
         if "away" in objective.active_terms:
@@ -189,7 +190,7 @@ def run_training(cfg):
     from ..defenses.monitors._activation_detector_model import get_chat_template
     from .attacks import ContinuousEmbeddingAttack
     from .reference import LoRADisableReference, FrozenModelReference
-    from .data import AdvTupleStream, UtilityStream, collate_adv, collate_util
+    from .data import AdvTupleStream, UtilityStream, collate_adv, collate_util, split_adv_stream
 
     container = OmegaConf.to_container(cfg, resolve=True)
 
@@ -242,9 +243,20 @@ def run_training(cfg):
     )
     util_ds = UtilityStream(tokenizer, cfg.model.id, fraction=cfg.data.utility_fraction)
 
-    adv_loader = DataLoader(
-        adv_ds, batch_size=cfg.data.harmful_batch_size, shuffle=True, collate_fn=collate_adv
+    adv_train_ds, adv_val_ds = split_adv_stream(
+        adv_ds, val_size=cfg.data.val_size, seed=cfg.data.val_seed
     )
+
+    adv_loader = DataLoader(
+        adv_train_ds, batch_size=cfg.data.harmful_batch_size, shuffle=True, collate_fn=collate_adv
+    )
+    # Materialized once so every validation step scores the same held-out batches.
+    val_batches = [
+        _to_device(b, device)
+        for b in DataLoader(
+            adv_val_ds, batch_size=cfg.data.harmful_batch_size, shuffle=False, collate_fn=collate_adv
+        )
+    ]
     util_loader = DataLoader(
         util_ds, batch_size=cfg.data.utility_batch_size, shuffle=True, collate_fn=collate_util
     )
@@ -295,7 +307,7 @@ def run_training(cfg):
         print(f"[step {step}] " + " ".join(f"{k}={v:.4f}" for k, v in logs.items()))
 
         if (step + 1) % cfg.training.val_every == 0:
-            val = _validate(model, attack, objective, adv_batch, device)
+            val = _validate(model, attack, val_batches, device)
             print(f"[step {step}] val_toward={val:.4f}")
             if val < best_val:
                 best_val = val
@@ -305,18 +317,25 @@ def run_training(cfg):
     return out_dir
 
 
-@torch.no_grad()
-def _validate(model, attack, objective, adv_batch, device):
-    """Toward-benign loss on the given (held-out-ish) batch under the adv prompt."""
+def _validate(model, attack, val_batches, device):
+    """Mean toward-benign loss on the held-out behaviors under attack.
+
+    Drives best-checkpoint selection. Grad must stay enabled around the attack, which
+    optimizes its perturbation internally; only the scoring forward runs under no_grad.
+    """
     was_training = model.training
     model.eval()
-    adv_embeds = attack.attack(model, adv_batch, detector=None, use_detector=False)
-    be, b_attn, b_labels = _benign_under_adv_prompt(model, adv_embeds, adv_batch)
-    logits_b = model(inputs_embeds=be, attention_mask=b_attn).logits
-    val = toward_benign(logits_b[:, :-1], b_labels[:, 1:]).item()
+    losses = []
+    for adv_batch in val_batches:
+        adv_embeds = attack.attack(model, adv_batch, detector=None, use_detector=False)
+        with torch.no_grad():
+            be, b_attn, b_labels = _benign_under_adv_prompt(model, adv_embeds, adv_batch)
+            logits_b = model(inputs_embeds=be, attention_mask=b_attn).logits
+            losses.append(toward_benign(logits_b[:, :-1], b_labels[:, 1:]).item())
+    model.zero_grad(set_to_none=True)
     if was_training:
         model.train()
-    return val
+    return sum(losses) / len(losses)
 
 
 def _save_checkpoint(model, container, step, out_dir, update_mode, best):

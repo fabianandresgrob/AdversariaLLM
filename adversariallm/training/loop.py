@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 
 import torch
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -300,11 +303,11 @@ def run_training(cfg):
         opt.step()
         opt.zero_grad()
 
-        print(f"[step {step}] " + " ".join(f"{k}={v:.4f}" for k, v in logs.items()))
+        log.info(f"[step {step}] " + " ".join(f"{k}={v:.4f}" for k, v in logs.items()))
 
         if (step + 1) % cfg.training.val_every == 0:
             val = _validate(model, attack, val_batches, device)
-            print(f"[step {step}] val_toward={val:.4f}")
+            log.info(f"[step {step}] val_toward={val:.4f}")
             if val < best_val:
                 best_val = val
                 _save_checkpoint(model, container, step, out_dir, update_mode, best=True)

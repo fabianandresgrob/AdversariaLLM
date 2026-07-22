@@ -28,8 +28,10 @@ def away_from_harmful(
         return -_token_ce(logits, targets, ignore_index)
     if variant == "ul":
         logp = F.log_softmax(logits, dim=-1)
-        p_target = logp.gather(-1, targets.unsqueeze(-1)).squeeze(-1).exp()  # (B,T)
         mask = targets != ignore_index
+        # Clamp before gather: ignore_index (-100) is not a valid vocab index and
+        # would be an out-of-bounds gather. mask zeroes those positions afterwards.
+        p_target = logp.gather(-1, targets.clamp_min(0).unsqueeze(-1)).squeeze(-1).exp()  # (B,T)
         ul = -torch.log((1.0 - p_target).clamp_min(eps))
         ul = (ul * mask).sum() / mask.sum().clamp_min(1)
         return ul

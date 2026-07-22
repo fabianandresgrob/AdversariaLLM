@@ -33,6 +33,17 @@ def test_away_ul_is_bounded_and_vanishes_when_target_unlikely():
     assert ul.item() < 0.05           # bounded, near zero when target already unlikely
 
 
+def test_away_ul_handles_ignore_index_positions():
+    # Prompt/pad positions carry -100; the ul gather must not index the vocab with it.
+    # Only the single valid position (id 1) should contribute.
+    logits = torch.full((1, 3, 4), -10.0)
+    logits[0, 1, 0] = 10.0            # valid position: mass off the target -> ul ~ 0
+    targets = torch.tensor([[-100, 1, -100]])
+    ul = away_from_harmful(logits, targets, variant="ul")
+    assert torch.isfinite(ul)
+    assert ul.item() < 0.05
+
+
 def test_toward_benign_is_cross_entropy():
     logits, targets = _logits_targets()
     ce = F.cross_entropy(logits.reshape(-1, 32), targets.reshape(-1))

@@ -109,31 +109,40 @@ def _benign_under_adv_prompt(model, adv_embeds, adv_batch):
     return embeds, attn, labels
 
 
-def train_step(model, ref, attack, objective, adv_batch, util_batch, device):
-    """One model-CAT step. Returns scalar loss tensor + a dict of components for logging."""
+def train_step(model, ref, attack, objective, adv_batch, util_batch):
+    """One model-CAT step. Populates .grad; the caller steps the optimizer.
+
+    Each active loss term is backpropagated the moment it is computed, freeing its
+    graph before the next term runs. Grads accumulate in .grad, so this is identical
+    to summing the weighted terms and calling backward() once — but peak memory holds
+    a single term's forward graph instead of every active term's at once. Returns a
+    dict of loss components for logging."""
     logs = {}
-    total = torch.zeros((), device=device)
+    total = 0.0
+
+    def _backward(term, weight, name):
+        nonlocal total
+        (weight * term).backward()
+        logs[name] = term.item()
+        total += weight * logs[name]
 
     # The attack optimizes its perturbation by backward()ing through the model, which
     # accumulates into the model's parameters; those grads must not reach opt.step().
     adv_embeds = attack.attack(model, adv_batch, detector=None, use_detector=False)
     model.zero_grad(set_to_none=True)
 
-    if {"away", "toward"} & objective.active_terms:
-        if "away" in objective.active_terms:
-            logits_h = model(inputs_embeds=adv_embeds, attention_mask=adv_batch["h_attn"]).logits
-            a = away_from_harmful(
-                logits_h[:, :-1], adv_batch["h_labels"][:, 1:], variant=objective.away_variant
-            )
-            total = total + objective.lambda_away * a
-            logs["away"] = a.item()
-        if "toward" in objective.active_terms:
-            # benign continuation under the SAME adversarial prompt
-            be, b_attn, b_labels = _benign_under_adv_prompt(model, adv_embeds, adv_batch)
-            logits_b = model(inputs_embeds=be, attention_mask=b_attn).logits
-            t = toward_benign(logits_b[:, :-1], b_labels[:, 1:])
-            total = total + objective.lambda_toward * t
-            logs["toward"] = t.item()
+    if "away" in objective.active_terms:
+        logits_h = model(inputs_embeds=adv_embeds, attention_mask=adv_batch["h_attn"]).logits
+        _backward(
+            away_from_harmful(logits_h[:, :-1], adv_batch["h_labels"][:, 1:], variant=objective.away_variant),
+            objective.lambda_away, "away",
+        )
+
+    if "toward" in objective.active_terms:
+        # benign continuation under the SAME adversarial prompt
+        be, b_attn, b_labels = _benign_under_adv_prompt(model, adv_embeds, adv_batch)
+        logits_b = model(inputs_embeds=be, attention_mask=b_attn).logits
+        _backward(toward_benign(logits_b[:, :-1], b_labels[:, 1:]), objective.lambda_toward, "toward")
 
     if "ipo" in objective.active_terms:
         # sequence log-probs of benign(chosen)/harmful(rejected) under model and
@@ -149,9 +158,7 @@ def train_step(model, ref, attack, objective, adv_batch, util_batch, device):
         ref_b = sequence_logprob(ref_b_logits[:, :-1], b_labels[:, 1:])
         ref_h = sequence_logprob(ref_h_logits[:, :-1], adv_batch["h_labels"][:, 1:])
 
-        ipo = ipo_preference(pi_b, pi_h, ref_b, ref_h, beta=objective.beta)
-        total = total + ipo
-        logs["ipo"] = ipo.item()
+        _backward(ipo_preference(pi_b, pi_h, ref_b, ref_h, beta=objective.beta), 1.0, "ipo")
 
     if "kl" in objective.active_terms:
         u_ids = util_batch["input_ids"]
@@ -159,12 +166,10 @@ def train_step(model, ref, attack, objective, adv_batch, util_batch, device):
         r_logits = ref.logits(
             inputs_embeds=model.get_input_embeddings()(u_ids), attention_mask=util_batch["attn"]
         )
-        k = utility_kl(u_logits, r_logits, attention_mask=util_batch["attn"])
-        total = total + objective.lambda_kl * k
-        logs["kl"] = k.item()
+        _backward(utility_kl(u_logits, r_logits, attention_mask=util_batch["attn"]), objective.lambda_kl, "kl")
 
-    logs["total"] = total.item()
-    return total, logs
+    logs["total"] = total
+    return logs
 
 
 # ---------------------------------------------------------------------------
@@ -323,8 +328,7 @@ def run_training(cfg):
         adv_batch = _to_device(next(adv_iter), device)
         util_batch = _to_device(next(util_iter), device)
 
-        loss, logs = train_step(model, ref, attack, objective, adv_batch, util_batch, device)
-        loss.backward()
+        logs = train_step(model, ref, attack, objective, adv_batch, util_batch)
         opt.step()
         opt.zero_grad()
 

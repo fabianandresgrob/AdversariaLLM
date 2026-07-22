@@ -64,16 +64,15 @@ def test_train_step_excludes_attack_gradients_from_the_update():
     }
     objective = Objective(active_terms={"away"}, away_variant="ce", lambda_away=1.0)
 
-    loss, _ = train_step(
+    # train_step backpropagates internally, leaving the objective's grads in .grad.
+    train_step(
         model,
         ref=None,
         attack=_PollutingAttack(adv_embeds),
         objective=objective,
         adv_batch=adv_batch,
         util_batch=None,
-        device=torch.device("cpu"),
     )
-    loss.backward()
     actual = _grads(model)
 
     # Reference: the away term alone, on the same adversarial embeddings.

@@ -172,6 +172,29 @@ def train_step(model, ref, attack, objective, adv_batch, util_batch, device):
 # ---------------------------------------------------------------------------
 
 
+def _init_wandb(cfg, config_dict):
+    """Start a wandb run if conf enables it, else return None. wandb is imported
+    lazily so disabled runs (and the CPU tests) never require the package."""
+    wcfg = cfg.get("wandb", None)
+    if wcfg is None or not wcfg.get("enabled", False):
+        return None
+    import wandb
+
+    os.environ.setdefault("WANDB_SILENT", "true")
+    wandb_dir = wcfg.get("dir", None)
+    if wandb_dir:
+        os.makedirs(wandb_dir, exist_ok=True)
+    return wandb.init(
+        project=wcfg.get("project", "detector-ma"),
+        entity=wcfg.get("entity", None),
+        name=config_dict.get("name") or "run",
+        dir=wandb_dir,
+        config=config_dict,
+        resume="allow",
+        save_code=False,
+    )
+
+
 def _to_device(batch, device):
     out = {}
     for k, v in batch.items():
@@ -292,6 +315,8 @@ def run_training(cfg):
     out_dir = os.path.join(cfg.output.checkpoint_path, run_name)
     os.makedirs(out_dir, exist_ok=True)
 
+    wandb_run = _init_wandb(cfg, container)
+
     best_val = float("inf")
     model.train()
     for step in range(cfg.training.n_steps):
@@ -304,15 +329,21 @@ def run_training(cfg):
         opt.zero_grad()
 
         log.info(f"[step {step}] " + " ".join(f"{k}={v:.4f}" for k, v in logs.items()))
+        if wandb_run is not None:
+            wandb_run.log(logs, step=step)
 
         if (step + 1) % cfg.training.val_every == 0:
             val = _validate(model, attack, val_batches, device)
             log.info(f"[step {step}] val_toward={val:.4f}")
+            if wandb_run is not None:
+                wandb_run.log({"val_toward": val}, step=step)
             if val < best_val:
                 best_val = val
                 _save_checkpoint(model, container, step, out_dir, update_mode, best=True)
 
     _save_checkpoint(model, container, cfg.training.n_steps, out_dir, update_mode, best=False)
+    if wandb_run is not None:
+        wandb_run.finish()
     return out_dir
 
 

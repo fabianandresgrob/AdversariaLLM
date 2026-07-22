@@ -45,3 +45,9 @@ training:
 
 output:
   checkpoint_path: ${root_dir}/checkpoints_cat
+
+wandb:
+  enabled: true
+  project: detector-ma
+  entity: null
+  dir: ${root_dir}/wandb_logs

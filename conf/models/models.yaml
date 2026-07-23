@@ -79,6 +79,18 @@ meta-llama/Meta-Llama-3.1-8B-Instruct:
   dtype: bfloat16
   chat_template: llama-3-instruct
   trust_remote_code: True
+cat_ul_450:
+  # model-CAT hardened Llama-3.1-8B: base weights + the trained LoRA adapter.
+  # Identical to the base entry except adapter_path, so eval is symmetric.
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: False
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: True
+  adapter_path: ${root_dir}/checkpoints_cat/cat_ul_450/best_adapter
 meta-llama/Meta-Llama-3.1-70B-Instruct:
   id: meta-llama/Meta-Llama-3.1-70B-Instruct
   tokenizer_id: meta-llama/Meta-Llama-3.1-70B-Instruct

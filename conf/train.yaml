@@ -30,7 +30,9 @@ data:
   dir: ${root_dir}/data
   behaviors: behavior_datasets/extra_behavior_datasets/adv_training_behaviors.csv
   targets: optimizer_targets/extra_targets/adv_training_targets.json
-  safe: safe_responses/adv_training_behaviors_safe_responses.csv
+  # _longer = 100 distinct contextual refusals; the plain file is one constant string
+  # for every behavior (a much easier target to overfit toward).
+  safe: safe_responses/adv_training_behaviors_safe_responses_longer.csv
   utility_fraction: 0.01
   harmful_batch_size: 8
   utility_batch_size: 8
@@ -42,6 +44,10 @@ training:
   lr: 5.0e-5
   n_steps: 450
   val_every: 25
+  # Optional diagnostics (both off by default; enable to hunt the robustness/utility tradeoff):
+  checkpoint_every: 0             # >0: also save a step-tagged checkpoint every N steps
+  benign_val_n: 0                 # >0: free-generate on N UltraChat prompts at each val step, log refusal rate
+  benign_val_max_new_tokens: 32   # short generation is enough to see whether it opens with a refusal
 
 output:
   checkpoint_path: ${root_dir}/checkpoints_cat

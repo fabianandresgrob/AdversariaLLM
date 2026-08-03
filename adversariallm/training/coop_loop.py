@@ -142,10 +142,11 @@ def _coop_validate(model, reader, layer, harmful_batches, benign_batches, benign
 
     first_user_msg, _, response_key, _, _ = get_chat_template(template_id)
     gens = []
+    pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
     for p in benign_prompts:
-        ids = tokenizer(first_user_msg.format(instruction=p) + response_key, return_tensors="pt").input_ids.to(device)
-        out = model.generate(ids, max_new_tokens=max_new_tokens, do_sample=False)
-        gens.append(tokenizer.decode(out[0, ids.shape[1]:], skip_special_tokens=True))
+        enc = tokenizer(first_user_msg.format(instruction=p) + response_key, return_tensors="pt").to(device)
+        out = model.generate(**enc, max_new_tokens=max_new_tokens, do_sample=False, pad_token_id=pad_id)
+        gens.append(tokenizer.decode(out[0, enc["input_ids"].shape[1]:], skip_special_tokens=True))
 
     if was_training:
         model.train()

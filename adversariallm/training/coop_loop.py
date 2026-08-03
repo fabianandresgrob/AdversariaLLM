@@ -1,0 +1,236 @@
+"""Cooperative model+detector co-training loop (design doc §4, §5, §8).
+
+Two-timescale schedule per step: N detector steps (model frozen, reader trainable),
+then one model step (reader frozen, model trainable) whose loss couples the two via the
+gated representation term. See the spec for the full architecture.
+
+FIRST CUT — validated at the Phase C cluster smoke (plan Task 6). Watch-items there:
+the frozen-set discipline (asserted below), the rep-term gradient path through the reader
+into the model, and peak memory (the model step holds several forward graphs; if it OOMs,
+apply the incremental-backward pattern from loop.py:train_step).
+"""
+from __future__ import annotations
+
+import logging
+import os
+
+import torch
+
+from .loop import _to_device, _cycle, _benign_under_adv_prompt, _init_wandb
+from .losses import utility_kl
+from .gating import avg_logprob, w_harm, w_miss, behavior_gate, rep_gate
+from .coop_losses import per_example_ce, detector_ce
+from .readers import build_reader
+
+log = logging.getLogger(__name__)
+
+
+def _labels_to_target_ids(labels):
+    """Reader wants 0-masked target_ids (0 = prompt/pad); the utility stream carries the
+    CE convention (-100 = prompt/pad). Convert."""
+    t = labels.clone()
+    t[t == -100] = 0
+    return t
+
+
+def _set_requires_grad(params, flag):
+    for p in params:
+        p.requires_grad_(flag)
+
+
+def _assert_grad(params, flag, who):
+    assert all(p.requires_grad == flag for p in params), f"frozen-set violation: {who} requires_grad != {flag}"
+
+
+def _hidden_and_logits(model, layer, *, inputs_embeds=None, input_ids=None, attention_mask=None):
+    out = model(inputs_embeds=inputs_embeds, input_ids=input_ids,
+                attention_mask=attention_mask, output_hidden_states=True)
+    return out.hidden_states[layer], out.logits
+
+
+def _detector_step(model, reader, opt_det, layer, adv_embeds, adv_batch, util_batch, device):
+    """One detector update: model frozen, reader trainable. CE over attacked (->harmful)
+    and benign (->benign) examples. Model forward under no_grad so only the reader trains."""
+    opt_det.zero_grad(set_to_none=True)
+    with torch.no_grad():
+        h_hidden, _ = _hidden_and_logits(model, layer, inputs_embeds=adv_embeds, attention_mask=adv_batch["h_attn"])
+        b_hidden, _ = _hidden_and_logits(model, layer, input_ids=util_batch["input_ids"], attention_mask=util_batch["attn"])
+    logits_h = reader.logits(h_hidden, adv_batch["h_targetids"], adv_batch["h_attn"])
+    b_tgt = _labels_to_target_ids(util_batch["labels"])
+    logits_b = reader.logits(b_hidden, b_tgt, util_batch["attn"])
+    logits = torch.cat([logits_h, logits_b], dim=0)
+    labels = torch.cat([
+        torch.zeros(logits_h.size(0), dtype=torch.long, device=device),   # harmful = 0
+        torch.ones(logits_b.size(0), dtype=torch.long, device=device),    # benign = 1
+    ])
+    loss = detector_ce(logits, labels)
+    loss.backward()
+    opt_det.step()
+    return loss.item()
+
+
+def _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch, util_batch, hp, use_rep, device):
+    """One model update: reader frozen, model trainable.
+    loss = lambda_kl*KL(UltraChat) + lambda_beh*behavior_gate*CE(y_safe) + lambda_rep*rep_gate*detector_ce(reader(h)).
+    No away term. Gates are stop-gradient (computed in gating.py)."""
+    opt_model.zero_grad(set_to_none=True)
+    logs = {}
+
+    # attacked prompt (harmful) and benign continuation under the SAME adversarial prompt
+    h_hidden, logits_h = _hidden_and_logits(model, layer, inputs_embeds=adv_embeds, attention_mask=adv_batch["h_attn"])
+    be, b_attn, b_labels = _benign_under_adv_prompt(model, adv_embeds, adv_batch)
+    logits_b = model(inputs_embeds=be, attention_mask=b_attn).logits
+
+    # gates (both detached inside gating.py)
+    lp_h = avg_logprob(logits_h[:, :-1], adv_batch["h_labels"][:, 1:])
+    lp_s = avg_logprob(logits_b[:, :-1], b_labels[:, 1:])
+    wh = w_harm(lp_h, lp_s, tau=hp["tau"])
+    wm = w_miss(reader.p_harmful(h_hidden, adv_batch["h_targetids"], adv_batch["h_attn"]))
+
+    # behavior term: teach the safe response, scaled by detector failure
+    beh_ce = per_example_ce(logits_b[:, :-1], b_labels[:, 1:])
+    beh = (behavior_gate(wm, hp["epsilon"]) * beh_ce).mean()
+    total = hp["lambda_beh"] * beh
+    logs["beh"] = beh.item()
+
+    # representation term: make h detectable, scaled by model failure (off during warmup)
+    if use_rep:
+        rep_logits = reader.logits(h_hidden, adv_batch["h_targetids"], adv_batch["h_attn"])
+        harmful = torch.zeros(rep_logits.size(0), dtype=torch.long, device=device)
+        rep_ce = detector_ce(rep_logits, harmful, reduction="none")
+        rep = (rep_gate(wh, hp["delta"]) * rep_ce).mean()
+        total = total + hp["lambda_rep"] * rep
+        logs["rep"] = rep.item()
+
+    # utility KL on UltraChat only
+    u_ids = util_batch["input_ids"]
+    u_logits = model(input_ids=u_ids, attention_mask=util_batch["attn"]).logits
+    r_logits = ref.logits(inputs_embeds=model.get_input_embeddings()(u_ids), attention_mask=util_batch["attn"])
+    kl = utility_kl(u_logits, r_logits, attention_mask=util_batch["attn"])
+    total = total + hp["lambda_kl"] * kl
+    logs["kl"] = kl.item()
+
+    total.backward()
+    opt_model.step()
+    logs.update(w_harm=wh.mean().item(), w_miss=wm.mean().item(), total=total.item())
+    return logs
+
+
+def _adv_embeds(attack, model, adv_batch):
+    """Stage B: perturbed embeddings from the continuous attack. Stage A (attack is None):
+    clean prompt embeddings, so the whole machine runs with no attack cost."""
+    if attack is None:
+        return model.get_input_embeddings()(adv_batch["h_ids"]).detach()
+    return attack.attack(model, adv_batch, detector=None, use_detector=False)
+
+
+def _save_pair(model, reader, container, step, out_dir, tag):
+    """Checkpoint model adapter + reader together — a mismatched pair is nonsense (§14.9)."""
+    model.save_pretrained(os.path.join(out_dir, f"{tag}_adapter"))
+    torch.save({"reader": reader.state_dict(), "cfg": container, "step": step},
+               os.path.join(out_dir, f"{tag}_reader.pt"))
+
+
+def run_coop_training(cfg):
+    from omegaconf import OmegaConf
+    from torch.utils.data import DataLoader
+    import peft
+    from peft import LoraConfig
+
+    from ..io_utils import load_model_and_tokenizer
+    from ..defenses.monitors._activation_detector_model import get_chat_template
+    from .attacks import ContinuousEmbeddingAttack
+    from .reference import LoRADisableReference
+    from .data import AdvTupleStream, UtilityStream, collate_adv, collate_util
+
+    container = OmegaConf.to_container(cfg, resolve=True)
+    device_hp = {k: container[k] for k in ("tau", "epsilon", "delta", "lambda_beh", "lambda_rep", "lambda_kl")}
+
+    model_params = cfg.models[cfg.model]
+    template_id = cfg.chat_template_id
+    model, tokenizer = load_model_and_tokenizer(model_params)
+    device = next(model.parameters()).device
+
+    model = peft.get_peft_model(
+        model,
+        LoraConfig(
+            r=8, lora_alpha=32,
+            target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+            lora_dropout=0.05, task_type="CAUSAL_LM",
+        ),
+    )
+    ref = LoRADisableReference(model)
+    model_trainable = [p for p in model.parameters() if p.requires_grad]
+
+    # reader (random init); input_dim = target hidden size
+    hidden_dim = model.get_input_embeddings().weight.shape[-1]
+    reader = build_reader(container.get("reader"), hidden_dim).to(device)
+    reader_params = list(reader.parameters())
+
+    # data
+    adv_ds = AdvTupleStream(
+        data_dir=cfg.data.dir, behaviors_csv=cfg.data.behaviors, targets_json=cfg.data.targets,
+        safe_csv=cfg.data.safe, tokenizer=tokenizer, model_name=template_id,
+    )
+    util_ds = UtilityStream(tokenizer, template_id, fraction=cfg.data.utility_fraction)
+    adv_loader = DataLoader(adv_ds, batch_size=cfg.data.harmful_batch_size, shuffle=True, collate_fn=collate_adv)
+    util_loader = DataLoader(util_ds, batch_size=cfg.data.utility_batch_size, shuffle=True, collate_fn=collate_util)
+
+    # attack (Stage B) or None (Stage A)
+    attack = None
+    if cfg.attack.enabled:
+        _, _, response_key, _, _ = get_chat_template(template_id)
+        attack = ContinuousEmbeddingAttack(
+            model.get_input_embeddings().weight, response_key, tokenizer,
+            iters=cfg.attack.iters, eps=cfg.attack.eps, lr=cfg.attack.lr,
+        )
+
+    opt_model = torch.optim.Adam(model_trainable, lr=cfg.training.model_lr)
+    opt_det = torch.optim.Adam(reader_params, lr=cfg.training.detector_lr)
+
+    layer = int(container["reader"].get("layer", -1)) if container.get("reader") else -1
+    n_det = int(cfg.training.n_detector_steps)
+    warmup = int(cfg.training.rep_warmup_steps)
+
+    adv_iter, util_iter = _cycle(adv_loader), _cycle(util_loader)
+    run_name = container.get("name") or "coop_run"
+    out_dir = os.path.join(cfg.output.checkpoint_path, run_name)
+    os.makedirs(out_dir, exist_ok=True)
+    wandb_run = _init_wandb(cfg, container)
+
+    model.train()
+    for step in range(cfg.training.n_steps):
+        adv_batch = _to_device(next(adv_iter), device)
+        util_batch = _to_device(next(util_iter), device)
+
+        # ---- detector phase: model frozen, reader trainable ----
+        _set_requires_grad(model_trainable, False)
+        _set_requires_grad(reader_params, True)
+        _assert_grad(model_trainable, False, "model(det phase)")
+        _assert_grad(reader_params, True, "reader(det phase)")
+        adv_embeds = _adv_embeds(attack, model, adv_batch)
+        det_losses = [_detector_step(model, reader, opt_det, layer, adv_embeds, adv_batch, util_batch, device)
+                      for _ in range(n_det)]
+
+        # ---- model phase: reader frozen, model trainable ----
+        _set_requires_grad(reader_params, False)
+        _set_requires_grad(model_trainable, True)
+        _assert_grad(reader_params, False, "reader(model phase)")
+        _assert_grad(model_trainable, True, "model(model phase)")
+        use_rep = step >= warmup
+        logs = _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch, util_batch,
+                           device_hp, use_rep, device)
+        logs["det"] = sum(det_losses) / len(det_losses)
+
+        log.info(f"[step {step}] " + " ".join(f"{k}={v:.4f}" for k, v in logs.items()))
+        if wandb_run is not None:
+            wandb_run.log(logs, step=step)
+
+        ckpt_every = int(cfg.training.checkpoint_every)
+        if ckpt_every and (step + 1) % ckpt_every == 0:
+            _save_pair(model, reader, container, step, out_dir, tag=f"step{step + 1}")
+
+    _save_pair(model, reader, container, cfg.training.n_steps, out_dir, tag="final")
+    if wandb_run is not None:
+        wandb_run.finish()
+    return out_dir

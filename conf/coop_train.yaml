@@ -1,0 +1,56 @@
+defaults:
+  - models: models
+  - paths
+  - _self_
+
+mode: coop
+name: coop_run
+
+# Same target as model-CAT: models.yaml key for loading, separate id for get_chat_template.
+model: meta-llama/Meta-Llama-3.1-8B-Instruct
+chat_template_id: meta-llama/Llama-3.1-8B-Instruct
+
+reader:
+  type: linear        # linear | (mlp/gemma later)
+  layer: -1           # target-model hidden layer the probe reads
+
+# Gating / objective (design doc §3-§6). Floors default to the decoupled (1,1) control.
+tau: 1.0
+epsilon: 1.0          # behavior-gate floor; sweep toward 0 for the "model less safe, pipeline safer" effect
+delta: 1.0            # rep-gate floor; lower to starve the handshake
+lambda_beh: 1.0
+lambda_rep: 1.0
+lambda_kl: 1.0
+
+# Stage A = no attack (clean prompt); Stage B = continuous embedding attack.
+attack:
+  enabled: false
+  iters: 100
+  eps: 1.0
+  lr: 0.01
+
+data:
+  dir: ${root_dir}/data
+  behaviors: behavior_datasets/extra_behavior_datasets/adv_training_behaviors.csv
+  targets: optimizer_targets/extra_targets/adv_training_targets.json
+  safe: safe_responses/adv_training_behaviors_safe_responses_longer.csv
+  utility_fraction: 0.01
+  harmful_batch_size: 4
+  utility_batch_size: 4
+
+training:
+  model_lr: 5.0e-5
+  detector_lr: 1.0e-3        # detector is cheap/fast (§8): higher lr than the model
+  n_steps: 450
+  n_detector_steps: 3        # detector inner steps per model step
+  rep_warmup_steps: 50       # model rep term off until the probe has warmed up
+  checkpoint_every: 50
+
+output:
+  checkpoint_path: ${root_dir}/checkpoints_coop
+
+wandb:
+  enabled: true
+  project: detector-ma
+  entity: null
+  dir: ${root_dir}/wandb_logs

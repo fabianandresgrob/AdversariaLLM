@@ -135,3 +135,42 @@ def collate_adv(batch):
 def collate_util(batch):
     """Collate UtilityStream items: input_ids/attn padded with 0, labels with -100."""
     return pad_collate(batch, ["input_ids", "labels", "attn"], pad_id=0)
+
+
+class OODBenignStream(Dataset):
+    """Out-of-distribution benign (instruction, output) pairs for the over-refusal and FPR
+    metrics — a DIFFERENT distribution from the UltraChat KL leash. In-distribution benign
+    (UltraChat) is misleadingly optimistic because the leash preserves it by construction;
+    OOD benign measures whether utility generalizes. Formatted like the adv stream (0-masked
+    target_ids) so the reader reads the same last-prompt-token position for both classes.
+    """
+
+    def __init__(self, tokenizer, model_name, hf_name="tatsu-lab/alpaca", n=64):
+        from datasets import load_dataset
+
+        ds = load_dataset(hf_name, split="train")
+        self.rows = []
+        for d in ds:
+            instr, inp, out = d.get("instruction", ""), d.get("input", ""), d.get("output", "")
+            if inp:
+                instr = f"{instr}\n{inp}"
+            if instr and out:
+                self.rows.append((instr, out))
+            if len(self.rows) >= n:
+                break
+        self.tokenizer, self.model_name = tokenizer, model_name
+
+    def __len__(self):
+        return len(self.rows)
+
+    def __getitem__(self, i):
+        x, y = self.rows[i]
+        ids, _, tgt, attn = build_example_full(x, y, self.tokenizer, self.model_name)
+        return {"d_ids": ids, "d_targetids": tgt, "d_attn": attn, "prompt": x}
+
+
+def collate_ood(batch):
+    """Collate OODBenignStream items; pass prompts through for free-generation refusal checks."""
+    out = pad_collate(batch, ["d_ids", "d_targetids", "d_attn"], pad_id=0)
+    out["prompt"] = [b["prompt"] for b in batch]
+    return out

@@ -37,6 +37,10 @@ data:
   utility_fraction: 0.01
   harmful_batch_size: 4
   utility_batch_size: 4
+  val_size: 16                      # harmful behaviors held out for validation
+  val_seed: 0
+  ood_benign_hf: tatsu-lab/alpaca   # OOD benign for over-refusal + FPR (NOT the UltraChat KL distribution)
+  ood_benign_n: 64
 
 training:
   model_lr: 5.0e-5
@@ -45,6 +49,9 @@ training:
   n_detector_steps: 3        # detector inner steps per model step
   rep_warmup_steps: 50       # model rep term off until the probe has warmed up
   checkpoint_every: 50
+  val_every: 25              # held-out recall@1%FPR, OOD over-refusal, four-case frequencies
+  benign_gen_n: 16           # OOD benign prompts to free-generate on for the refusal rate
+  benign_val_max_new_tokens: 32
 
 output:
   checkpoint_path: ${root_dir}/checkpoints_coop

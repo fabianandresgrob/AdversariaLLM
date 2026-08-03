@@ -20,6 +20,7 @@ from .loop import _to_device, _cycle, _benign_under_adv_prompt, _init_wandb
 from .losses import utility_kl
 from .gating import avg_logprob, w_harm, w_miss, behavior_gate, rep_gate
 from .coop_losses import per_example_ce, detector_ce
+from .coop_metrics import recall_at_fpr, four_case_frequencies, refusal_rate
 from .readers import build_reader
 
 log = logging.getLogger(__name__)
@@ -113,7 +114,42 @@ def _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch, uti
     total.backward()
     opt_model.step()
     logs.update(w_harm=wh.mean().item(), w_miss=wm.mean().item(), total=total.item())
-    return logs
+    return logs, wh.detach(), wm.detach()
+
+
+@torch.no_grad()
+def _coop_validate(model, reader, layer, harmful_batches, benign_batches, benign_prompts,
+                   tokenizer, template_id, max_new_tokens):
+    """Held-out metrics: detector recall@1%FPR (co-trained reader on CLEAN harmful vs OOD
+    benign) and over-refusal on OOD benign (free generation). Attacked-recall is a fuller
+    eval-side metric; this is the cheap training-time monitor. OOD benign, never UltraChat."""
+    from ..defenses.monitors._activation_detector_model import get_chat_template
+
+    was_training = model.training
+    model.eval()
+    device = next(model.parameters()).device
+
+    def _scores(batches, ids_key, tgt_key, attn_key):
+        out = []
+        for b in batches:
+            hidden, _ = _hidden_and_logits(model, layer, input_ids=b[ids_key], attention_mask=b[attn_key])
+            out += reader.p_harmful(hidden, b[tgt_key], b[attn_key]).tolist()
+        return out
+
+    harmful_scores = _scores(harmful_batches, "h_ids", "h_targetids", "h_attn")
+    benign_scores = _scores(benign_batches, "d_ids", "d_targetids", "d_attn")
+    recall = recall_at_fpr(benign_scores, harmful_scores, fpr=0.01)
+
+    first_user_msg, _, response_key, _, _ = get_chat_template(template_id)
+    gens = []
+    for p in benign_prompts:
+        ids = tokenizer(first_user_msg.format(instruction=p) + response_key, return_tensors="pt").input_ids.to(device)
+        out = model.generate(ids, max_new_tokens=max_new_tokens, do_sample=False)
+        gens.append(tokenizer.decode(out[0, ids.shape[1]:], skip_special_tokens=True))
+
+    if was_training:
+        model.train()
+    return {"val_recall@1fpr": recall, "val_ood_refusal": refusal_rate(gens)}
 
 
 def _adv_embeds(attack, model, adv_batch):
@@ -141,7 +177,10 @@ def run_coop_training(cfg):
     from ..defenses.monitors._activation_detector_model import get_chat_template
     from .attacks import ContinuousEmbeddingAttack
     from .reference import LoRADisableReference
-    from .data import AdvTupleStream, UtilityStream, collate_adv, collate_util
+    from .data import (
+        AdvTupleStream, UtilityStream, OODBenignStream,
+        collate_adv, collate_util, collate_ood, split_adv_stream,
+    )
 
     container = OmegaConf.to_container(cfg, resolve=True)
     device_hp = {k: container[k] for k in ("tau", "epsilon", "delta", "lambda_beh", "lambda_rep", "lambda_kl")}
@@ -173,8 +212,22 @@ def run_coop_training(cfg):
         safe_csv=cfg.data.safe, tokenizer=tokenizer, model_name=template_id,
     )
     util_ds = UtilityStream(tokenizer, template_id, fraction=cfg.data.utility_fraction)
-    adv_loader = DataLoader(adv_ds, batch_size=cfg.data.harmful_batch_size, shuffle=True, collate_fn=collate_adv)
+
+    adv_train_ds, adv_val_ds = split_adv_stream(adv_ds, val_size=cfg.data.val_size, seed=cfg.data.val_seed)
+    adv_loader = DataLoader(adv_train_ds, batch_size=cfg.data.harmful_batch_size, shuffle=True, collate_fn=collate_adv)
     util_loader = DataLoader(util_ds, batch_size=cfg.data.utility_batch_size, shuffle=True, collate_fn=collate_util)
+
+    # held-out validation sets: clean harmful (from the split) + OOD benign (Alpaca, NOT UltraChat)
+    harmful_val_batches = [
+        _to_device(b, device) for b in
+        DataLoader(adv_val_ds, batch_size=cfg.data.harmful_batch_size, shuffle=False, collate_fn=collate_adv)
+    ]
+    ood_ds = OODBenignStream(tokenizer, template_id, hf_name=cfg.data.ood_benign_hf, n=cfg.data.ood_benign_n)
+    benign_val_batches = [
+        _to_device(b, device) for b in
+        DataLoader(ood_ds, batch_size=cfg.data.harmful_batch_size, shuffle=False, collate_fn=collate_ood)
+    ]
+    benign_prompts = [x for x, _ in ood_ds.rows[:int(cfg.training.benign_gen_n)]]
 
     # attack (Stage B) or None (Stage A)
     attack = None
@@ -198,6 +251,9 @@ def run_coop_training(cfg):
     os.makedirs(out_dir, exist_ok=True)
     wandb_run = _init_wandb(cfg, container)
 
+    val_every = int(cfg.training.val_every)
+    wh_hist, wm_hist = [], []   # accumulate per-example gates for four-case frequencies
+
     model.train()
     for step in range(cfg.training.n_steps):
         adv_batch = _to_device(next(adv_iter), device)
@@ -218,13 +274,25 @@ def run_coop_training(cfg):
         _assert_grad(reader_params, False, "reader(model phase)")
         _assert_grad(model_trainable, True, "model(model phase)")
         use_rep = step >= warmup
-        logs = _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch, util_batch,
-                           device_hp, use_rep, device)
+        logs, wh, wm = _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch, util_batch,
+                                   device_hp, use_rep, device)
         logs["det"] = sum(det_losses) / len(det_losses)
+        wh_hist.append(wh); wm_hist.append(wm)
 
         log.info(f"[step {step}] " + " ".join(f"{k}={v:.4f}" for k, v in logs.items()))
         if wandb_run is not None:
             wandb_run.log(logs, step=step)
+
+        if val_every and (step + 1) % val_every == 0:
+            metrics = _coop_validate(model, reader, layer, harmful_val_batches, benign_val_batches,
+                                     benign_prompts, tokenizer, template_id,
+                                     int(cfg.training.benign_val_max_new_tokens))
+            cases = four_case_frequencies(torch.cat(wh_hist), torch.cat(wm_hist))
+            metrics.update({f"case_{k}": v for k, v in cases.items()})
+            wh_hist.clear(); wm_hist.clear()
+            log.info(f"[step {step}] " + " ".join(f"{k}={v:.4f}" for k, v in metrics.items()))
+            if wandb_run is not None:
+                wandb_run.log(metrics, step=step)
 
         ckpt_every = int(cfg.training.checkpoint_every)
         if ckpt_every and (step + 1) % ckpt_every == 0:

@@ -20,7 +20,7 @@ from .loop import _to_device, _cycle, _benign_under_adv_prompt, _init_wandb
 from .losses import utility_kl
 from .gating import avg_logprob, w_harm, w_miss, behavior_gate, rep_gate
 from .coop_losses import per_example_ce, detector_ce
-from .coop_metrics import recall_at_fpr, four_case_frequencies, refusal_rate
+from .coop_metrics import recall_at_fpr, four_case_frequencies, refusal_rate, fresh_refit_recall
 from .readers import build_reader
 
 log = logging.getLogger(__name__)
@@ -120,25 +120,45 @@ def _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch, uti
 @torch.no_grad()
 def _coop_validate(model, reader, layer, harmful_batches, benign_batches, benign_prompts,
                    tokenizer, template_id, max_new_tokens):
-    """Held-out metrics: detector recall@1%FPR (co-trained reader on CLEAN harmful vs OOD
-    benign) and over-refusal on OOD benign (free generation). Attacked-recall is a fuller
-    eval-side metric; this is the cheap training-time monitor. OOD benign, never UltraChat."""
+    """Held-out metrics on CLEAN harmful vs OOD benign (never UltraChat):
+      - val_recall@1fpr: the co-trained reader's recall at 1% FPR (detector quality).
+      - val_fresh_refit_recall: a probe fit FROM SCRATCH on half the current model's
+        features, evaluated on the other half (§11 collusion probe). Compare the two —
+        co-trained >> fresh hints the reader leans on something a fresh probe can't
+        recover. (Fullest form fits/evals on a held-out ATTACK distribution; this clean
+        split is the from-run-1 version.)
+      - val_ood_refusal: over-refusal from free generation on OOD benign.
+    Attacked-recall is a fuller eval-side metric; this is the cheap training-time monitor."""
     from ..defenses.monitors._activation_detector_model import get_chat_template
 
     was_training = model.training
     model.eval()
     device = next(model.parameters()).device
+    has_feats = hasattr(reader, "readout") and hasattr(reader, "linear")
 
-    def _scores(batches, ids_key, tgt_key, attn_key):
-        out = []
+    def _collect(batches, ids_key, tgt_key, attn_key):
+        feats, scores = [], []
         for b in batches:
             hidden, _ = _hidden_and_logits(model, layer, input_ids=b[ids_key], attention_mask=b[attn_key])
-            out += reader.p_harmful(hidden, b[tgt_key], b[attn_key]).tolist()
-        return out
+            if has_feats:
+                f = reader.readout(hidden, b[tgt_key], b[attn_key])
+                feats.append(f)
+                scores += torch.softmax(reader.linear(f).float(), dim=-1)[:, 0].tolist()
+            else:
+                scores += reader.p_harmful(hidden, b[tgt_key], b[attn_key]).tolist()
+        return (torch.cat(feats, dim=0) if feats else None), scores
 
-    harmful_scores = _scores(harmful_batches, "h_ids", "h_targetids", "h_attn")
-    benign_scores = _scores(benign_batches, "d_ids", "d_targetids", "d_attn")
-    recall = recall_at_fpr(benign_scores, harmful_scores, fpr=0.01)
+    h_feat, harmful_scores = _collect(harmful_batches, "h_ids", "h_targetids", "h_attn")
+    b_feat, benign_scores = _collect(benign_batches, "d_ids", "d_targetids", "d_attn")
+    metrics = {"val_recall@1fpr": recall_at_fpr(benign_scores, harmful_scores, fpr=0.01)}
+
+    # collusion probe: fresh linear probe fit on the first half, evaluated on the second
+    if has_feats and h_feat is not None and h_feat.size(0) >= 2 and b_feat.size(0) >= 2:
+        nh, nb = h_feat.size(0) // 2, b_feat.size(0) // 2
+        tr = torch.cat([h_feat[:nh], b_feat[:nb]], dim=0)
+        lab = torch.cat([torch.zeros(nh, dtype=torch.long, device=device),
+                         torch.ones(nb, dtype=torch.long, device=device)])
+        metrics["val_fresh_refit_recall"] = fresh_refit_recall(tr, lab, b_feat[nb:], h_feat[nh:])
 
     first_user_msg, _, response_key, _, _ = get_chat_template(template_id)
     gens = []
@@ -147,10 +167,11 @@ def _coop_validate(model, reader, layer, harmful_batches, benign_batches, benign
         enc = tokenizer(first_user_msg.format(instruction=p) + response_key, return_tensors="pt").to(device)
         out = model.generate(**enc, max_new_tokens=max_new_tokens, do_sample=False, pad_token_id=pad_id)
         gens.append(tokenizer.decode(out[0, enc["input_ids"].shape[1]:], skip_special_tokens=True))
+    metrics["val_ood_refusal"] = refusal_rate(gens)
 
     if was_training:
         model.train()
-    return {"val_recall@1fpr": recall, "val_ood_refusal": refusal_rate(gens)}
+    return metrics
 
 
 def _adv_embeds(attack, model, adv_batch):

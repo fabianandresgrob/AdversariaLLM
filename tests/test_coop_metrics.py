@@ -53,3 +53,16 @@ def test_fresh_refit_recall_separable_features():
     train_labels = torch.cat([torch.zeros(50, dtype=torch.long), torch.ones(50, dtype=torch.long)])
     r = fresh_refit_recall(train_features, train_labels, benign_feat, harmful_feat, steps=200, lr=1e-2)
     assert r > 0.9
+
+
+def test_fresh_refit_recall_works_under_no_grad():
+    # It is called from @torch.no_grad() validation, so it must re-enable grad internally.
+    torch.manual_seed(0)
+    D = 16
+    harmful_feat = torch.randn(40, D) + 3.0
+    benign_feat = torch.randn(40, D) - 3.0
+    train = torch.cat([harmful_feat, benign_feat], dim=0)
+    labels = torch.cat([torch.zeros(40, dtype=torch.long), torch.ones(40, dtype=torch.long)])
+    with torch.no_grad():
+        r = fresh_refit_recall(train, labels, benign_feat, harmful_feat, steps=150, lr=1e-2)
+    assert r > 0.9

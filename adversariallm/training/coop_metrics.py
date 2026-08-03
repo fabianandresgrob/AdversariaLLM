@@ -101,11 +101,14 @@ def fresh_refit_recall(train_features, train_labels, benign_features, harmful_fe
     device = train_features.device
     probe = nn.Linear(train_features.size(-1), 2).to(device)
     opt = torch.optim.Adam(probe.parameters(), lr=lr)
-    for _ in range(steps):
-        opt.zero_grad()
-        loss = F.cross_entropy(probe(train_features), train_labels)
-        loss.backward()
-        opt.step()
+    feats = train_features.detach()
+    # enable_grad so this trains even when called inside a @torch.no_grad() validation.
+    with torch.enable_grad():
+        for _ in range(steps):
+            opt.zero_grad()
+            loss = F.cross_entropy(probe(feats), train_labels)
+            loss.backward()
+            opt.step()
     with torch.no_grad():
         b = torch.softmax(probe(benign_features), dim=-1)[:, 0]   # P(harmful) on benign
         h = torch.softmax(probe(harmful_features), dim=-1)[:, 0]  # P(harmful) on harmful

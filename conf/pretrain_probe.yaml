@@ -13,12 +13,15 @@ reader:
 
 data:
   dir: ${root_dir}/data
-  behaviors: behavior_datasets/extra_behavior_datasets/adv_training_behaviors.csv
-  n_harmful: 100
-  # Diverse benign from AdversariaLLM's own datasets. First source is the training benign;
-  # the rest are held out to measure cross-distribution generalization.
-  benign_sources: [alpaca, or_bench, xs_test]
-  n_benign_per_source: 100
+  behaviors: behavior_datasets/harmbench_behaviors_text_all.csv   # ~1530 harmful behaviors
+  harmful_col: Behavior
+  n_harmful: 300
+  # Diverse benign from AdversariaLLM's own datasets. The probe's benign class is trained
+  # on the MIX of train_benign_sources; eval_only_sources are held-out distributions for
+  # a cross-distribution generalization check. All are evaluated on their held-out portion.
+  train_benign_sources: [alpaca, or_bench, xs_test]
+  eval_only_sources: []          # e.g. [mmlu] to add a fully-OOD benign check
+  n_benign_per_source: 300
   train_frac: 0.7
   seed: 0
 

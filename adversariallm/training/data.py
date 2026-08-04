@@ -53,6 +53,40 @@ def build_example_full(prompt, response, tokenizer, model_name):
     return input_ids, labels, target_ids, attn
 
 
+def build_prompt_only(prompt, tokenizer, model_name):
+    """Prompt + response-key scaffold, no completion. target_ids all-zero, so the reader's
+    readout falls back to the last real token — the last response-key token, i.e. the
+    generation-onset position. This is the SAME readout position as build_example_full
+    (which reads the token just before the response), so a probe trained on these transfers
+    to the in-loop harmful examples (prompt + response). Returns (input_ids, target_ids, attn)."""
+    first_user_msg, _, response_key, _, _ = get_chat_template(model_name)
+    text = first_user_msg.format(instruction=prompt) + response_key
+    ids = torch.tensor(tokenizer(text)["input_ids"], dtype=torch.long)
+    return ids, torch.zeros_like(ids), torch.ones_like(ids)
+
+
+def load_dataset_prompts(datasets_cfg, name, n=None, seed=0):
+    """Pull (user prompts, assistant responses) from a registered AdversariaLLM dataset
+    (alpaca, or_bench, xs_test, ...), reusing its config from conf/datasets. responses are
+    None for prompt-only datasets. Lets the detector's benign mix use in-repo data."""
+    from omegaconf import OmegaConf
+    from ..dataset.prompt_dataset import PromptDataset
+
+    node = OmegaConf.merge(datasets_cfg[name], {"seed": seed})
+    if n is not None:
+        node = OmegaConf.merge(node, {"idx": f"list(range(0,{n}))"})
+    ds = PromptDataset.from_name(name)(node)
+    prompts, responses = [], []
+    for i in range(len(ds)):
+        conv = ds[i]
+        user = next((m["content"] for m in conv if m["role"] == "user"), None)
+        asst = next((m["content"] for m in conv if m["role"] == "assistant"), None)
+        if user:
+            prompts.append(user)
+            responses.append(asst)
+    return prompts, responses
+
+
 class AdvTupleStream(Dataset):
     """(x, y_harmful, y_benign) per behavior, tokenized for the model."""
 

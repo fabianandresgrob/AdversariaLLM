@@ -1,0 +1,30 @@
+defaults:
+  - models: models
+  - datasets: datasets
+  - paths
+  - _self_
+
+name: probe_v1
+model: meta-llama/Meta-Llama-3.1-8B-Instruct
+chat_template_id: meta-llama/Llama-3.1-8B-Instruct
+
+reader:
+  layer: -1
+
+data:
+  dir: ${root_dir}/data
+  behaviors: behavior_datasets/extra_behavior_datasets/adv_training_behaviors.csv
+  n_harmful: 100
+  # Diverse benign from AdversariaLLM's own datasets. First source is the training benign;
+  # the rest are held out to measure cross-distribution generalization.
+  benign_sources: [alpaca, or_bench, xs_test]
+  n_benign_per_source: 100
+  train_frac: 0.7
+  seed: 0
+
+train:
+  lr: 1.0e-3
+  steps: 500
+
+output:
+  probe_path: ${root_dir}/checkpoints_probe

@@ -22,6 +22,10 @@ data:
   # recall diagnostic is reported on their VAL windows.
   train_benign_sources: [alpaca, or_bench, xs_test]
   train_frac: 0.7          # harmful train/eval split for the pretraining diagnostic
+  # OOD harmful for an honest diagnostic — a different benchmark (JailbreakBench),
+  # disjoint from advbench-train and harmbench-test.
+  eval_harmful_source: jbb_behaviors
+  eval_harmful_window: [0, 100]
   seed: 0
 
 train:

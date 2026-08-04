@@ -91,12 +91,23 @@ def run_pretrain_probe(cfg):
         opt.step()
     log.info(f"probe train loss={loss.item():.4f} (trained on benign mix: {train_benign})")
 
-    # recall@1%FPR on held-out harmful vs each benign source's VAL window
     def p_harm(feat):
         return torch.softmax(probe.linear(feat.to(device)).float(), dim=-1)[:, 0]
+
+    # Honest diagnostic: report recall vs both the in-distribution harmful (advbench, easy —
+    # the base model's refusal signal is trivially readable) AND an OOD harmful benchmark
+    # (jbb, disjoint from advbench-train and harmbench-test). A big in-dist>OOD gap means the
+    # probe is reading the refusal direction, not a robust harm representation. NOTE: both are
+    # CLEAN prompts — the real test is ATTACKED harmful (the attack suppresses the refusal
+    # signal), which only the in-loop / eval-time attacked recall measures.
     h_scores = p_harm(h_ev)
+    ood_src = cfg.data.eval_harmful_source
+    eh_prompts, _ = load_dataset_prompts(cfg.datasets, ood_src, window=cfg.data.eval_harmful_window, seed=cfg.data.seed)
+    eh_scores = p_harm(_features(model, tokenizer, template_id, eh_prompts, layer, device))
     for name, feat in b_ev.items():
-        log.info(f"recall@1%FPR vs {name} (val): {recall_at_fpr(p_harm(feat), h_scores, fpr=0.01):.3f}")
+        bs = p_harm(feat)
+        log.info(f"recall@1%FPR vs {name}: advbench(in-dist)={recall_at_fpr(bs, h_scores, fpr=0.01):.3f}"
+                 f"  {ood_src}(OOD)={recall_at_fpr(bs, eh_scores, fpr=0.01):.3f}")
 
     out_dir = os.path.join(cfg.output.probe_path, container.get("name") or "probe")
     os.makedirs(out_dir, exist_ok=True)

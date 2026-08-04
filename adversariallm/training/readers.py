@@ -34,6 +34,16 @@ def readout_index(target_ids: torch.Tensor, attention_mask: torch.Tensor) -> tor
     return torch.where(has_resp, first_resp - 1, last_real).clamp_min(0)
 
 
+def probe_readout(hidden: torch.Tensor, target_ids: torch.Tensor, attention_mask: torch.Tensor,
+                  eps: float = 1e-6) -> torch.Tensor:
+    """Unit-normed fp32 activation at the last prompt token — the reader's input feature.
+    Norms drift during fine-tuning, so the probe reads direction, not scale (§14.6)."""
+    idx = readout_index(target_ids, attention_mask)
+    rows = torch.arange(hidden.size(0), device=hidden.device)
+    h = hidden[rows, idx].float()
+    return h / h.norm(dim=-1, keepdim=True).clamp_min(eps)
+
+
 class Reader(ABC):
     """Scores a prompt as harmful/benign from target-model hidden states.
 
@@ -64,10 +74,7 @@ class LinearProbe(Reader, nn.Module):
         self.linear = nn.Linear(input_dim, 2)  # fp32 params
 
     def readout(self, hidden: torch.Tensor, target_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
-        idx = readout_index(target_ids, attention_mask)
-        rows = torch.arange(hidden.size(0), device=hidden.device)
-        h = hidden[rows, idx].float()                        # (B, D)
-        return h / h.norm(dim=-1, keepdim=True).clamp_min(self.eps)
+        return probe_readout(hidden, target_ids, attention_mask, self.eps)
 
     def logits(self, hidden: torch.Tensor, target_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
         return self.linear(self.readout(hidden, target_ids, attention_mask))

@@ -49,16 +49,16 @@ def _hidden_and_logits(model, layer, *, inputs_embeds=None, input_ids=None, atte
     return out.hidden_states[layer], out.logits
 
 
-def _detector_step(model, reader, opt_det, layer, adv_embeds, adv_batch, util_batch, device):
+def _detector_step(model, reader, opt_det, layer, adv_embeds, adv_batch, benign_batch, device):
     """One detector update: model frozen, reader trainable. CE over attacked (->harmful)
-    and benign (->benign) examples. Model forward under no_grad so only the reader trains."""
+    and DIVERSE benign (->benign) examples. Model forward under no_grad so only the reader
+    trains. Diverse benign (not UltraChat-only) is what stops the OOD-benign over-firing."""
     opt_det.zero_grad(set_to_none=True)
     with torch.no_grad():
         h_hidden, _ = _hidden_and_logits(model, layer, inputs_embeds=adv_embeds, attention_mask=adv_batch["h_attn"])
-        b_hidden, _ = _hidden_and_logits(model, layer, input_ids=util_batch["input_ids"], attention_mask=util_batch["attn"])
+        b_hidden, _ = _hidden_and_logits(model, layer, input_ids=benign_batch["d_ids"], attention_mask=benign_batch["d_attn"])
     logits_h = reader.logits(h_hidden, adv_batch["h_targetids"], adv_batch["h_attn"])
-    b_tgt = _labels_to_target_ids(util_batch["labels"])
-    logits_b = reader.logits(b_hidden, b_tgt, util_batch["attn"])
+    logits_b = reader.logits(b_hidden, benign_batch["d_targetids"], benign_batch["d_attn"])
     logits = torch.cat([logits_h, logits_b], dim=0)
     labels = torch.cat([
         torch.zeros(logits_h.size(0), dtype=torch.long, device=device),   # harmful = 0
@@ -200,8 +200,8 @@ def run_coop_training(cfg):
     from .attacks import ContinuousEmbeddingAttack
     from .reference import LoRADisableReference
     from .data import (
-        AdvTupleStream, UtilityStream, OODBenignStream, load_dataset_prompts,
-        collate_adv, collate_util, collate_ood, split_adv_stream,
+        AdvTupleStream, UtilityStream, BenignStream, load_dataset_prompts,
+        collate_adv, collate_util, collate_benign, split_adv_stream,
     )
 
     container = OmegaConf.to_container(cfg, resolve=True)
@@ -223,9 +223,13 @@ def run_coop_training(cfg):
     ref = LoRADisableReference(model)
     model_trainable = [p for p in model.parameters() if p.requires_grad]
 
-    # reader (random init); input_dim = target hidden size
+    # reader; input_dim = target hidden size. probe_init: "random" or a pretrained probe.pt.
     hidden_dim = model.get_input_embeddings().weight.shape[-1]
     reader = build_reader(container.get("reader"), hidden_dim).to(device)
+    probe_init = container.get("probe_init") or "random"
+    if probe_init != "random":
+        reader.load_state_dict(torch.load(probe_init, map_location=device)["state"])
+        log.info(f"loaded pretrained probe from {probe_init}")
     reader_params = list(reader.parameters())
 
     # data
@@ -239,6 +243,14 @@ def run_coop_training(cfg):
     adv_loader = DataLoader(adv_train_ds, batch_size=cfg.data.harmful_batch_size, shuffle=True, collate_fn=collate_adv)
     util_loader = DataLoader(util_ds, batch_size=cfg.data.utility_batch_size, shuffle=True, collate_fn=collate_util)
 
+    # detector benign class = DIVERSE benign mix (train windows), not UltraChat-only
+    det_benign_rows = []
+    for name in cfg.data.detector_benign_sources:
+        ps, rs = load_dataset_prompts(cfg.datasets, name, window=cfg.splits[name].train, seed=cfg.data.val_seed)
+        det_benign_rows += list(zip(ps, rs))
+    det_benign_ds = BenignStream(det_benign_rows, tokenizer, template_id)
+    det_benign_loader = DataLoader(det_benign_ds, batch_size=cfg.data.harmful_batch_size, shuffle=True, collate_fn=collate_benign)
+
     # held-out validation sets: clean harmful (from the split) + OOD benign (Alpaca, NOT UltraChat)
     harmful_val_batches = [
         _to_device(b, device) for b in
@@ -247,10 +259,10 @@ def run_coop_training(cfg):
     # OOD benign for validation = alpaca VAL window (canonical split; disjoint from train + test)
     ood_prompts, ood_resp = load_dataset_prompts(cfg.datasets, cfg.data.ood_benign, window=cfg.splits.alpaca.val,
                                                  seed=cfg.data.val_seed)
-    ood_ds = OODBenignStream(list(zip(ood_prompts, ood_resp)), tokenizer, template_id)
+    ood_ds = BenignStream(list(zip(ood_prompts, ood_resp)), tokenizer, template_id)
     benign_val_batches = [
         _to_device(b, device) for b in
-        DataLoader(ood_ds, batch_size=cfg.data.harmful_batch_size, shuffle=False, collate_fn=collate_ood)
+        DataLoader(ood_ds, batch_size=cfg.data.harmful_batch_size, shuffle=False, collate_fn=collate_benign)
     ]
     benign_prompts = [x for x, _ in ood_ds.rows[:int(cfg.training.benign_gen_n)]]
 
@@ -270,7 +282,7 @@ def run_coop_training(cfg):
     n_det = int(cfg.training.n_detector_steps)
     warmup = int(cfg.training.rep_warmup_steps)
 
-    adv_iter, util_iter = _cycle(adv_loader), _cycle(util_loader)
+    adv_iter, util_iter, det_benign_iter = _cycle(adv_loader), _cycle(util_loader), _cycle(det_benign_loader)
     run_name = container.get("name") or "coop_run"
     out_dir = os.path.join(cfg.output.checkpoint_path, run_name)
     os.makedirs(out_dir, exist_ok=True)
@@ -290,8 +302,11 @@ def run_coop_training(cfg):
         _assert_grad(model_trainable, False, "model(det phase)")
         _assert_grad(reader_params, True, "reader(det phase)")
         adv_embeds = _adv_embeds(attack, model, adv_batch)
-        det_losses = [_detector_step(model, reader, opt_det, layer, adv_embeds, adv_batch, util_batch, device)
-                      for _ in range(n_det)]
+        det_losses = [
+            _detector_step(model, reader, opt_det, layer, adv_embeds, adv_batch,
+                           _to_device(next(det_benign_iter), device), device)
+            for _ in range(n_det)
+        ]
 
         # ---- model phase: reader frozen, model trainable ----
         _set_requires_grad(reader_params, False)

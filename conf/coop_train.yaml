@@ -15,6 +15,8 @@ chat_template_id: meta-llama/Llama-3.1-8B-Instruct
 reader:
   type: linear        # linear | (mlp/gemma later)
   layer: -1           # target-model hidden layer the probe reads
+# "random" or a pretrained probe.pt from run_pretrain_probe (fixes the OOD-benign collapse).
+probe_init: ${root_dir}/checkpoints_probe/probe_v1/probe.pt
 
 # Gating / objective (design doc §3-§6). Floors default to the decoupled (1,1) control.
 tau: 1.0
@@ -40,7 +42,9 @@ data:
   utility_batch_size: 4
   val_size: 16                      # harmful behaviors held out for validation
   val_seed: 0
-  # KL uses ultrachat TRAIN window; OOD-benign validation uses alpaca VAL window (conf/splits.yaml).
+  # Detector benign class = diverse mix (train windows); KL uses ultrachat train; OOD-benign
+  # validation uses alpaca val window (conf/splits.yaml).
+  detector_benign_sources: [alpaca, or_bench, xs_test]
   ood_benign: alpaca                # OOD benign source for over-refusal + FPR (NOT the UltraChat KL distribution)
 
 training:

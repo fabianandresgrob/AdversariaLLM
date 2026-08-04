@@ -16,7 +16,7 @@ import os
 
 import torch
 
-from .readers import LinearProbe
+from .readers import LinearProbe, probe_readout
 from .coop_metrics import recall_at_fpr
 from .data import build_prompt_only, load_dataset_prompts, pad_collate
 
@@ -26,7 +26,6 @@ log = logging.getLogger(__name__)
 @torch.no_grad()
 def _features(model, tokenizer, template_id, prompts, layer, device, batch_size=16):
     """Readout features (unit-normed, fp32) at the generation onset for each prompt."""
-    probe_readout = LinearProbe(1)  # borrow its readout() only; linear unused here
     feats = []
     for start in range(0, len(prompts), batch_size):
         chunk = prompts[start:start + batch_size]
@@ -37,7 +36,7 @@ def _features(model, tokenizer, template_id, prompts, layer, device, batch_size=
         tgt = batch["d_targetids"].to(device)
         attn = batch["d_attn"].to(device)
         hidden = model(input_ids=ids, attention_mask=attn, output_hidden_states=True).hidden_states[layer]
-        feats.append(probe_readout.readout(hidden, tgt, attn).cpu())
+        feats.append(probe_readout(hidden, tgt, attn).cpu())
     return torch.cat(feats, dim=0)
 
 

@@ -173,17 +173,14 @@ def collate_util(batch):
     return pad_collate(batch, ["input_ids", "labels", "attn"], pad_id=0)
 
 
-class OODBenignStream(Dataset):
-    """Out-of-distribution benign (instruction, output) pairs for the over-refusal and FPR
-    metrics — a DIFFERENT distribution from the UltraChat KL leash. In-distribution benign
-    (UltraChat) is misleadingly optimistic because the leash preserves it by construction;
-    OOD benign measures whether utility generalizes. Formatted like the adv stream (0-masked
-    target_ids) so the reader reads the same last-prompt-token position for both classes.
-    """
+class BenignStream(Dataset):
+    """Benign (prompt, response) pairs in reader format (0-masked target_ids; the reader reads
+    the last prompt token, so the response is irrelevant and may be None). Rows come from
+    load_dataset_prompts, so ordering is the canonical split. Serves both roles: the detector's
+    benign training class (a diverse mix of sources' train windows) and OOD over-refusal / FPR
+    validation. `prompt` is kept for free-generation refusal checks."""
 
     def __init__(self, rows, tokenizer, model_name):
-        # rows = list of (prompt, response) from load_dataset_prompts, so the ordering is
-        # the canonical split (shared with pretraining and final eval).
         self.rows = [(p, r or "") for p, r in rows if p]
         self.tokenizer, self.model_name = tokenizer, model_name
 
@@ -196,8 +193,7 @@ class OODBenignStream(Dataset):
         return {"d_ids": ids, "d_targetids": tgt, "d_attn": attn, "prompt": x}
 
 
-def collate_ood(batch):
-    """Collate OODBenignStream items; pass prompts through for free-generation refusal checks."""
+def collate_benign(batch):
     out = pad_collate(batch, ["d_ids", "d_targetids", "d_attn"], pad_id=0)
     out["prompt"] = [b["prompt"] for b in batch]
     return out

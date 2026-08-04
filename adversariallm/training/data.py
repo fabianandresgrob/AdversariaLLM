@@ -65,16 +65,15 @@ def build_prompt_only(prompt, tokenizer, model_name):
     return ids, torch.zeros_like(ids), torch.ones_like(ids)
 
 
-def load_dataset_prompts(datasets_cfg, name, n=None, seed=0):
+def load_dataset_prompts(datasets_cfg, name, window, seed=0):
     """Pull (user prompts, assistant responses) from a registered AdversariaLLM dataset
-    (alpaca, or_bench, xs_test, ...), reusing its config from conf/datasets. responses are
-    None for prompt-only datasets. Lets the detector's benign mix use in-repo data."""
+    (alpaca, or_bench, xs_test, ...) over a fixed index window (start, end) — the canonical
+    split (conf/splits.yaml). responses are None for prompt-only datasets."""
     from omegaconf import OmegaConf
     from ..dataset.prompt_dataset import PromptDataset
 
-    node = OmegaConf.merge(datasets_cfg[name], {"seed": seed})
-    if n is not None:
-        node = OmegaConf.merge(node, {"idx": f"list(range(0,{n}))"})
+    start, end = int(window[0]), int(window[1])
+    node = OmegaConf.merge(datasets_cfg[name], {"seed": seed, "idx": f"list(range({start},{end}))"})
     ds = PromptDataset.from_name(name)(node)
     prompts, responses = [], []
     for i in range(len(ds)):
@@ -122,13 +121,16 @@ class AdvTupleStream(Dataset):
 
 
 class UtilityStream(Dataset):
-    """UltraChat (x, y) for the KL term: first user turn + first model reply."""
+    """UltraChat (x, y) for the KL term: first user turn + first model reply.
+    window=(start, end) selects a fixed index slice (the canonical split, conf/splits.yaml)."""
 
-    def __init__(self, tokenizer, model_name, fraction=0.01):
+    def __init__(self, tokenizer, model_name, window=None, fraction=0.01):
         from datasets import load_dataset
         ds = load_dataset("stingning/ultrachat", split="train")
-        if 0 < fraction < 1.0:
-            ds = ds.select(range(int(fraction * len(ds))))
+        if window is not None:
+            ds = ds.select(range(int(window[0]), int(window[1])))       # canonical split (coop)
+        elif 0 < fraction < 1.0:
+            ds = ds.select(range(int(fraction * len(ds))))              # fraction (model-CAT)
         self.rows = [(d["data"][0], d["data"][1]) for d in ds if len(d["data"]) >= 2]
         self.tokenizer, self.model_name = tokenizer, model_name
 
@@ -179,19 +181,10 @@ class OODBenignStream(Dataset):
     target_ids) so the reader reads the same last-prompt-token position for both classes.
     """
 
-    def __init__(self, tokenizer, model_name, hf_name="tatsu-lab/alpaca", n=64):
-        from datasets import load_dataset
-
-        ds = load_dataset(hf_name, split="train")
-        self.rows = []
-        for d in ds:
-            instr, inp, out = d.get("instruction", ""), d.get("input", ""), d.get("output", "")
-            if inp:
-                instr = f"{instr}\n{inp}"
-            if instr and out:
-                self.rows.append((instr, out))
-            if len(self.rows) >= n:
-                break
+    def __init__(self, rows, tokenizer, model_name):
+        # rows = list of (prompt, response) from load_dataset_prompts, so the ordering is
+        # the canonical split (shared with pretraining and final eval).
+        self.rows = [(p, r or "") for p, r in rows if p]
         self.tokenizer, self.model_name = tokenizer, model_name
 
     def __len__(self):

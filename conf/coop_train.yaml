@@ -1,5 +1,7 @@
 defaults:
   - models: models
+  - datasets: datasets
+  - splits
   - paths
   - _self_
 
@@ -34,13 +36,12 @@ data:
   behaviors: behavior_datasets/extra_behavior_datasets/adv_training_behaviors.csv
   targets: optimizer_targets/extra_targets/adv_training_targets.json
   safe: safe_responses/adv_training_behaviors_safe_responses_longer.csv
-  utility_fraction: 0.01
   harmful_batch_size: 4
   utility_batch_size: 4
   val_size: 16                      # harmful behaviors held out for validation
   val_seed: 0
-  ood_benign_hf: tatsu-lab/alpaca   # OOD benign for over-refusal + FPR (NOT the UltraChat KL distribution)
-  ood_benign_n: 64
+  # KL uses ultrachat TRAIN window; OOD-benign validation uses alpaca VAL window (conf/splits.yaml).
+  ood_benign: alpaca                # OOD benign source for over-refusal + FPR (NOT the UltraChat KL distribution)
 
 training:
   model_lr: 5.0e-5

@@ -1,6 +1,7 @@
 defaults:
   - models: models
   - datasets: datasets
+  - splits
   - paths
   - _self_
 
@@ -13,16 +14,14 @@ reader:
 
 data:
   dir: ${root_dir}/data
-  behaviors: behavior_datasets/harmbench_behaviors_text_all.csv   # ~1530 harmful behaviors
+  # TRAIN harmful set (AdvBench), disjoint from the HarmBench test set. 519 behaviors.
+  behaviors: behavior_datasets/extra_behavior_datasets/advbench_behaviors.csv
   harmful_col: Behavior
   n_harmful: 300
-  # Diverse benign from AdversariaLLM's own datasets. The probe's benign class is trained
-  # on the MIX of train_benign_sources; eval_only_sources are held-out distributions for
-  # a cross-distribution generalization check. All are evaluated on their held-out portion.
+  # Probe benign class = MIX of these sources' TRAIN windows (conf/splits.yaml);
+  # recall diagnostic is reported on their VAL windows.
   train_benign_sources: [alpaca, or_bench, xs_test]
-  eval_only_sources: []          # e.g. [mmlu] to add a fully-OOD benign check
-  n_benign_per_source: 300
-  train_frac: 0.7
+  train_frac: 0.7          # harmful train/eval split for the pretraining diagnostic
   seed: 0
 
 train:

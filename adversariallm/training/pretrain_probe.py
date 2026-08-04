@@ -55,7 +55,7 @@ def run_pretrain_probe(cfg):
     get_chat_template(template_id)  # fail fast if the template id is unsupported
     layer = int(cfg.reader.layer)
 
-    # harmful prompts (shuffled from a behaviors CSV) + diverse benign (AdversariaLLM datasets)
+    # harmful = the TRAIN behavior set (advbench), disjoint from the HarmBench test set.
     import pandas as pd
     import random
     beh = pd.read_csv(os.path.join(cfg.data.dir, cfg.data.behaviors))
@@ -63,29 +63,21 @@ def run_pretrain_probe(cfg):
     random.Random(cfg.data.seed).shuffle(harmful_all)
     harmful = harmful_all[: cfg.data.n_harmful]
 
+    # benign: fit on the TRAIN window of each source, evaluate the diagnostic on the VAL
+    # window (canonical split, conf/splits.yaml) — disjoint from coop-val and final-test.
     train_benign = list(cfg.data.train_benign_sources)
-    all_benign = list(dict.fromkeys(train_benign + list(cfg.data.get("eval_only_sources", []))))
-    benign = {}
-    for name in all_benign:
-        prompts, _ = load_dataset_prompts(cfg.datasets, name, n=cfg.data.n_benign_per_source, seed=cfg.data.seed)
-        benign[name] = prompts
-        log.info(f"benign source {name}: {len(prompts)} prompts")
+    b_tr_parts, b_ev = [], {}
+    for name in train_benign:
+        tr_prompts, _ = load_dataset_prompts(cfg.datasets, name, window=cfg.splits[name].train, seed=cfg.data.seed)
+        val_prompts, _ = load_dataset_prompts(cfg.datasets, name, window=cfg.splits[name].val, seed=cfg.data.seed)
+        b_tr_parts.append(_features(model, tokenizer, template_id, tr_prompts, layer, device))
+        b_ev[name] = _features(model, tokenizer, template_id, val_prompts, layer, device)
+        log.info(f"benign {name}: {len(tr_prompts)} train / {len(val_prompts)} val prompts")
 
-    # features
+    # harmful train/eval split (both from advbench; HarmBench test untouched)
     h_feat = _features(model, tokenizer, template_id, harmful, layer, device)
-    b_feat = {name: _features(model, tokenizer, template_id, ps, layer, device) for name, ps in benign.items()}
-
-    # per-source train/eval split; train the probe on the MIX of train_benign_sources
-    frac = cfg.data.train_frac
-    nh = int(len(h_feat) * frac)
+    nh = int(len(h_feat) * cfg.data.train_frac)
     h_tr, h_ev = h_feat[:nh], h_feat[nh:]
-    b_ev = {}
-    b_tr_parts = []
-    for name, feat in b_feat.items():
-        k = int(len(feat) * frac)
-        b_ev[name] = feat[k:]                       # held-out portion for eval
-        if name in train_benign:
-            b_tr_parts.append(feat[:k])             # train portion into the mix
     b_tr = torch.cat(b_tr_parts, dim=0)
 
     probe = LinearProbe(h_feat.size(-1)).to(device)
@@ -99,13 +91,12 @@ def run_pretrain_probe(cfg):
         opt.step()
     log.info(f"probe train loss={loss.item():.4f} (trained on benign mix: {train_benign})")
 
-    # recall@1%FPR on held-out harmful vs each benign source's held-out portion
+    # recall@1%FPR on held-out harmful vs each benign source's VAL window
     def p_harm(feat):
         return torch.softmax(probe.linear(feat.to(device)).float(), dim=-1)[:, 0]
     h_scores = p_harm(h_ev)
     for name, feat in b_ev.items():
-        tag = "(in mix)" if name in train_benign else "(eval-only OOD)"
-        log.info(f"recall@1%FPR vs {name} {tag}: {recall_at_fpr(p_harm(feat), h_scores, fpr=0.01):.3f}")
+        log.info(f"recall@1%FPR vs {name} (val): {recall_at_fpr(p_harm(feat), h_scores, fpr=0.01):.3f}")
 
     out_dir = os.path.join(cfg.output.probe_path, container.get("name") or "probe")
     os.makedirs(out_dir, exist_ok=True)

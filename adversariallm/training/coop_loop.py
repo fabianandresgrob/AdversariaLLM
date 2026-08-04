@@ -200,7 +200,7 @@ def run_coop_training(cfg):
     from .attacks import ContinuousEmbeddingAttack
     from .reference import LoRADisableReference
     from .data import (
-        AdvTupleStream, UtilityStream, OODBenignStream,
+        AdvTupleStream, UtilityStream, OODBenignStream, load_dataset_prompts,
         collate_adv, collate_util, collate_ood, split_adv_stream,
     )
 
@@ -233,7 +233,7 @@ def run_coop_training(cfg):
         data_dir=cfg.data.dir, behaviors_csv=cfg.data.behaviors, targets_json=cfg.data.targets,
         safe_csv=cfg.data.safe, tokenizer=tokenizer, model_name=template_id,
     )
-    util_ds = UtilityStream(tokenizer, template_id, fraction=cfg.data.utility_fraction)
+    util_ds = UtilityStream(tokenizer, template_id, window=cfg.splits.ultrachat.train)
 
     adv_train_ds, adv_val_ds = split_adv_stream(adv_ds, val_size=cfg.data.val_size, seed=cfg.data.val_seed)
     adv_loader = DataLoader(adv_train_ds, batch_size=cfg.data.harmful_batch_size, shuffle=True, collate_fn=collate_adv)
@@ -244,7 +244,10 @@ def run_coop_training(cfg):
         _to_device(b, device) for b in
         DataLoader(adv_val_ds, batch_size=cfg.data.harmful_batch_size, shuffle=False, collate_fn=collate_adv)
     ]
-    ood_ds = OODBenignStream(tokenizer, template_id, hf_name=cfg.data.ood_benign_hf, n=cfg.data.ood_benign_n)
+    # OOD benign for validation = alpaca VAL window (canonical split; disjoint from train + test)
+    ood_prompts, ood_resp = load_dataset_prompts(cfg.datasets, cfg.data.ood_benign, window=cfg.splits.alpaca.val,
+                                                 seed=cfg.data.val_seed)
+    ood_ds = OODBenignStream(list(zip(ood_prompts, ood_resp)), tokenizer, template_id)
     benign_val_batches = [
         _to_device(b, device) for b in
         DataLoader(ood_ds, batch_size=cfg.data.harmful_batch_size, shuffle=False, collate_fn=collate_ood)

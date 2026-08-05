@@ -9,6 +9,7 @@ benign). The saved checkpoint is loaded in the coop loop via `probe_init`.
 Diverse benign comes from AdversariaLLM's own datasets (alpaca / or_bench / xs_test); the
 probe reads the generation-onset position (build_prompt_only), matching the in-loop readout.
 """
+
 from __future__ import annotations
 
 import logging
@@ -16,9 +17,9 @@ import os
 
 import torch
 
-from .readers import LinearProbe, probe_readout
 from .coop_metrics import recall_at_fpr
 from .data import build_prompt_only, load_dataset_prompts, pad_collate
+from .readers import LinearProbe, probe_readout
 
 log = logging.getLogger(__name__)
 
@@ -28,9 +29,10 @@ def _features(model, tokenizer, template_id, prompts, layer, device, batch_size=
     """Readout features (unit-normed, fp32) at the generation onset for each prompt."""
     feats = []
     for start in range(0, len(prompts), batch_size):
-        chunk = prompts[start:start + batch_size]
-        items = [dict(zip(("d_ids", "d_targetids", "d_attn"),
-                          build_prompt_only(p, tokenizer, template_id))) for p in chunk]
+        chunk = prompts[start : start + batch_size]
+        items = [
+            dict(zip(("d_ids", "d_targetids", "d_attn"), build_prompt_only(p, tokenizer, template_id))) for p in chunk
+        ]
         batch = pad_collate(items, ["d_ids", "d_targetids", "d_attn"], pad_id=0)
         ids = batch["d_ids"].to(device)
         tgt = batch["d_targetids"].to(device)
@@ -42,8 +44,9 @@ def _features(model, tokenizer, template_id, prompts, layer, device, batch_size=
 
 def run_pretrain_probe(cfg):
     from omegaconf import OmegaConf
-    from ..io_utils import load_model_and_tokenizer
+
     from ..defenses.monitors._activation_detector_model import get_chat_template
+    from ..io_utils import load_model_and_tokenizer
 
     container = OmegaConf.to_container(cfg, resolve=True)
     model_params = cfg.models[cfg.model]
@@ -55,8 +58,10 @@ def run_pretrain_probe(cfg):
     layer = int(cfg.reader.layer)
 
     # harmful = the TRAIN behavior set (advbench), disjoint from the HarmBench test set.
-    import pandas as pd
     import random
+
+    import pandas as pd
+
     beh = pd.read_csv(os.path.join(cfg.data.dir, cfg.data.behaviors))
     harmful_all = beh[cfg.data.harmful_col].dropna().tolist()
     random.Random(cfg.data.seed).shuffle(harmful_all)
@@ -105,12 +110,16 @@ def run_pretrain_probe(cfg):
     eh_scores = p_harm(_features(model, tokenizer, template_id, eh_prompts, layer, device))
     for name, feat in b_ev.items():
         bs = p_harm(feat)
-        log.info(f"recall@1%FPR vs {name}: advbench(in-dist)={recall_at_fpr(bs, h_scores, fpr=0.01):.3f}"
-                 f"  {ood_src}(OOD)={recall_at_fpr(bs, eh_scores, fpr=0.01):.3f}")
+        log.info(
+            f"recall@1%FPR vs {name}: advbench(in-dist)={recall_at_fpr(bs, h_scores, fpr=0.01):.3f}"
+            f"  {ood_src}(OOD)={recall_at_fpr(bs, eh_scores, fpr=0.01):.3f}"
+        )
 
     out_dir = os.path.join(cfg.output.probe_path, container.get("name") or "probe")
     os.makedirs(out_dir, exist_ok=True)
-    torch.save({"state": probe.state_dict(), "cfg": container, "input_dim": h_feat.size(-1), "layer": layer},
-               os.path.join(out_dir, "probe.pt"))
+    torch.save(
+        {"state": probe.state_dict(), "cfg": container, "input_dim": h_feat.size(-1), "layer": layer},
+        os.path.join(out_dir, "probe.pt"),
+    )
     log.info(f"saved probe to {out_dir}/probe.pt")
     return out_dir

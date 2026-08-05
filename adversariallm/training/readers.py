@@ -8,12 +8,13 @@ unchanged. Richer readers (MLP, the gemma detector) slot in behind the same inte
 Label convention (from the predecessor detector): logits column 0 = harmful ("yes"),
 column 1 = benign ("no").
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 
 def readout_index(target_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
@@ -27,15 +28,16 @@ def readout_index(target_ids: torch.Tensor, attention_mask: torch.Tensor) -> tor
     keeps it correct under padding. A prompt-only row (no response region) falls back to
     its last attended token.
     """
-    resp = target_ids != 0                                  # (B, T)
-    has_resp = resp.any(dim=1)                               # (B,)
-    first_resp = resp.float().argmax(dim=1)                  # (B,) 0 if no response
-    last_real = attention_mask.long().sum(dim=1) - 1         # (B,)
+    resp = target_ids != 0  # (B, T)
+    has_resp = resp.any(dim=1)  # (B,)
+    first_resp = resp.float().argmax(dim=1)  # (B,) 0 if no response
+    last_real = attention_mask.long().sum(dim=1) - 1  # (B,)
     return torch.where(has_resp, first_resp - 1, last_real).clamp_min(0)
 
 
-def probe_readout(hidden: torch.Tensor, target_ids: torch.Tensor, attention_mask: torch.Tensor,
-                  eps: float = 1e-6) -> torch.Tensor:
+def probe_readout(
+    hidden: torch.Tensor, target_ids: torch.Tensor, attention_mask: torch.Tensor, eps: float = 1e-6
+) -> torch.Tensor:
     """Unit-normed fp32 activation at the last prompt token — the reader's input feature.
     Norms drift during fine-tuning, so the probe reads direction, not scale (§14.6)."""
     idx = readout_index(target_ids, attention_mask)
@@ -52,8 +54,7 @@ class Reader(ABC):
     """
 
     @abstractmethod
-    def logits(self, hidden: torch.Tensor, target_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
-        ...
+    def logits(self, hidden: torch.Tensor, target_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor: ...
 
     def p_harmful(self, hidden: torch.Tensor, target_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
         """P(harmful) per row = softmax(logits)[:, 0]."""

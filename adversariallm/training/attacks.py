@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-import torch
 
 from ._embedding_attack_core import EmbeddingSpaceAttack
 

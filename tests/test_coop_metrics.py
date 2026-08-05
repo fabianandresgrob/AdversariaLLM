@@ -3,7 +3,8 @@ from __future__ import annotations
 import torch
 
 from adversariallm.training.coop_metrics import (
-    recall_at_fpr, four_case_frequencies, refusal_rate, fresh_refit_recall,
+    recall_at_fpr, threshold_at_fpr, fpr_at_threshold,
+    four_case_frequencies, refusal_rate, fresh_refit_recall,
 )
 
 
@@ -24,6 +25,23 @@ def test_recall_at_fpr_respects_the_budget():
 
 def test_recall_at_fpr_accepts_tensors():
     assert recall_at_fpr(torch.zeros(50), torch.ones(50), fpr=0.01) == 1.0
+
+
+def test_threshold_at_fpr_is_the_recall_operating_point():
+    # the threshold recall@fpr uses internally: the (1-fpr) quantile of benign.
+    benign = [0.0 + 0.01 * i for i in range(101)]        # 0.00 .. 1.00, evenly spaced
+    tau = threshold_at_fpr(benign, fpr=0.01)             # 99th percentile -> ~0.99
+    assert abs(tau - 0.99) < 1e-6
+    harmful = [tau + 0.001, tau - 0.001]                 # one above, one below
+    assert recall_at_fpr(benign, harmful, fpr=0.01) == 0.5   # only the above-tau one counts
+    assert torch.isnan(torch.tensor(threshold_at_fpr([])))
+
+
+def test_fpr_at_threshold_exposes_over_firing():
+    # plain FPR at a fixed 0.5 threshold: fraction of benign scored above it.
+    assert fpr_at_threshold([0.1, 0.2, 0.3, 0.4], thr=0.5) == 0.0     # calibrated: none fire
+    assert fpr_at_threshold([0.6, 0.7, 0.1, 0.2], thr=0.5) == 0.5     # over-firing: half fire
+    assert torch.isnan(torch.tensor(fpr_at_threshold([])))
 
 
 def test_four_case_frequencies_corners():

@@ -11,6 +11,7 @@ forwards and the two-timescale schedule. This module holds the reusable pieces:
 per_example_ce is per-row (not batch-mean) so a gate can scale each example before the
 mean. There is no "away" term — harmful-side pressure is the gated representation term.
 """
+
 from __future__ import annotations
 
 import torch

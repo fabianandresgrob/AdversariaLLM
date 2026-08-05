@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+
 import torch
 
 
 class ReferenceProvider(ABC):
     @abstractmethod
-    def logits(self, *, inputs_embeds: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
-        ...
+    def logits(self, *, inputs_embeds: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor: ...
 
 
 class LoRADisableReference(ReferenceProvider):

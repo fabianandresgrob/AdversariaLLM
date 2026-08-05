@@ -1,7 +1,8 @@
+import logging
+
 import torch
 from torch.optim.optimizer import Optimizer
-import logging
-import time
+
 # wandb_logger and wandb removed: optional logging only used when use_detector=True
 # If wandb logging is needed, pass a wandb_run object to EmbeddingSpaceAttack.__init__.
 
@@ -19,15 +20,12 @@ class NoAttack:
         self.embed_weights = embed_weights
         self.vocab_size = self.embed_weights.shape[0]
         self.embedding_size = self.embed_weights.shape[1]
-        return
 
     def attack(self, model, input_ids, target_ids, attention_mask):
         all_losses = []
         affirmative_responses = []
 
-        adv_perturbation, adv_perturbation_mask = self.init_perturbation(
-            input_ids, target_ids, attention_mask
-        )
+        adv_perturbation, adv_perturbation_mask = self.init_perturbation(input_ids, target_ids, attention_mask)
         input_embeds = self.get_embeddings(input_ids)
 
         return (
@@ -65,9 +63,7 @@ class NoAttack:
         # Adjusting IDs less than 0 to 0
         ids = torch.where(ids < 0, torch.tensor(0, device=device, dtype=ids.dtype), ids)
 
-        one_hot = torch.zeros(
-            batch_size, num_tokens, self.vocab_size, device=device, dtype=self.embed_weights.dtype
-        )
+        one_hot = torch.zeros(batch_size, num_tokens, self.vocab_size, device=device, dtype=self.embed_weights.dtype)
         one_hot.scatter_(2, ids.unsqueeze(2), 1)
         return one_hot
 
@@ -75,7 +71,6 @@ class NoAttack:
         one_hot = self.get_one_hot(ids)
         embeddings = (one_hot @ self.embed_weights).data
         return embeddings
-
 
 
 class EmbeddingSpaceAttack:
@@ -130,7 +125,7 @@ class EmbeddingSpaceAttack:
         self.current_iter_log = 0
         self.wandb_run = wandb_run
 
-        print(f"\nEpsilon calculation:")
+        print("\nEpsilon calculation:")
         print(f"  Original eps: {eps}")
         print(f"  Embedding norm: {self.embedding_norm}")
         print(f"  Final eps: {self.eps}\n")
@@ -164,14 +159,11 @@ class EmbeddingSpaceAttack:
         all_losses = []
         all_detector_losses = []
 
-    
         input_text = self.tokenizer.decode(input_ids[0], skip_special_tokens=False)
         print(f"Attack input text (first element):\n{input_text}\n")
 
         # init embeddings of input instruction and target and initialize adversarial perturbation
-        adv_perturbation, adv_perturbation_mask = self.init_perturbation(
-            input_ids, target_ids, attention_mask
-        )
+        adv_perturbation, adv_perturbation_mask = self.init_perturbation(input_ids, target_ids, attention_mask)
 
         input_embeds = self.get_embeddings(input_ids)
         target_one_hot = self.get_one_hot(target_ids)
@@ -182,15 +174,16 @@ class EmbeddingSpaceAttack:
         # init opt
         opt = self.init_opt([adv_perturbation])
 
-
-        #optimization loop
+        # optimization loop
         for i in range(self.iters):
             # Clear gradients at the start of each iteration
             opt.zero_grad()
-            
+
             adv_embeds = self.get_adv_embeddings(input_embeds, adv_perturbation, adv_perturbation_mask)
-            logits, total_loss, loss, detector_loss, hidden_states = self.calc_loss(i, model, adv_embeds, target_one_hot, target_ids, attention_mask, loss_mask, detector=detector)
-            
+            logits, total_loss, loss, detector_loss, hidden_states = self.calc_loss(
+                i, model, adv_embeds, target_one_hot, target_ids, attention_mask, loss_mask, detector=detector
+            )
+
             if self.use_detector:
                 # Use global step if provided, otherwise use local counter
                 self.current_iter_log += 1
@@ -207,8 +200,7 @@ class EmbeddingSpaceAttack:
             total_loss.backward()
             opt.step()
 
-            
-            all_total_losses.append(total_loss.detach().item()) 
+            all_total_losses.append(total_loss.detach().item())
             all_losses.append(loss.detach().item())
             all_detector_losses.append(detector_loss.detach().item() if self.use_detector else 0)
 
@@ -238,45 +230,47 @@ class EmbeddingSpaceAttack:
             all_detector_losses,
         )
 
-    def calc_loss(self, i, model, input_embeds, target_one_hot, target_ids, attention_mask, loss_mask, detector, log_debug=True):
+    def calc_loss(
+        self, i, model, input_embeds, target_one_hot, target_ids, attention_mask, loss_mask, detector, log_debug=True
+    ):
 
         output = model(inputs_embeds=input_embeds, attention_mask=attention_mask, output_hidden_states=True)
         logits = output.logits
         all_hidden_states = output.hidden_states
         hidden_states = all_hidden_states[self.hidden_state_detector_index]
-       
-        #------- Compute target loss -------
+
+        # ------- Compute target loss -------
         # 1. shift targets by 1
-        targets = target_ids[:, 1:].clone()            # shape: (B, T‑1)
+        targets = target_ids[:, 1:].clone()  # shape: (B, T‑1)
         # 2. wipe out the tokens we do not want to learn from
         #    loss_mask == 1  → keep
         #    loss_mask == 0  → set to sentinel value  (‑100)
         targets = targets.masked_fill(loss_mask == 0, -100)
         # 3. flatten batch+time so CrossEntropyLoss sees (N, C)
-        logits_flat  = logits[:, :-1].reshape(-1, self.vocab_size)
+        logits_flat = logits[:, :-1].reshape(-1, self.vocab_size)
         targets_flat = targets.reshape(-1)
         # 4. compute loss
         target_loss = self.loss_fct(logits_flat, targets_flat)
-        
-        
+
         # Add detector loss if needed
         if self.use_detector:
             # print("in calc_loss: hidden_sates.shape:", hidden_states.shape)
             outputs, logits_yes_no = detector(hidden_states, target_ids, attention_mask)
             B = logits_yes_no.size(0)
-            detector_loss = detector.compute_loss(logits_yes_no, ground_truth="no")  #the attacker wants the detector to predict "no" for the adversarial examples
+            detector_loss = detector.compute_loss(
+                logits_yes_no, ground_truth="no"
+            )  # the attacker wants the detector to predict "no" for the adversarial examples
 
         else:
             detector_loss = torch.tensor(0.0, device=logits.device)
 
-        total_loss = (1-self.detector_loss_coeff)*target_loss + self.detector_loss_coeff*detector_loss
+        total_loss = (1 - self.detector_loss_coeff) * target_loss + self.detector_loss_coeff * detector_loss
 
-        if i == 0: #save the logits and loss for the first iteration (ie with no perturbation)
+        if i == 0:  # save the logits and loss for the first iteration (ie with no perturbation)
             self.logits_no_perturbation = logits.clone().detach()
             self.loss_no_perturbation = target_loss.clone().detach()
 
         return logits, total_loss, target_loss, detector_loss, hidden_states
-    
 
     def project_l2(self, adv_perturbation):
         """
@@ -286,14 +280,14 @@ class EmbeddingSpaceAttack:
         with torch.no_grad():
             norm = torch.norm(adv_perturbation, p=2, dim=-1, keepdim=True)
             mask = (norm > self.eps).squeeze()
-            
+
             debug_L2_projection = False
-            if debug_L2_projection: 
-                print(f"L2 Projection Debug:")
+            if debug_L2_projection:
+                print("L2 Projection Debug:")
                 print(f"  perturbation norm: {norm.max().item():.6f}")
                 print(f"  epsilon: {self.eps:.6f}")
                 print(f"  mask (norm > eps): {mask.sum().item()} out of {mask.numel()} elements")
-                
+
             if torch.any(mask):
                 with torch.no_grad():
                     if len(mask.shape) == 1:  # batch size 1
@@ -314,15 +308,13 @@ class EmbeddingSpaceAttack:
         # Adjusting IDs less than 0 to 0
         ids = torch.where(ids < 0, torch.tensor(0, device=device, dtype=ids.dtype), ids)
 
-        one_hot = torch.zeros(
-            batch_size, num_tokens, self.vocab_size, device=device, dtype=self.embed_weights.dtype
-        )
+        one_hot = torch.zeros(batch_size, num_tokens, self.vocab_size, device=device, dtype=self.embed_weights.dtype)
         one_hot.scatter_(2, ids.unsqueeze(2), 1)
         return one_hot
 
     def get_embeddings(self, ids):
         one_hot = self.get_one_hot(ids)
-        embeddings = (one_hot @ self.embed_weights)
+        embeddings = one_hot @ self.embed_weights
         return embeddings
 
     def get_adv_embeddings(self, input_embeds, adv_perturbation, adv_perturbation_mask):
@@ -394,7 +386,7 @@ class EmbeddingSpaceAttack:
 
         target_mask = target_ids > 0
 
-        #mask is True for input tokens that are not part of the target, not padding and not image tokens
+        # mask is True for input tokens that are not part of the target, not padding and not image tokens
         input_mask = (~target_mask * attention_mask).to(bool)
         batch_size, num_input_tokens = input_ids.shape
         dtype = self.embed_weights.dtype
@@ -491,7 +483,6 @@ class EmbeddingSpaceAttack:
             f"loss_mask: {loss_mask.shape}"
         )
 
-
     #         )
 
     def debug_output_indexed(self, target_ids, logits, attention_mask, index):
@@ -529,7 +520,7 @@ class EmbeddingSpaceAttack:
 class SignSGD(Optimizer):
     def __init__(self, params, lr=0.01):
         defaults = dict(lr=lr)
-        super(SignSGD, self).__init__(params, defaults)
+        super().__init__(params, defaults)
 
     def step(self, closure=None):
         loss = None

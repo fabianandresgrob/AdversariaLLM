@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import json
 import os
-import torch
+
 import pandas as pd
+import torch
 from torch.utils.data import Dataset, Subset
 
 from ..defenses.monitors._activation_detector_model import get_chat_template
@@ -70,6 +70,7 @@ def load_dataset_prompts(datasets_cfg, name, window, seed=0):
     (alpaca, or_bench, xs_test, ...) over a fixed index window (start, end) — the canonical
     split (conf/splits.yaml). responses are None for prompt-only datasets."""
     from omegaconf import OmegaConf
+
     from ..dataset.prompt_dataset import PromptDataset
 
     start, end = int(window[0]), int(window[1])
@@ -102,8 +103,10 @@ class AdvTupleStream(Dataset):
             # advbench_targets.json stores a single string. Use the first either way.
             return t[0] if isinstance(t, (list, tuple)) else t
 
-        self.rows = [(r["Behavior"], _first_target(r["target"]), safe_map.get(r["Behavior"], "I can't help with that."))
-                     for _, r in df.iterrows()]
+        self.rows = [
+            (r["Behavior"], _first_target(r["target"]), safe_map.get(r["Behavior"], "I can't help with that."))
+            for _, r in df.iterrows()
+        ]
         self.tokenizer, self.model_name = tokenizer, model_name
 
     def __len__(self):
@@ -115,8 +118,14 @@ class AdvTupleStream(Dataset):
         b_ids, b_lab, b_tgt, b_attn = build_example_full(x, y_b, self.tokenizer, self.model_name)
         return {
             "prompt": x,
-            "h_ids": h_ids, "h_labels": h_lab, "h_targetids": h_tgt, "h_attn": h_attn,
-            "b_ids": b_ids, "b_labels": b_lab, "b_targetids": b_tgt, "b_attn": b_attn,
+            "h_ids": h_ids,
+            "h_labels": h_lab,
+            "h_targetids": h_tgt,
+            "h_attn": h_attn,
+            "b_ids": b_ids,
+            "b_labels": b_lab,
+            "b_targetids": b_tgt,
+            "b_attn": b_attn,
         }
 
 
@@ -126,11 +135,12 @@ class UtilityStream(Dataset):
 
     def __init__(self, tokenizer, model_name, window=None, fraction=0.01):
         from datasets import load_dataset
+
         ds = load_dataset("stingning/ultrachat", split="train")
         if window is not None:
-            ds = ds.select(range(int(window[0]), int(window[1])))       # canonical split (coop)
+            ds = ds.select(range(int(window[0]), int(window[1])))  # canonical split (coop)
         elif 0 < fraction < 1.0:
-            ds = ds.select(range(int(fraction * len(ds))))              # fraction (model-CAT)
+            ds = ds.select(range(int(fraction * len(ds))))  # fraction (model-CAT)
         self.rows = [(d["data"][0], d["data"][1]) for d in ds if len(d["data"]) >= 2]
         self.tokenizer, self.model_name = tokenizer, model_name
 
@@ -146,6 +156,7 @@ class UtilityStream(Dataset):
 
 def pad_collate(batch, keys, pad_id=0):
     from torch.nn.utils.rnn import pad_sequence
+
     out = {}
     for k in keys:
         seqs = [b[k] for b in batch]
@@ -160,8 +171,14 @@ def collate_adv(batch):
     `prompt` field is passed through as a list.
     """
     tensor_keys = [
-        "h_ids", "h_labels", "h_targetids", "h_attn",
-        "b_ids", "b_labels", "b_targetids", "b_attn",
+        "h_ids",
+        "h_labels",
+        "h_targetids",
+        "h_attn",
+        "b_ids",
+        "b_labels",
+        "b_targetids",
+        "b_attn",
     ]
     out = pad_collate(batch, tensor_keys, pad_id=0)
     out["prompt"] = [b["prompt"] for b in batch]

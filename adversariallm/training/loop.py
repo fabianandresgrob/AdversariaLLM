@@ -31,8 +31,7 @@ def build_objective(cfg: dict) -> Objective:
             lambda_kl=cfg.get("lambda_kl", 1.0),
         )
     if mode == "ipo":
-        return Objective(active_terms={"ipo"} | kl, beta=cfg.get("beta", 0.1),
-                         lambda_kl=cfg.get("lambda_kl", 1.0))
+        return Objective(active_terms={"ipo"} | kl, beta=cfg.get("beta", 0.1), lambda_kl=cfg.get("lambda_kl", 1.0))
     raise ValueError(f"unknown model_objective: {mode}")
 
 
@@ -40,12 +39,12 @@ def build_objective(cfg: dict) -> Objective:
 # Training step
 # ---------------------------------------------------------------------------
 
-from .losses import (  # noqa: E402
+from .losses import (
     away_from_harmful,
+    ipo_preference,
+    sequence_logprob,
     toward_benign,
     utility_kl,
-    sequence_logprob,
-    ipo_preference,
 )
 
 
@@ -64,10 +63,10 @@ def _benign_under_adv_prompt(model, adv_embeds, adv_batch):
     """
     embed = model.get_input_embeddings()
     b_embeds = embed(adv_batch["b_ids"])  # (B, Tb, D)
-    h_tgt = adv_batch["h_targetids"]      # (B, Th) 0 for prompt/pad
-    h_attn = adv_batch["h_attn"]          # (B, Th)
-    b_tgt = adv_batch["b_targetids"]      # (B, Tb)
-    b_attn = adv_batch["b_attn"]          # (B, Tb)
+    h_tgt = adv_batch["h_targetids"]  # (B, Th) 0 for prompt/pad
+    h_attn = adv_batch["h_attn"]  # (B, Th)
+    b_tgt = adv_batch["b_targetids"]  # (B, Tb)
+    b_attn = adv_batch["b_attn"]  # (B, Tb)
 
     B = adv_embeds.size(0)
     D = adv_embeds.size(-1)
@@ -77,7 +76,7 @@ def _benign_under_adv_prompt(model, adv_embeds, adv_batch):
     for i in range(B):
         # prompt length = number of leading 0s in h_targetids that are attended to.
         # (response tokens are > 0; trailing pad is 0 but not attended.)
-        h_resp_mask = (h_tgt[i] > 0)
+        h_resp_mask = h_tgt[i] > 0
         if h_resp_mask.any():
             p_len = int(h_resp_mask.nonzero()[0].item())
         else:
@@ -86,8 +85,8 @@ def _benign_under_adv_prompt(model, adv_embeds, adv_batch):
 
         # benign response rows: positions where b_targetids > 0
         b_resp_idx = (b_tgt[i] > 0).nonzero().squeeze(-1)
-        resp_rows = b_embeds[i, b_resp_idx]               # (r_len, D)
-        resp_ids = adv_batch["b_ids"][i, b_resp_idx]      # (r_len,)
+        resp_rows = b_embeds[i, b_resp_idx]  # (r_len, D)
+        resp_ids = adv_batch["b_ids"][i, b_resp_idx]  # (r_len,)
 
         seq = torch.cat([prompt_rows, resp_rows], dim=0)  # (p_len+r_len, D)
         attn = torch.ones(seq.size(0), device=device, dtype=h_attn.dtype)
@@ -135,7 +134,8 @@ def train_step(model, ref, attack, objective, adv_batch, util_batch):
         logits_h = model(inputs_embeds=adv_embeds, attention_mask=adv_batch["h_attn"]).logits
         _backward(
             away_from_harmful(logits_h[:, :-1], adv_batch["h_labels"][:, 1:], variant=objective.away_variant),
-            objective.lambda_away, "away",
+            objective.lambda_away,
+            "away",
         )
 
     if "toward" in objective.active_terms:
@@ -163,9 +163,7 @@ def train_step(model, ref, attack, objective, adv_batch, util_batch):
     if "kl" in objective.active_terms:
         u_ids = util_batch["input_ids"]
         u_logits = model(input_ids=u_ids, attention_mask=util_batch["attn"]).logits
-        r_logits = ref.logits(
-            inputs_embeds=model.get_input_embeddings()(u_ids), attention_mask=util_batch["attn"]
-        )
+        r_logits = ref.logits(inputs_embeds=model.get_input_embeddings()(u_ids), attention_mask=util_batch["attn"])
         _backward(utility_kl(u_logits, r_logits, attention_mask=util_batch["attn"]), objective.lambda_kl, "kl")
 
     logs["total"] = total
@@ -217,11 +215,11 @@ def run_training(cfg):
     from omegaconf import OmegaConf
     from torch.utils.data import DataLoader
 
-    from ..io_utils import load_model_and_tokenizer
     from ..defenses.monitors._activation_detector_model import get_chat_template
+    from ..io_utils import load_model_and_tokenizer
     from .attacks import ContinuousEmbeddingAttack
-    from .reference import LoRADisableReference, FrozenModelReference
     from .data import AdvTupleStream, UtilityStream, collate_adv, collate_util, split_adv_stream
+    from .reference import FrozenModelReference, LoRADisableReference
 
     container = OmegaConf.to_container(cfg, resolve=True)
 
@@ -241,8 +239,13 @@ def run_training(cfg):
                 r=8,
                 lora_alpha=32,
                 target_modules=[
-                    "q_proj", "k_proj", "v_proj", "o_proj",
-                    "gate_proj", "up_proj", "down_proj",
+                    "q_proj",
+                    "k_proj",
+                    "v_proj",
+                    "o_proj",
+                    "gate_proj",
+                    "up_proj",
+                    "down_proj",
                 ],
                 lora_dropout=0.05,
                 task_type="CAUSAL_LM",
@@ -270,23 +273,15 @@ def run_training(cfg):
     )
     util_ds = UtilityStream(tokenizer, template_id, fraction=cfg.data.utility_fraction)
 
-    adv_train_ds, adv_val_ds = split_adv_stream(
-        adv_ds, val_size=cfg.data.val_size, seed=cfg.data.val_seed
-    )
+    adv_train_ds, adv_val_ds = split_adv_stream(adv_ds, val_size=cfg.data.val_size, seed=cfg.data.val_seed)
 
-    adv_loader = DataLoader(
-        adv_train_ds, batch_size=cfg.data.harmful_batch_size, shuffle=True, collate_fn=collate_adv
-    )
+    adv_loader = DataLoader(adv_train_ds, batch_size=cfg.data.harmful_batch_size, shuffle=True, collate_fn=collate_adv)
     # Materialized once so every validation step scores the same held-out batches.
     val_batches = [
         _to_device(b, device)
-        for b in DataLoader(
-            adv_val_ds, batch_size=cfg.data.harmful_batch_size, shuffle=False, collate_fn=collate_adv
-        )
+        for b in DataLoader(adv_val_ds, batch_size=cfg.data.harmful_batch_size, shuffle=False, collate_fn=collate_adv)
     ]
-    util_loader = DataLoader(
-        util_ds, batch_size=cfg.data.utility_batch_size, shuffle=True, collate_fn=collate_util
-    )
+    util_loader = DataLoader(util_ds, batch_size=cfg.data.utility_batch_size, shuffle=True, collate_fn=collate_util)
 
     # attack
     _, _, response_key, _, _ = get_chat_template(template_id)
@@ -348,7 +343,10 @@ def run_training(cfg):
             metrics = {"val_toward": val}
             if benign_prompts:
                 br = _benign_refusal_rate(
-                    model, tokenizer, benign_prompts, template_id,
+                    model,
+                    tokenizer,
+                    benign_prompts,
+                    template_id,
                     int(cfg.training.get("benign_val_max_new_tokens", 32)),
                 )
                 log.info(f"[step {step}] benign_refusal_rate={br:.3f}")
@@ -419,7 +417,7 @@ def _benign_refusal_rate(model, tokenizer, prompts, template_id, max_new_tokens)
         text = first_user_msg.format(instruction=p) + response_key
         ids = tokenizer(text, return_tensors="pt").input_ids.to(device)
         out = model.generate(ids, max_new_tokens=max_new_tokens, do_sample=False)
-        gen = tokenizer.decode(out[0, ids.shape[1]:], skip_special_tokens=True).strip().lower()
+        gen = tokenizer.decode(out[0, ids.shape[1] :], skip_special_tokens=True).strip().lower()
         if gen.startswith("sorry") or "i can't" in gen or "i cannot" in gen or "i can not" in gen:
             refusals += 1
     if was_training:

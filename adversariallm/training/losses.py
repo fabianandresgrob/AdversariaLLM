@@ -38,7 +38,9 @@ def away_from_harmful(
     raise ValueError(f"unknown away variant: {variant}")
 
 
-def utility_kl(model_logits: torch.Tensor, ref_logits: torch.Tensor, attention_mask: torch.Tensor | None = None) -> torch.Tensor:
+def utility_kl(
+    model_logits: torch.Tensor, ref_logits: torch.Tensor, attention_mask: torch.Tensor | None = None
+) -> torch.Tensor:
     """KL(model || ref) averaged over tokens. Both (B,T,V).
     If attention_mask (B,T) is given, only attended positions are averaged so
     right-padding doesn't leak into the utility term."""
@@ -61,8 +63,10 @@ def sequence_logprob(logits: torch.Tensor, targets: torch.Tensor, ignore_index: 
 
 
 def ipo_preference(
-    pi_chosen: torch.Tensor, pi_rejected: torch.Tensor,
-    ref_chosen: torch.Tensor, ref_rejected: torch.Tensor,
+    pi_chosen: torch.Tensor,
+    pi_rejected: torch.Tensor,
+    ref_chosen: torch.Tensor,
+    ref_rejected: torch.Tensor,
     beta: float = 0.1,
 ) -> torch.Tensor:
     """IPO loss (Azar et al.): (h - 1/(2*beta))^2, h = (pi_c-pi_r) - (ref_c-ref_r).

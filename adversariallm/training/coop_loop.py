@@ -9,6 +9,7 @@ the frozen-set discipline (asserted below), the rep-term gradient path through t
 into the model, and peak memory (the model step holds several forward graphs; if it OOMs,
 apply the incremental-backward pattern from loop.py:train_step).
 """
+
 from __future__ import annotations
 
 import logging
@@ -16,11 +17,18 @@ import os
 
 import torch
 
-from .loop import _to_device, _cycle, _benign_under_adv_prompt, _init_wandb
+from .coop_losses import detector_ce, per_example_ce
+from .coop_metrics import (
+    four_case_frequencies,
+    fpr_at_threshold,
+    fresh_refit_recall,
+    recall_at_fpr,
+    refusal_rate,
+    threshold_at_fpr,
+)
+from .gating import avg_logprob, behavior_gate, rep_gate, w_harm, w_miss
+from .loop import _benign_under_adv_prompt, _cycle, _init_wandb, _to_device
 from .losses import utility_kl
-from .gating import avg_logprob, w_harm, w_miss, behavior_gate, rep_gate
-from .coop_losses import per_example_ce, detector_ce
-from .coop_metrics import recall_at_fpr, four_case_frequencies, refusal_rate, fresh_refit_recall
 from .readers import build_reader
 
 log = logging.getLogger(__name__)
@@ -44,8 +52,9 @@ def _assert_grad(params, flag, who):
 
 
 def _hidden_and_logits(model, layer, *, inputs_embeds=None, input_ids=None, attention_mask=None):
-    out = model(inputs_embeds=inputs_embeds, input_ids=input_ids,
-                attention_mask=attention_mask, output_hidden_states=True)
+    out = model(
+        inputs_embeds=inputs_embeds, input_ids=input_ids, attention_mask=attention_mask, output_hidden_states=True
+    )
     return out.hidden_states[layer], out.logits
 
 
@@ -56,14 +65,18 @@ def _detector_step(model, reader, opt_det, layer, adv_embeds, adv_batch, benign_
     opt_det.zero_grad(set_to_none=True)
     with torch.no_grad():
         h_hidden, _ = _hidden_and_logits(model, layer, inputs_embeds=adv_embeds, attention_mask=adv_batch["h_attn"])
-        b_hidden, _ = _hidden_and_logits(model, layer, input_ids=benign_batch["d_ids"], attention_mask=benign_batch["d_attn"])
+        b_hidden, _ = _hidden_and_logits(
+            model, layer, input_ids=benign_batch["d_ids"], attention_mask=benign_batch["d_attn"]
+        )
     logits_h = reader.logits(h_hidden, adv_batch["h_targetids"], adv_batch["h_attn"])
     logits_b = reader.logits(b_hidden, benign_batch["d_targetids"], benign_batch["d_attn"])
     logits = torch.cat([logits_h, logits_b], dim=0)
-    labels = torch.cat([
-        torch.zeros(logits_h.size(0), dtype=torch.long, device=device),   # harmful = 0
-        torch.ones(logits_b.size(0), dtype=torch.long, device=device),    # benign = 1
-    ])
+    labels = torch.cat(
+        [
+            torch.zeros(logits_h.size(0), dtype=torch.long, device=device),  # harmful = 0
+            torch.ones(logits_b.size(0), dtype=torch.long, device=device),  # benign = 1
+        ]
+    )
     loss = detector_ce(logits, labels)
     loss.backward()
     opt_det.step()
@@ -117,58 +130,103 @@ def _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch, uti
     return logs, wh.detach(), wm.detach()
 
 
-@torch.no_grad()
-def _coop_validate(model, reader, layer, harmful_batches, benign_batches, benign_prompts,
-                   tokenizer, template_id, max_new_tokens):
-    """Held-out metrics on CLEAN harmful vs OOD benign (never UltraChat):
-      - val_recall@1fpr: the co-trained reader's recall at 1% FPR (detector quality).
-      - val_fresh_refit_recall: a probe fit FROM SCRATCH on half the current model's
-        features, evaluated on the other half (§11 collusion probe). Compare the two —
-        co-trained >> fresh hints the reader leans on something a fresh probe can't
-        recover. (Fullest form fits/evals on a held-out ATTACK distribution; this clean
-        split is the from-run-1 version.)
-      - val_ood_refusal: over-refusal from free generation on OOD benign.
-    Attacked-recall is a fuller eval-side metric; this is the cheap training-time monitor."""
+def _coop_validate(
+    model, reader, layer, harmful_batches, benign_batches, benign_prompts, tokenizer, template_id,
+    max_new_tokens, attack, model_trainable
+):
+    """Held-out metrics, namespaced so the component each one describes is unambiguous:
+    ``detector/`` (probe quality), ``model/`` (utility), ``pipeline/`` (the joint outcome).
+
+    The harmful prompts are scored exactly as the run defines them — attacked when the run has
+    an attack (Stage B/C), clean when it does not (Stage A) — so there is one harmful-side
+    metric set, not a clean/attacked pair; the run name records which stage produced it. The
+    1%-FPR threshold is set on OOD benign (real traffic is never attacked). Model over-refusal
+    and the joint pipeline ASR are logged separately so a detector that over-fires is never read
+    as a model that over-refuses (§11). Benign is OOD (Alpaca), never the UltraChat KL data.
+
+    Not @torch.no_grad(): the (Stage B/C) val attack needs gradients w.r.t. input embeddings.
+    Model params are frozen for the whole call (validation never updates them) and restored
+    after, so the attack differentiates the perturbation without building model-param graphs;
+    every model forward here is wrapped in an explicit no_grad."""
     from ..defenses.monitors._activation_detector_model import get_chat_template
 
     was_training = model.training
     model.eval()
     device = next(model.parameters()).device
     has_feats = hasattr(reader, "readout") and hasattr(reader, "linear")
+    saved_rg = [p.requires_grad for p in model_trainable]
+    _set_requires_grad(model_trainable, False)
 
-    def _collect(batches, ids_key, tgt_key, attn_key):
-        feats, scores = [], []
-        for b in batches:
-            hidden, _ = _hidden_and_logits(model, layer, input_ids=b[ids_key], attention_mask=b[attn_key])
+    # benign is always clean (real traffic is never attacked): sets the FPR threshold + diagnostic
+    b_feat, benign_scores = None, []
+    with torch.no_grad():
+        feats = []
+        for b in benign_batches:
+            hidden, _ = _hidden_and_logits(model, layer, input_ids=b["d_ids"], attention_mask=b["d_attn"])
             if has_feats:
-                f = reader.readout(hidden, b[tgt_key], b[attn_key])
+                f = reader.readout(hidden, b["d_targetids"], b["d_attn"])
                 feats.append(f)
-                scores += torch.softmax(reader.linear(f).float(), dim=-1)[:, 0].tolist()
+                benign_scores += torch.softmax(reader.linear(f).float(), dim=-1)[:, 0].tolist()
             else:
-                scores += reader.p_harmful(hidden, b[tgt_key], b[attn_key]).tolist()
-        return (torch.cat(feats, dim=0) if feats else None), scores
+                benign_scores += reader.p_harmful(hidden, b["d_targetids"], b["d_attn"]).tolist()
+        b_feat = torch.cat(feats, dim=0) if feats else None
+    thr = threshold_at_fpr(benign_scores, fpr=0.01)  # 1%-FPR operating point, set on benign
 
-    h_feat, harmful_scores = _collect(harmful_batches, "h_ids", "h_targetids", "h_attn")
-    b_feat, benign_scores = _collect(benign_batches, "d_ids", "d_targetids", "d_attn")
-    metrics = {"val_recall@1fpr": recall_at_fpr(benign_scores, harmful_scores, fpr=0.01)}
+    # harmful: scored as the run defines them (attacked iff the run has an attack; _adv_embeds
+    # returns clean embeds when attack is None). Yields the detector's recall, the model's
+    # compliance, and the joint pipeline failure at the 1%-FPR operating point.
+    h_feats, harmful_scores, comply_flags, miss_flags = [], [], [], []
+    for b in harmful_batches:
+        adv_embeds = _adv_embeds(attack, model, b)  # grad-enabled inner attack; returns detached embeds
+        with torch.no_grad():
+            h_hidden, logits_h = _hidden_and_logits(model, layer, inputs_embeds=adv_embeds, attention_mask=b["h_attn"])
+            be, b_attn, b_labels = _benign_under_adv_prompt(model, adv_embeds, b)
+            logits_s = model(inputs_embeds=be, attention_mask=b_attn).logits
+            if has_feats:
+                f = reader.readout(h_hidden, b["h_targetids"], b["h_attn"])
+                h_feats.append(f)
+                p_harm = torch.softmax(reader.linear(f).float(), dim=-1)[:, 0]
+            else:
+                p_harm = reader.p_harmful(h_hidden, b["h_targetids"], b["h_attn"])
+            harmful_scores += p_harm.tolist()
+            # model fails = prefers the harmful over the safe completion
+            lp_h = avg_logprob(logits_h[:, :-1], b["h_labels"][:, 1:])
+            lp_s = avg_logprob(logits_s[:, :-1], b_labels[:, 1:])
+            comply_flags += (lp_h > lp_s).tolist()
+            miss_flags += (p_harm <= thr).tolist()  # detector misses at the 1%-FPR budget
+    h_feat = torch.cat(h_feats, dim=0) if h_feats else None
 
-    # collusion probe: fresh linear probe fit on the first half, evaluated on the second
-    if has_feats and h_feat is not None and h_feat.size(0) >= 2 and b_feat.size(0) >= 2:
+    n = len(comply_flags)
+    metrics = {
+        "detector/recall@1fpr": recall_at_fpr(benign_scores, harmful_scores, fpr=0.01),
+        "detector/fpr@0.5_ood": fpr_at_threshold(benign_scores, thr=0.5),
+        "model/comply_rate": (sum(comply_flags) / n) if n else float("nan"),
+        "pipeline/asr": (sum(c and m for c, m in zip(comply_flags, miss_flags)) / n) if n else float("nan"),
+    }
+
+    # collusion probe (§11): fresh probe on the first half of the current features, evaluated
+    # on the second. co-trained ≫ fresh hints collusion; both on the same harmful distribution.
+    if has_feats and h_feat is not None and b_feat is not None and h_feat.size(0) >= 2 and b_feat.size(0) >= 2:
         nh, nb = h_feat.size(0) // 2, b_feat.size(0) // 2
         tr = torch.cat([h_feat[:nh], b_feat[:nb]], dim=0)
-        lab = torch.cat([torch.zeros(nh, dtype=torch.long, device=device),
-                         torch.ones(nb, dtype=torch.long, device=device)])
-        metrics["val_fresh_refit_recall"] = fresh_refit_recall(tr, lab, b_feat[nb:], h_feat[nh:])
+        lab = torch.cat(
+            [torch.zeros(nh, dtype=torch.long, device=device), torch.ones(nb, dtype=torch.long, device=device)]
+        )
+        metrics["detector/fresh_refit_recall@1fpr"] = fresh_refit_recall(tr, lab, b_feat[nb:], h_feat[nh:])
 
+    # model over-refusal: free generation on OOD benign (clean — benign is never attacked)
     first_user_msg, _, response_key, _, _ = get_chat_template(template_id)
     gens = []
     pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
-    for p in benign_prompts:
-        enc = tokenizer(first_user_msg.format(instruction=p) + response_key, return_tensors="pt").to(device)
-        out = model.generate(**enc, max_new_tokens=max_new_tokens, do_sample=False, pad_token_id=pad_id)
-        gens.append(tokenizer.decode(out[0, enc["input_ids"].shape[1]:], skip_special_tokens=True))
-    metrics["val_ood_refusal"] = refusal_rate(gens)
+    with torch.no_grad():
+        for p in benign_prompts:
+            enc = tokenizer(first_user_msg.format(instruction=p) + response_key, return_tensors="pt").to(device)
+            out = model.generate(**enc, max_new_tokens=max_new_tokens, do_sample=False, pad_token_id=pad_id)
+            gens.append(tokenizer.decode(out[0, enc["input_ids"].shape[1] :], skip_special_tokens=True))
+    metrics["model/refusal_rate_ood"] = refusal_rate(gens)
 
+    for p, rg in zip(model_trainable, saved_rg):
+        p.requires_grad_(rg)
     if was_training:
         model.train()
     return metrics
@@ -185,24 +243,31 @@ def _adv_embeds(attack, model, adv_batch):
 def _save_pair(model, reader, container, step, out_dir, tag):
     """Checkpoint model adapter + reader together — a mismatched pair is nonsense (§14.9)."""
     model.save_pretrained(os.path.join(out_dir, f"{tag}_adapter"))
-    torch.save({"reader": reader.state_dict(), "cfg": container, "step": step},
-               os.path.join(out_dir, f"{tag}_reader.pt"))
+    torch.save(
+        {"reader": reader.state_dict(), "cfg": container, "step": step}, os.path.join(out_dir, f"{tag}_reader.pt")
+    )
 
 
 def run_coop_training(cfg):
-    from omegaconf import OmegaConf
-    from torch.utils.data import DataLoader
     import peft
+    from omegaconf import OmegaConf
     from peft import LoraConfig
+    from torch.utils.data import DataLoader
 
-    from ..io_utils import load_model_and_tokenizer
     from ..defenses.monitors._activation_detector_model import get_chat_template
+    from ..io_utils import load_model_and_tokenizer
     from .attacks import ContinuousEmbeddingAttack
-    from .reference import LoRADisableReference
     from .data import (
-        AdvTupleStream, UtilityStream, BenignStream, load_dataset_prompts,
-        collate_adv, collate_util, collate_benign, split_adv_stream,
+        AdvTupleStream,
+        BenignStream,
+        UtilityStream,
+        collate_adv,
+        collate_benign,
+        collate_util,
+        load_dataset_prompts,
+        split_adv_stream,
     )
+    from .reference import LoRADisableReference
 
     container = OmegaConf.to_container(cfg, resolve=True)
     device_hp = {k: container[k] for k in ("tau", "epsilon", "delta", "lambda_beh", "lambda_rep", "lambda_kl")}
@@ -215,9 +280,11 @@ def run_coop_training(cfg):
     model = peft.get_peft_model(
         model,
         LoraConfig(
-            r=8, lora_alpha=32,
+            r=8,
+            lora_alpha=32,
             target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
-            lora_dropout=0.05, task_type="CAUSAL_LM",
+            lora_dropout=0.05,
+            task_type="CAUSAL_LM",
         ),
     )
     ref = LoRADisableReference(model)
@@ -234,8 +301,12 @@ def run_coop_training(cfg):
 
     # data
     adv_ds = AdvTupleStream(
-        data_dir=cfg.data.dir, behaviors_csv=cfg.data.behaviors, targets_json=cfg.data.targets,
-        safe_csv=cfg.data.safe, tokenizer=tokenizer, model_name=template_id,
+        data_dir=cfg.data.dir,
+        behaviors_csv=cfg.data.behaviors,
+        targets_json=cfg.data.targets,
+        safe_csv=cfg.data.safe,
+        tokenizer=tokenizer,
+        model_name=template_id,
     )
     util_ds = UtilityStream(tokenizer, template_id, window=cfg.splits.ultrachat.train)
 
@@ -249,30 +320,37 @@ def run_coop_training(cfg):
         ps, rs = load_dataset_prompts(cfg.datasets, name, window=cfg.splits[name].train, seed=cfg.data.val_seed)
         det_benign_rows += list(zip(ps, rs))
     det_benign_ds = BenignStream(det_benign_rows, tokenizer, template_id)
-    det_benign_loader = DataLoader(det_benign_ds, batch_size=cfg.data.harmful_batch_size, shuffle=True, collate_fn=collate_benign)
+    det_benign_loader = DataLoader(
+        det_benign_ds, batch_size=cfg.data.harmful_batch_size, shuffle=True, collate_fn=collate_benign
+    )
 
     # held-out validation sets: clean harmful (from the split) + OOD benign (Alpaca, NOT UltraChat)
     harmful_val_batches = [
-        _to_device(b, device) for b in
-        DataLoader(adv_val_ds, batch_size=cfg.data.harmful_batch_size, shuffle=False, collate_fn=collate_adv)
+        _to_device(b, device)
+        for b in DataLoader(adv_val_ds, batch_size=cfg.data.harmful_batch_size, shuffle=False, collate_fn=collate_adv)
     ]
     # OOD benign for validation = alpaca VAL window (canonical split; disjoint from train + test)
-    ood_prompts, ood_resp = load_dataset_prompts(cfg.datasets, cfg.data.ood_benign, window=cfg.splits.alpaca.val,
-                                                 seed=cfg.data.val_seed)
+    ood_prompts, ood_resp = load_dataset_prompts(
+        cfg.datasets, cfg.data.ood_benign, window=cfg.splits.alpaca.val, seed=cfg.data.val_seed
+    )
     ood_ds = BenignStream(list(zip(ood_prompts, ood_resp)), tokenizer, template_id)
     benign_val_batches = [
-        _to_device(b, device) for b in
-        DataLoader(ood_ds, batch_size=cfg.data.harmful_batch_size, shuffle=False, collate_fn=collate_benign)
+        _to_device(b, device)
+        for b in DataLoader(ood_ds, batch_size=cfg.data.harmful_batch_size, shuffle=False, collate_fn=collate_benign)
     ]
-    benign_prompts = [x for x, _ in ood_ds.rows[:int(cfg.training.benign_gen_n)]]
+    benign_prompts = [x for x, _ in ood_ds.rows[: int(cfg.training.benign_gen_n)]]
 
     # attack (Stage B) or None (Stage A)
     attack = None
     if cfg.attack.enabled:
         _, _, response_key, _, _ = get_chat_template(template_id)
         attack = ContinuousEmbeddingAttack(
-            model.get_input_embeddings().weight, response_key, tokenizer,
-            iters=cfg.attack.iters, eps=cfg.attack.eps, lr=cfg.attack.lr,
+            model.get_input_embeddings().weight,
+            response_key,
+            tokenizer,
+            iters=cfg.attack.iters,
+            eps=cfg.attack.eps,
+            lr=cfg.attack.lr,
         )
 
     opt_model = torch.optim.Adam(model_trainable, lr=cfg.training.model_lr)
@@ -289,7 +367,7 @@ def run_coop_training(cfg):
     wandb_run = _init_wandb(cfg, container)
 
     val_every = int(cfg.training.val_every)
-    wh_hist, wm_hist = [], []   # accumulate per-example gates for four-case frequencies
+    wh_hist, wm_hist = [], []  # accumulate per-example gates for four-case frequencies
 
     model.train()
     for step in range(cfg.training.n_steps):
@@ -303,8 +381,9 @@ def run_coop_training(cfg):
         _assert_grad(reader_params, True, "reader(det phase)")
         adv_embeds = _adv_embeds(attack, model, adv_batch)
         det_losses = [
-            _detector_step(model, reader, opt_det, layer, adv_embeds, adv_batch,
-                           _to_device(next(det_benign_iter), device), device)
+            _detector_step(
+                model, reader, opt_det, layer, adv_embeds, adv_batch, _to_device(next(det_benign_iter), device), device
+            )
             for _ in range(n_det)
         ]
 
@@ -314,22 +393,35 @@ def run_coop_training(cfg):
         _assert_grad(reader_params, False, "reader(model phase)")
         _assert_grad(model_trainable, True, "model(model phase)")
         use_rep = step >= warmup
-        logs, wh, wm = _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch, util_batch,
-                                   device_hp, use_rep, device)
+        logs, wh, wm = _model_step(
+            model, reader, ref, opt_model, layer, adv_embeds, adv_batch, util_batch, device_hp, use_rep, device
+        )
         logs["det"] = sum(det_losses) / len(det_losses)
-        wh_hist.append(wh); wm_hist.append(wm)
+        wh_hist.append(wh)
+        wm_hist.append(wm)
 
         log.info(f"[step {step}] " + " ".join(f"{k}={v:.4f}" for k, v in logs.items()))
         if wandb_run is not None:
             wandb_run.log(logs, step=step)
 
         if val_every and (step + 1) % val_every == 0:
-            metrics = _coop_validate(model, reader, layer, harmful_val_batches, benign_val_batches,
-                                     benign_prompts, tokenizer, template_id,
-                                     int(cfg.training.benign_val_max_new_tokens))
+            metrics = _coop_validate(
+                model,
+                reader,
+                layer,
+                harmful_val_batches,
+                benign_val_batches,
+                benign_prompts,
+                tokenizer,
+                template_id,
+                int(cfg.training.benign_val_max_new_tokens),
+                attack,
+                model_trainable,
+            )
             cases = four_case_frequencies(torch.cat(wh_hist), torch.cat(wm_hist))
-            metrics.update({f"case_{k}": v for k, v in cases.items()})
-            wh_hist.clear(); wm_hist.clear()
+            metrics.update({f"pipeline/case_{k}": v for k, v in cases.items()})
+            wh_hist.clear()
+            wm_hist.clear()
             log.info(f"[step {step}] " + " ".join(f"{k}={v:.4f}" for k, v in metrics.items()))
             if wandb_run is not None:
                 wandb_run.log(metrics, step=step)

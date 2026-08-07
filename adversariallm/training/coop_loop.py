@@ -328,17 +328,23 @@ def run_coop_training(cfg):
     from .data import (
         AdvTupleStream,
         BenignStream,
+        HardBenignStream,
         UtilityStream,
         collate_adv,
         collate_benign,
+        collate_hard_benign,
         collate_util,
+        load_benign_targets,
         load_dataset_prompts,
         split_adv_stream,
     )
     from .reference import LoRADisableReference
 
     container = OmegaConf.to_container(cfg, resolve=True)
-    device_hp = {k: container[k] for k in ("tau", "epsilon", "delta", "lambda_beh", "lambda_rep", "lambda_kl")}
+    device_hp = {k: container[k] for k in (
+        "tau", "tau_b", "epsilon", "delta",
+        "lambda_beh", "lambda_rep", "lambda_kl", "lambda_help", "lambda_help_easy", "lambda_kl_hard",
+    )}
 
     model_params = cfg.models[cfg.model]
     template_id = cfg.chat_template_id
@@ -382,31 +388,59 @@ def run_coop_training(cfg):
     adv_loader = DataLoader(adv_train_ds, batch_size=cfg.data.harmful_batch_size, shuffle=True, collate_fn=collate_adv)
     util_loader = DataLoader(util_ds, batch_size=cfg.data.utility_batch_size, shuffle=True, collate_fn=collate_util)
 
-    # detector benign class = DIVERSE benign mix (train windows), not UltraChat-only
-    det_benign_rows = []
-    for name in cfg.data.detector_benign_sources:
+    # easy benign detector class = diverse easy sources' train windows (NOT xs_test, NOT hard)
+    easy_rows = []
+    for name in cfg.data.easy_benign_sources:
         ps, rs = load_dataset_prompts(cfg.datasets, name, window=cfg.splits[name].train, seed=cfg.data.val_seed)
-        det_benign_rows += list(zip(ps, rs))
-    det_benign_ds = BenignStream(det_benign_rows, tokenizer, template_id)
-    det_benign_loader = DataLoader(
-        det_benign_ds, batch_size=cfg.data.harmful_batch_size, shuffle=True, collate_fn=collate_benign
+        easy_rows += list(zip(ps, rs))
+    easy_benign_ds = BenignStream(easy_rows, tokenizer, template_id)
+    easy_benign_loader = DataLoader(
+        easy_benign_ds, batch_size=cfg.data.harmful_batch_size, shuffle=True, collate_fn=collate_benign
     )
+    easy_benign_iter = _cycle(easy_benign_loader)
 
-    # held-out validation sets: clean harmful (from the split) + OOD benign (Alpaca, NOT UltraChat)
+    # hard benign (opt-in; default []): near-harmful prompts + generated y_gen targets
+    hard_benign_iter = None
+    if cfg.data.hard_benign_sources:
+        hb_rows, hb_total, hb_refused = load_benign_targets(cfg.data.benign_targets_path)
+        log.info(f"hard benign: {hb_total} prompts, {hb_refused} base-refused "
+                 f"({hb_refused / max(hb_total, 1):.1%} pre-existing over-refusal)")
+        hard_benign_ds = HardBenignStream(hb_rows, tokenizer, template_id)
+        hard_benign_loader = DataLoader(
+            hard_benign_ds, batch_size=cfg.data.harmful_batch_size, shuffle=True, collate_fn=collate_hard_benign
+        )
+        hard_benign_iter = _cycle(hard_benign_loader)
+
+    # held-out validation: clean harmful (from the split)
     harmful_val_batches = [
         _to_device(b, device)
         for b in DataLoader(adv_val_ds, batch_size=cfg.data.harmful_batch_size, shuffle=False, collate_fn=collate_adv)
     ]
-    # OOD benign for validation = alpaca VAL window (canonical split; disjoint from train + test)
-    ood_prompts, ood_resp = load_dataset_prompts(
-        cfg.datasets, cfg.data.ood_benign, window=cfg.splits.alpaca.val, seed=cfg.data.val_seed
+    # PINNED calibration benign (easy, VAL window) — sets the 1%-FPR threshold for EVERY run
+    calib_prompts, calib_resp = load_dataset_prompts(
+        cfg.datasets, cfg.data.calibration_benign, window=cfg.splits[cfg.data.calibration_benign].val, seed=cfg.data.val_seed
     )
-    ood_ds = BenignStream(list(zip(ood_prompts, ood_resp)), tokenizer, template_id)
-    benign_val_batches = [
+    calib_ds = BenignStream(list(zip(calib_prompts, calib_resp)), tokenizer, template_id)
+    calib_benign_batches = [
         _to_device(b, device)
-        for b in DataLoader(ood_ds, batch_size=cfg.data.harmful_batch_size, shuffle=False, collate_fn=collate_benign)
+        for b in DataLoader(calib_ds, batch_size=cfg.data.harmful_batch_size, shuffle=False, collate_fn=collate_benign)
     ]
-    benign_prompts = [x for x, _ in ood_ds.rows[: int(cfg.training.benign_gen_n)]]
+    # held-out xs_test (NEVER trained on): over-refusal + near-harmful FPR
+    xstest_prompts_all, xstest_resp = load_dataset_prompts(
+        cfg.datasets, "xs_test", window=cfg.splits.xs_test.val, seed=cfg.data.val_seed
+    )
+    xstest_ds = BenignStream(list(zip(xstest_prompts_all, xstest_resp)), tokenizer, template_id)
+    xstest_benign_batches = [
+        _to_device(b, device)
+        for b in DataLoader(xstest_ds, batch_size=cfg.data.harmful_batch_size, shuffle=False, collate_fn=collate_benign)
+    ]
+    xstest_prompts = [p for p, _ in xstest_ds.rows[: int(cfg.training.benign_gen_n)]]
+    # easy-help batches for the w_M^b sanity (easy benign, shipped responses vs refuse dummy)
+    easy_help_ds = HardBenignStream([(p, r) for p, r in zip(calib_prompts, calib_resp)], tokenizer, template_id)
+    easy_help_batches = [
+        _to_device(b, device)
+        for b in DataLoader(easy_help_ds, batch_size=cfg.data.harmful_batch_size, shuffle=False, collate_fn=collate_hard_benign)
+    ]
 
     # attack (Stage B) or None (Stage A)
     attack = None
@@ -428,7 +462,7 @@ def run_coop_training(cfg):
     n_det = int(cfg.training.n_detector_steps)
     warmup = int(cfg.training.rep_warmup_steps)
 
-    adv_iter, util_iter, det_benign_iter = _cycle(adv_loader), _cycle(util_loader), _cycle(det_benign_loader)
+    adv_iter, util_iter = _cycle(adv_loader), _cycle(util_loader)
     run_name = container.get("name") or "coop_run"
     out_dir = os.path.join(cfg.output.checkpoint_path, run_name)
     os.makedirs(out_dir, exist_ok=True)
@@ -450,7 +484,10 @@ def run_coop_training(cfg):
         adv_embeds = _adv_embeds(attack, model, adv_batch)
         det_losses = [
             _detector_step(
-                model, reader, opt_det, layer, adv_embeds, adv_batch, _to_device(next(det_benign_iter), device), device
+                model, reader, opt_det, layer, adv_embeds, adv_batch,
+                _to_device(next(easy_benign_iter), device),
+                _to_device(next(hard_benign_iter), device) if hard_benign_iter is not None else None,
+                device,
             )
             for _ in range(n_det)
         ]
@@ -461,8 +498,12 @@ def run_coop_training(cfg):
         _assert_grad(reader_params, False, "reader(model phase)")
         _assert_grad(model_trainable, True, "model(model phase)")
         use_rep = step >= warmup
+        warming = step < warmup
         logs, wh, wm = _model_step(
-            model, reader, ref, opt_model, layer, adv_embeds, adv_batch, util_batch, device_hp, use_rep, device
+            model, reader, ref, opt_model, layer, adv_embeds, adv_batch,
+            util_batch,
+            _to_device(next(hard_benign_iter), device) if hard_benign_iter is not None else None,
+            device_hp, use_rep, warming, device,
         )
         logs["det"] = sum(det_losses) / len(det_losses)
         wh_hist.append(wh)
@@ -478,12 +519,15 @@ def run_coop_training(cfg):
                 reader,
                 layer,
                 harmful_val_batches,
-                benign_val_batches,
-                benign_prompts,
+                calib_benign_batches,
+                xstest_benign_batches,
+                xstest_prompts,
+                easy_help_batches,
                 tokenizer,
                 template_id,
                 int(cfg.training.benign_val_max_new_tokens),
                 attack,
+                device_hp["tau_b"],
                 model_trainable,
             )
             cases = four_case_frequencies(torch.cat(wh_hist), torch.cat(wm_hist))

@@ -20,11 +20,15 @@ probe_init: ${root_dir}/checkpoints_probe/probe_v1/probe.pt
 
 # Gating / objective (design doc §3-§6). Floors default to the decoupled (1,1) control.
 tau: 1.0
-epsilon: 1.0          # behavior-gate floor; sweep toward 0 for the "model less safe, pipeline safer" effect
-delta: 1.0            # rep-gate floor; lower to starve the handshake
+tau_b: 1.0            # SEPARATE benign-gate temperature (short refusal vs long answer; §8)
+epsilon: 1.0          # behavior-gate floor; the swept knob ("model less safe, pipeline safer")
+delta: 0.0            # rep-gate floor; LOCKED at 0 (v1 stability result)
 lambda_beh: 1.0
 lambda_rep: 1.0
 lambda_kl: 1.0
+lambda_help: 1.0      # hard-benign gated CE
+lambda_help_easy: 0.0 # ablation hook (easy-benign ungated CE)
+lambda_kl_hard: 0.0   # ablation hook (hard-benign KL)
 
 # Stage A = no attack (clean prompt); Stage B = continuous embedding attack.
 attack:
@@ -42,17 +46,19 @@ data:
   utility_batch_size: 4
   val_size: 16                      # harmful behaviors held out for validation
   val_seed: 0
-  # Detector benign class = diverse mix (train windows); KL uses ultrachat train; OOD-benign
-  # validation uses alpaca val window (conf/splits.yaml).
-  detector_benign_sources: [alpaca, or_bench, xs_test]
-  ood_benign: alpaca                # OOD benign source for over-refusal + FPR (NOT the UltraChat KL distribution)
+  # Benign split: easy = detector class + PINNED calibration; hard = gated-CE + detector (opt-in).
+  # KL uses ultrachat train. xs_test is NEVER a training source (held out for over-refusal + FPR).
+  easy_benign_sources: [alpaca]     # detector easy-benign class (train windows); NOT xs_test
+  calibration_benign: alpaca        # PINNED 1%-FPR threshold set (val window), frozen across runs
+  hard_benign_sources: []           # opt-in; set to [or_bench] to enable the hard-benign term
+  benign_targets_path: ${root_dir}/data/benign_targets/or_bench_ygen.json
 
 training:
   model_lr: 5.0e-5
   detector_lr: 1.0e-3        # detector is cheap/fast (§8): higher lr than the model
   n_steps: 450
-  n_detector_steps: 3        # detector inner steps per model step
-  rep_warmup_steps: 50       # model rep term off until the probe has warmed up
+  n_detector_steps: 1        # spec default (tunable ablation; δ=0/N=3 is a valid alt)
+  rep_warmup_steps: 0        # default off (prefitted probe); >0 for the cold-probe ablation
   checkpoint_every: 50
   val_every: 25              # held-out recall@1%FPR, OOD over-refusal, four-case frequencies
   benign_gen_n: 16           # OOD benign prompts to free-generate on for the refusal rate

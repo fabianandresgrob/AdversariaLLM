@@ -58,25 +58,36 @@ def _hidden_and_logits(model, layer, *, inputs_embeds=None, input_ids=None, atte
     return out.hidden_states[layer], out.logits
 
 
-def _detector_step(model, reader, opt_det, layer, adv_embeds, adv_batch, benign_batch, device):
-    """One detector update: model frozen, reader trainable. CE over attacked (->harmful)
-    and DIVERSE benign (->benign) examples. Model forward under no_grad so only the reader
-    trains. Diverse benign (not UltraChat-only) is what stops the OOD-benign over-firing."""
+def _detector_step(model, reader, opt_det, layer, adv_embeds, adv_batch, easy_batch, hard_batch, device):
+    """One detector update: model frozen, reader trainable. Mixed batch — attacked harmful
+    (label 0) plus easy benign and hard benign (both label 1). Diverse benign is what stops the
+    OOD over-firing; hard benign is the case-F near-harmful FPR pressure. Model forwards under
+    no_grad so only the reader trains. Label convention asserted: harmful=0, benign=1."""
     opt_det.zero_grad(set_to_none=True)
+    logits_parts, labels_parts = [], []
+
     with torch.no_grad():
         h_hidden, _ = _hidden_and_logits(model, layer, inputs_embeds=adv_embeds, attention_mask=adv_batch["h_attn"])
-        b_hidden, _ = _hidden_and_logits(
-            model, layer, input_ids=benign_batch["d_ids"], attention_mask=benign_batch["d_attn"]
-        )
     logits_h = reader.logits(h_hidden, adv_batch["h_targetids"], adv_batch["h_attn"])
-    logits_b = reader.logits(b_hidden, benign_batch["d_targetids"], benign_batch["d_attn"])
-    logits = torch.cat([logits_h, logits_b], dim=0)
-    labels = torch.cat(
-        [
-            torch.zeros(logits_h.size(0), dtype=torch.long, device=device),  # harmful = 0
-            torch.ones(logits_b.size(0), dtype=torch.long, device=device),  # benign = 1
-        ]
-    )
+    logits_parts.append(logits_h)
+    labels_parts.append(torch.zeros(logits_h.size(0), dtype=torch.long, device=device))  # harmful = 0
+
+    if easy_batch is not None:
+        with torch.no_grad():
+            b_hidden, _ = _hidden_and_logits(model, layer, input_ids=easy_batch["d_ids"], attention_mask=easy_batch["d_attn"])
+        logits_b = reader.logits(b_hidden, easy_batch["d_targetids"], easy_batch["d_attn"])
+        logits_parts.append(logits_b)
+        labels_parts.append(torch.ones(logits_b.size(0), dtype=torch.long, device=device))  # benign = 1
+
+    if hard_batch is not None:
+        with torch.no_grad():
+            g_hidden, _ = _hidden_and_logits(model, layer, input_ids=hard_batch["g_ids"], attention_mask=hard_batch["g_attn"])
+        logits_g = reader.logits(g_hidden, hard_batch["g_targetids"], hard_batch["g_attn"])
+        logits_parts.append(logits_g)
+        labels_parts.append(torch.ones(logits_g.size(0), dtype=torch.long, device=device))  # benign = 1
+
+    logits = torch.cat(logits_parts, dim=0)
+    labels = torch.cat(labels_parts, dim=0)
     loss = detector_ce(logits, labels)
     loss.backward()
     opt_det.step()

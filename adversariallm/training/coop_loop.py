@@ -22,6 +22,7 @@ from .coop_metrics import (
     four_case_frequencies,
     fpr_at_threshold,
     fresh_refit_recall,
+    gate_stats,
     recall_at_fpr,
     refusal_rate,
     threshold_at_fpr,
@@ -171,8 +172,9 @@ def _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch,
 
 
 def _coop_validate(
-    model, reader, layer, harmful_batches, benign_batches, benign_prompts, tokenizer, template_id,
-    max_new_tokens, attack, model_trainable
+    model, reader, layer, harmful_batches, calib_benign_batches, xstest_benign_batches,
+    xstest_prompts, easy_help_batches, tokenizer, template_id, max_new_tokens, attack, tau_b,
+    model_trainable
 ):
     """Held-out metrics, namespaced so the component each one describes is unambiguous:
     ``detector/`` (probe quality), ``model/`` (utility), ``pipeline/`` (the joint outcome).
@@ -180,9 +182,10 @@ def _coop_validate(
     The harmful prompts are scored exactly as the run defines them — attacked when the run has
     an attack (Stage B/C), clean when it does not (Stage A) — so there is one harmful-side
     metric set, not a clean/attacked pair; the run name records which stage produced it. The
-    1%-FPR threshold is set on OOD benign (real traffic is never attacked). Model over-refusal
-    and the joint pipeline ASR are logged separately so a detector that over-fires is never read
-    as a model that over-refuses (§11). Benign is OOD (Alpaca), never the UltraChat KL data.
+    1%-FPR threshold is set on the PINNED easy calibration benign (frozen composition + window
+    across all runs). Over-refusal and near-harmful FPR are measured on HELD-OUT xs_test (never a
+    training source). Model over-refusal and the joint pipeline ASR are logged separately so a
+    detector that over-fires is never read as a model that over-refuses (§11).
 
     Not @torch.no_grad(): the (Stage B/C) val attack needs gradients w.r.t. input embeddings.
     Model params are frozen for the whole call (validation never updates them) and restored
@@ -201,7 +204,7 @@ def _coop_validate(
     b_feat, benign_scores = None, []
     with torch.no_grad():
         feats = []
-        for b in benign_batches:
+        for b in calib_benign_batches:
             hidden, _ = _hidden_and_logits(model, layer, input_ids=b["d_ids"], attention_mask=b["d_attn"])
             if has_feats:
                 f = reader.readout(hidden, b["d_targetids"], b["d_attn"])
@@ -254,12 +257,37 @@ def _coop_validate(
         )
         metrics["detector/fresh_refit_recall@1fpr"] = fresh_refit_recall(tr, lab, b_feat[nb:], h_feat[nh:])
 
-    # model over-refusal: free generation on OOD benign (clean — benign is never attacked)
+    # held-out near-harmful FPR (xs_test, never trained on): fraction of xs_test benign above the
+    # pinned easy-benign threshold. Separate from recall's own operating point (§7).
+    xstest_scores = []
+    with torch.no_grad():
+        for b in xstest_benign_batches:
+            hidden, _ = _hidden_and_logits(model, layer, input_ids=b["d_ids"], attention_mask=b["d_attn"])
+            if has_feats:
+                xstest_scores += torch.softmax(reader.linear(reader.readout(hidden, b["d_targetids"], b["d_attn"])).float(), dim=-1)[:, 0].tolist()
+            else:
+                xstest_scores += reader.p_harmful(hidden, b["d_targetids"], b["d_attn"]).tolist()
+    metrics["detector/fpr_xstest"] = (sum(s > thr for s in xstest_scores) / len(xstest_scores)) if xstest_scores else float("nan")
+
+    # §8 benign-gate sanity: w_M^b on EASY benign must sit near zero (a well-answered prompt must
+    # not read as refusing). Uses the shipped easy response as y_help vs the canned refusal.
+    wmb_easy = []
+    with torch.no_grad():
+        for b in easy_help_batches:
+            _, g_logits = _hidden_and_logits(model, layer, input_ids=b["g_ids"], attention_mask=b["g_attn"])
+            _, r_logits = _hidden_and_logits(model, layer, input_ids=b["r_ids"], attention_mask=b["r_attn"])
+            lp_gen = avg_logprob(g_logits[:, :-1], b["g_labels"][:, 1:])
+            lp_ref = avg_logprob(r_logits[:, :-1], b["r_labels"][:, 1:])
+            wmb_easy += w_refuse(lp_ref, lp_gen, tau=tau_b).tolist()
+    for k, v in gate_stats(wmb_easy).items():
+        metrics[f"detector/wmb_easy_{k}"] = v
+
+    # model over-refusal: free generation on HELD-OUT xs_test benign (clean — benign is never attacked)
     first_user_msg, _, response_key, _, _ = get_chat_template(template_id)
     gens = []
     pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
     with torch.no_grad():
-        for p in benign_prompts:
+        for p in xstest_prompts:
             enc = tokenizer(first_user_msg.format(instruction=p) + response_key, return_tensors="pt").to(device)
             out = model.generate(**enc, max_new_tokens=max_new_tokens, do_sample=False, pad_token_id=pad_id)
             gens.append(tokenizer.decode(out[0, enc["input_ids"].shape[1] :], skip_special_tokens=True))

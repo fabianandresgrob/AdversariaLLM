@@ -53,3 +53,20 @@ def test_avg_logprob_is_length_normalized_and_masks_ignore_index():
     targets = torch.tensor([[0, 1, -100]])            # 2 valid tokens, 1 ignored
     out = avg_logprob(logits, targets)
     assert torch.allclose(out, torch.log(torch.tensor([0.25])), atol=1e-5)
+
+
+def test_w_refuse_high_when_model_prefers_refusal():
+    from adversariallm.training.gating import w_refuse
+    # refusal far more likely than help -> weight ~1
+    w = w_refuse(torch.tensor([-0.1]), torch.tensor([-5.0]), tau=1.0)
+    assert w.item() > 0.98
+    # help far more likely than refusal -> weight ~0
+    w = w_refuse(torch.tensor([-5.0]), torch.tensor([-0.1]), tau=1.0)
+    assert w.item() < 0.02
+
+
+def test_w_refuse_is_stop_gradient():
+    from adversariallm.training.gating import w_refuse
+    lp_r = torch.tensor([-1.0], requires_grad=True)
+    lp_h = torch.tensor([-2.0], requires_grad=True)
+    assert not w_refuse(lp_r, lp_h).requires_grad

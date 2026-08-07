@@ -21,7 +21,7 @@ probe_init: ${root_dir}/checkpoints_probe/probe_v1/probe.pt
 # Gating / objective (design doc §3-§6). Floors default to the decoupled (1,1) control.
 tau: 1.0
 tau_b: 1.0            # SEPARATE benign-gate temperature (short refusal vs long answer; §8)
-epsilon: 1.0          # behavior-gate floor; the swept knob ("model less safe, pipeline safer")
+epsilon: 0.05         # behavior-gate floor
 delta: 0.0            # rep-gate floor; LOCKED at 0 (v1 stability result)
 lambda_beh: 1.0
 lambda_rep: 1.0

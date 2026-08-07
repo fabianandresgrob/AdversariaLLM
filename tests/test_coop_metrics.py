@@ -84,3 +84,19 @@ def test_fresh_refit_recall_works_under_no_grad():
     with torch.no_grad():
         r = fresh_refit_recall(train, labels, benign_feat, harmful_feat, steps=150, lr=1e-2)
     assert r > 0.9
+
+
+def test_gate_stats_reports_mean_open_and_saturation():
+    from adversariallm.training.coop_metrics import gate_stats
+    s = gate_stats([0.0, 0.4, 0.6, 0.995, 0.001])
+    assert abs(s["mean"] - 0.3992) < 1e-3
+    assert abs(s["frac_open"] - 0.4) < 1e-9      # 0.6 and 0.995 are > 0.5
+    assert abs(s["frac_sat_hi"] - 0.2) < 1e-9    # only 0.995 > 0.99
+    assert abs(s["frac_sat_lo"] - 0.4) < 1e-9    # 0.0 and 0.001 < 0.01
+
+
+def test_gate_stats_empty_is_nan():
+    import math
+    from adversariallm.training.coop_metrics import gate_stats
+    s = gate_stats([])
+    assert all(math.isnan(v) for v in s.values())

@@ -144,3 +144,26 @@ def fresh_refit_recall(
         b = torch.softmax(probe(benign_features), dim=-1)[:, 0]  # P(harmful) on benign
         h = torch.softmax(probe(harmful_features), dim=-1)[:, 0]  # P(harmful) on harmful
     return recall_at_fpr(b, h, fpr=fpr)
+
+
+def gate_stats(weights) -> dict:
+    """Diagnostics for a per-example soft gate (e.g. w_M^b), the §8 benign-gate sanity set.
+
+    - mean: average gate value.
+    - frac_open: fraction > 0.5 — the inertness / example-supply signal. Near 0 means the gated
+      term has essentially no examples to act on (a gate reweights, it cannot create), so any
+      lambda_help result on it is noise.
+    - frac_sat_hi / frac_sat_lo: fraction > 0.99 / < 0.01. An all-saturated batch means tau is
+      wrong and the soft gate has silently become a hard switch.
+    """
+    w = _to_list(weights)
+    if not w:
+        nan = float("nan")
+        return {"mean": nan, "frac_open": nan, "frac_sat_hi": nan, "frac_sat_lo": nan}
+    n = len(w)
+    return {
+        "mean": sum(w) / n,
+        "frac_open": sum(v > 0.5 for v in w) / n,
+        "frac_sat_hi": sum(v > 0.99 for v in w) / n,
+        "frac_sat_lo": sum(v < 0.01 for v in w) / n,
+    }

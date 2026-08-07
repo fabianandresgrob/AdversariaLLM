@@ -26,7 +26,7 @@ from .coop_metrics import (
     refusal_rate,
     threshold_at_fpr,
 )
-from .gating import avg_logprob, behavior_gate, rep_gate, w_harm, w_miss
+from .gating import avg_logprob, behavior_gate, rep_gate, w_harm, w_miss, w_refuse
 from .loop import _benign_under_adv_prompt, _cycle, _init_wandb, _to_device
 from .losses import utility_kl
 from .readers import build_reader
@@ -94,50 +94,79 @@ def _detector_step(model, reader, opt_det, layer, adv_embeds, adv_batch, easy_ba
     return loss.item()
 
 
-def _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch, util_batch, hp, use_rep, device):
-    """One model update: reader frozen, model trainable.
-    loss = lambda_kl*KL(UltraChat) + lambda_beh*behavior_gate*CE(y_safe) + lambda_rep*rep_gate*detector_ce(reader(h)).
-    No away term. Gates are stop-gradient (computed in gating.py)."""
+def _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch,
+                easy_batch, hard_batch, hp, use_rep, warming, device):
+    """One model update: reader frozen, model trainable. Three disjoint example types summed
+    with per-subset normalizers into one backward:
+
+        harmful      : lambda_beh * [eps+(1-eps)*w_D] * CE(y_safe)
+                     + lambda_rep * [delta+(1-delta)*w_M] * detector_ce(reader(h), harmful=0)
+        easy benign  : lambda_kl * KL(model||ref)        (+ lambda_help_easy*CE, ablation hook)
+        hard benign  : lambda_help * w_M^b * CE(y_gen)    masked to has_target
+                                                          (+ lambda_kl_hard*KL, ablation hook)
+
+    No away term. Gates are stop-gradient. During warmup (`warming`): rep term off and the
+    harmful behavior gate is forced to eps=1 (w_D is meaningless while a cold probe warms);
+    the hard-benign term is detector-independent and stays on."""
     opt_model.zero_grad(set_to_none=True)
     logs = {}
+    total = torch.zeros((), device=device)
 
-    # attacked prompt (harmful) and benign continuation under the SAME adversarial prompt
+    # ---- harmful: gated refusal teaching + gated representation ----
     h_hidden, logits_h = _hidden_and_logits(model, layer, inputs_embeds=adv_embeds, attention_mask=adv_batch["h_attn"])
     be, b_attn, b_labels = _benign_under_adv_prompt(model, adv_embeds, adv_batch)
-    logits_b = model(inputs_embeds=be, attention_mask=b_attn).logits
-
-    # gates (both detached inside gating.py)
+    logits_s = model(inputs_embeds=be, attention_mask=b_attn).logits
     lp_h = avg_logprob(logits_h[:, :-1], adv_batch["h_labels"][:, 1:])
-    lp_s = avg_logprob(logits_b[:, :-1], b_labels[:, 1:])
+    lp_s = avg_logprob(logits_s[:, :-1], b_labels[:, 1:])
     wh = w_harm(lp_h, lp_s, tau=hp["tau"])
     wm = w_miss(reader.p_harmful(h_hidden, adv_batch["h_targetids"], adv_batch["h_attn"]))
+    eps_eff = 1.0 if warming else hp["epsilon"]
+    beh_ce = per_example_ce(logits_s[:, :-1], b_labels[:, 1:])
+    beh = (behavior_gate(wm, eps_eff) * beh_ce).mean()
+    total = total + hp["lambda_beh"] * beh
+    logs.update(beh=beh.item(), w_harm=wh.mean().item(), w_miss=wm.mean().item())
 
-    # behavior term: teach the safe response, scaled by detector failure
-    beh_ce = per_example_ce(logits_b[:, :-1], b_labels[:, 1:])
-    beh = (behavior_gate(wm, hp["epsilon"]) * beh_ce).mean()
-    total = hp["lambda_beh"] * beh
-    logs["beh"] = beh.item()
-
-    # representation term: make h detectable, scaled by model failure (off during warmup)
     if use_rep:
         rep_logits = reader.logits(h_hidden, adv_batch["h_targetids"], adv_batch["h_attn"])
-        harmful = torch.zeros(rep_logits.size(0), dtype=torch.long, device=device)
-        rep_ce = detector_ce(rep_logits, harmful, reduction="none")
+        harmful_lbl = torch.zeros(rep_logits.size(0), dtype=torch.long, device=device)  # harmful = 0
+        rep_ce = detector_ce(rep_logits, harmful_lbl, reduction="none")
         rep = (rep_gate(wh, hp["delta"]) * rep_ce).mean()
         total = total + hp["lambda_rep"] * rep
         logs["rep"] = rep.item()
 
-    # utility KL on UltraChat only
-    u_ids = util_batch["input_ids"]
-    u_logits = model(input_ids=u_ids, attention_mask=util_batch["attn"]).logits
-    r_logits = ref.logits(inputs_embeds=model.get_input_embeddings()(u_ids), attention_mask=util_batch["attn"])
-    kl = utility_kl(u_logits, r_logits, attention_mask=util_batch["attn"])
-    total = total + hp["lambda_kl"] * kl
-    logs["kl"] = kl.item()
+    # ---- easy benign: KL leash (UltraChat), + optional easy-CE ablation hook ----
+    if easy_batch is not None:
+        u_ids = easy_batch["input_ids"]
+        u_logits = model(input_ids=u_ids, attention_mask=easy_batch["attn"]).logits
+        r_logits = ref.logits(inputs_embeds=model.get_input_embeddings()(u_ids), attention_mask=easy_batch["attn"])
+        kl = utility_kl(u_logits, r_logits, attention_mask=easy_batch["attn"])
+        total = total + hp["lambda_kl"] * kl
+        logs["kl"] = kl.item()
+        if hp["lambda_help_easy"] > 0:  # ablation hook (default 0): ungated easy-benign CE
+            easy_ce = per_example_ce(u_logits[:, :-1], easy_batch["labels"][:, 1:]).mean()
+            total = total + hp["lambda_help_easy"] * easy_ce
+
+    # ---- hard benign: gated CE toward y_gen, masked to has_target ----
+    if hard_batch is not None:
+        g_hidden, g_logits = _hidden_and_logits(model, layer, input_ids=hard_batch["g_ids"], attention_mask=hard_batch["g_attn"])
+        r_logits_hb = model(input_ids=hard_batch["r_ids"], attention_mask=hard_batch["r_attn"]).logits
+        lp_gen = avg_logprob(g_logits[:, :-1], hard_batch["g_labels"][:, 1:])
+        lp_ref = avg_logprob(r_logits_hb[:, :-1], hard_batch["r_labels"][:, 1:])
+        wmb = w_refuse(lp_ref, lp_gen, tau=hp["tau_b"])
+        mask = hard_batch["has_target"]  # (B,) 1.0 / 0.0
+        help_ce = per_example_ce(g_logits[:, :-1], hard_batch["g_labels"][:, 1:])
+        denom = mask.sum().clamp_min(1.0)
+        help_term = (mask * wmb * help_ce).sum() / denom
+        total = total + hp["lambda_help"] * help_term
+        logs.update(help=help_term.item(), wmb_mean=wmb.mean().item(),
+                    wmb_open=(wmb > 0.5).float().mean().item())
+        if hp["lambda_kl_hard"] > 0:  # ablation hook (default 0): hard-benign KL
+            r_ref = ref.logits(inputs_embeds=model.get_input_embeddings()(hard_batch["g_ids"]), attention_mask=hard_batch["g_attn"])
+            total = total + hp["lambda_kl_hard"] * utility_kl(g_logits, r_ref, attention_mask=hard_batch["g_attn"])
 
     total.backward()
     opt_model.step()
-    logs.update(w_harm=wh.mean().item(), w_miss=wm.mean().item(), total=total.item())
+    logs["total"] = total.item()
     return logs, wh.detach(), wm.detach()
 
 

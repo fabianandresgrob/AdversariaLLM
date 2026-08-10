@@ -39,9 +39,9 @@ def partition_targets(prompts, gens):
     rows, n_refused = [], 0
     for p, g in zip(prompts, gens):
         if is_compliant(g):
-            rows.append({"prompt": p, "y_gen": g})
+            rows.append({"prompt": p, "y_gen": g, "raw": g})
         else:
-            rows.append({"prompt": p, "y_gen": None})
+            rows.append({"prompt": p, "y_gen": None, "raw": g})
             n_refused += 1
     return rows, n_refused
 

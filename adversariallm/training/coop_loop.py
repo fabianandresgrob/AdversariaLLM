@@ -150,11 +150,12 @@ def _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch,
 
     # ---- hard benign: gated CE toward y_gen, masked to has_target ----
     if hard_batch is not None:
-        g_hidden, g_logits = _hidden_and_logits(model, layer, input_ids=hard_batch["g_ids"], attention_mask=hard_batch["g_attn"])
-        r_logits_hb = model(input_ids=hard_batch["r_ids"], attention_mask=hard_batch["r_attn"]).logits
-        lp_gen = avg_logprob(g_logits[:, :-1], hard_batch["g_labels"][:, 1:])
-        lp_ref = avg_logprob(r_logits_hb[:, :-1], hard_batch["r_labels"][:, 1:])
-        wmb = w_refuse(lp_ref, lp_gen, tau=hp["tau_b"])
+        _, g_logits = _hidden_and_logits(model, layer, input_ids=hard_batch["g_ids"], attention_mask=hard_batch["g_attn"])
+        r_logits = model(input_ids=hard_batch["r_ids"], attention_mask=hard_batch["r_attn"]).logits
+        c_logits = model(input_ids=hard_batch["c_ids"], attention_mask=hard_batch["c_attn"]).logits
+        lp_ref = avg_logprob(r_logits[:, :-1], hard_batch["r_labels"][:, 1:])       # refusal opener
+        lp_comply = avg_logprob(c_logits[:, :-1], hard_batch["c_labels"][:, 1:])    # compliance opener
+        wmb = w_refuse(lp_ref, lp_comply, tau=hp["tau_b"])
         mask = hard_batch["has_target"]  # (B,) 1.0 / 0.0
         help_ce = per_example_ce(g_logits[:, :-1], hard_batch["g_labels"][:, 1:])
         denom = mask.sum().clamp_min(1.0)
@@ -275,16 +276,16 @@ def _coop_validate(
     wmb_easy, wmb_samples = [], []
     with torch.no_grad():
         for b in easy_help_batches:
-            _, g_logits = _hidden_and_logits(model, layer, input_ids=b["g_ids"], attention_mask=b["g_attn"])
             _, r_logits = _hidden_and_logits(model, layer, input_ids=b["r_ids"], attention_mask=b["r_attn"])
-            lp_gen = avg_logprob(g_logits[:, :-1], b["g_labels"][:, 1:])
+            _, c_logits = _hidden_and_logits(model, layer, input_ids=b["c_ids"], attention_mask=b["c_attn"])
             lp_ref = avg_logprob(r_logits[:, :-1], b["r_labels"][:, 1:])
-            wmb = w_refuse(lp_ref, lp_gen, tau=tau_b)
+            lp_comply = avg_logprob(c_logits[:, :-1], b["c_labels"][:, 1:])
+            wmb = w_refuse(lp_ref, lp_comply, tau=tau_b)
             wmb_easy += wmb.tolist()
             for i in range(len(b["prompt"])):
                 wmb_samples.append({
                     "prompt": b["prompt"][i], "alpaca_answer": b["y_help_text"][i],
-                    "w_mb": wmb[i].item(), "lp_help": lp_gen[i].item(), "lp_refuse": lp_ref[i].item(),
+                    "w_mb": wmb[i].item(), "lp_comply": lp_comply[i].item(), "lp_refuse": lp_ref[i].item(),
                 })
     for k, v in gate_stats(wmb_easy).items():
         metrics[f"detector/wmb_easy_{k}"] = v
@@ -431,7 +432,10 @@ def run_coop_training(cfg):
         hb_rows, hb_total, hb_refused = load_benign_targets(cfg.data.benign_targets_path)
         log.info(f"hard benign: {hb_total} prompts, {hb_refused} base-refused "
                  f"({hb_refused / max(hb_total, 1):.1%} pre-existing over-refusal)")
-        hard_benign_ds = HardBenignStream(hb_rows, tokenizer, template_id)
+        hard_benign_ds = HardBenignStream(
+            hb_rows, tokenizer, template_id,
+            refusal_opener=cfg.refusal_opener, compliance_opener=cfg.compliance_opener,
+        )
         hard_benign_loader = DataLoader(
             hard_benign_ds, batch_size=cfg.data.harmful_batch_size, shuffle=True, collate_fn=collate_hard_benign
         )
@@ -462,7 +466,10 @@ def run_coop_training(cfg):
     ]
     xstest_prompts = [p for p, _ in xstest_ds.rows[: int(cfg.training.benign_gen_n)]]
     # easy-help batches for the w_M^b sanity (easy benign, shipped responses vs refuse dummy)
-    easy_help_ds = HardBenignStream([(p, r) for p, r in zip(calib_prompts, calib_resp)], tokenizer, template_id)
+    easy_help_ds = HardBenignStream(
+        [(p, r) for p, r in zip(calib_prompts, calib_resp)], tokenizer, template_id,
+        refusal_opener=cfg.refusal_opener, compliance_opener=cfg.compliance_opener,
+    )
     easy_help_batches = [
         _to_device(b, device)
         for b in DataLoader(easy_help_ds, batch_size=cfg.data.harmful_batch_size, shuffle=False, collate_fn=collate_hard_benign)

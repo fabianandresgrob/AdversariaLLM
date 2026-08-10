@@ -59,9 +59,8 @@ def rep_gate(w_harm_val: torch.Tensor, delta: float) -> torch.Tensor:
 
 
 def w_refuse(logp_refuse: torch.Tensor, logp_help: torch.Tensor, tau: float = 1.0) -> torch.Tensor:
-    """Soft "the model over-refused a BENIGN prompt": sigmoid of the length-normalized margin
-    by which the model prefers the canned refusal over the helpful answer. Inputs are (B,) avg
-    log-probs. Stop-gradient (a gate, not a loss). Benign twin of w_harm, but callers pass a
-    SEPARATE tau_b: a short canned refusal vs a long free-form answer does not share the harmful
-    gate's calibration (§8 length asymmetry)."""
+    """Soft "the model over-refused a BENIGN prompt": sigmoid of the margin by which the model
+    prefers a refusal opener over a compliance opener. Inputs are (B,) avg log-probs of two
+    short, generic openers (content- and length-matched, so per-token predictability cancels).
+    Stop-gradient (a gate, not a loss). Uses a SEPARATE tau_b from the harmful gate."""
     return torch.sigmoid((logp_refuse - logp_help) / tau).detach()

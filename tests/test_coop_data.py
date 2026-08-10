@@ -44,3 +44,4 @@ def test_hard_benign_stream_masks_base_refused(monkeypatch):
     assert batch["has_target"].tolist() == [1.0, 0.0]
     assert batch["g_ids"].shape[0] == 2 and batch["r_ids"].shape[0] == 2
     assert batch["prompt"] == ["a", "b"]
+    assert batch["y_help_text"] == ["hi", "no"]   # target text (dummy=refusal for base-refused)

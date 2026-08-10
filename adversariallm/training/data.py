@@ -256,6 +256,7 @@ class HardBenignStream(Dataset):
         r_ids, r_lab, _, r_attn = build_example_full(x, self.refusal, self.tokenizer, self.model_name)
         return {
             "prompt": x,
+            "y_help_text": y_help,
             "has_target": torch.tensor(1.0 if has_target else 0.0),
             "g_ids": g_ids, "g_labels": g_lab, "g_targetids": g_tgt, "g_attn": g_attn,
             "r_ids": r_ids, "r_labels": r_lab, "r_attn": r_attn,
@@ -271,4 +272,5 @@ def collate_hard_benign(batch):
     )
     out["has_target"] = torch.stack([b["has_target"] for b in batch])
     out["prompt"] = [b["prompt"] for b in batch]
+    out["y_help_text"] = [b["y_help_text"] for b in batch]
     return out

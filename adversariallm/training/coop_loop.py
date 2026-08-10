@@ -12,6 +12,7 @@ apply the incremental-backward pattern from loop.py:train_step).
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 
@@ -174,7 +175,7 @@ def _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch,
 def _coop_validate(
     model, reader, layer, harmful_batches, calib_benign_batches, xstest_benign_batches,
     xstest_prompts, easy_help_batches, tokenizer, template_id, max_new_tokens, attack, tau_b,
-    model_trainable
+    model_trainable, out_dir, step
 ):
     """Held-out metrics, namespaced so the component each one describes is unambiguous:
     ``detector/`` (probe quality), ``model/`` (utility), ``pipeline/`` (the joint outcome).
@@ -271,16 +272,23 @@ def _coop_validate(
 
     # §8 benign-gate sanity: w_M^b on EASY benign must sit near zero (a well-answered prompt must
     # not read as refusing). Uses the shipped easy response as y_help vs the canned refusal.
-    wmb_easy = []
+    wmb_easy, wmb_samples = [], []
     with torch.no_grad():
         for b in easy_help_batches:
             _, g_logits = _hidden_and_logits(model, layer, input_ids=b["g_ids"], attention_mask=b["g_attn"])
             _, r_logits = _hidden_and_logits(model, layer, input_ids=b["r_ids"], attention_mask=b["r_attn"])
             lp_gen = avg_logprob(g_logits[:, :-1], b["g_labels"][:, 1:])
             lp_ref = avg_logprob(r_logits[:, :-1], b["r_labels"][:, 1:])
-            wmb_easy += w_refuse(lp_ref, lp_gen, tau=tau_b).tolist()
+            wmb = w_refuse(lp_ref, lp_gen, tau=tau_b)
+            wmb_easy += wmb.tolist()
+            for i in range(len(b["prompt"])):
+                wmb_samples.append({
+                    "prompt": b["prompt"][i], "alpaca_answer": b["y_help_text"][i],
+                    "w_mb": wmb[i].item(), "lp_help": lp_gen[i].item(), "lp_refuse": lp_ref[i].item(),
+                })
     for k, v in gate_stats(wmb_easy).items():
         metrics[f"detector/wmb_easy_{k}"] = v
+    wmb_samples.sort(key=lambda d: d["w_mb"], reverse=True)  # gate false-positives on top
 
     # model over-refusal: free generation on HELD-OUT xs_test benign (clean — benign is never attacked)
     first_user_msg, _, response_key, _, _ = get_chat_template(template_id)
@@ -292,6 +300,24 @@ def _coop_validate(
             out = model.generate(**enc, max_new_tokens=max_new_tokens, do_sample=False, pad_token_id=pad_id)
             gens.append(tokenizer.decode(out[0, enc["input_ids"].shape[1] :], skip_special_tokens=True))
     metrics["model/refusal_rate_ood"] = refusal_rate(gens)
+
+    # free-generate on the highest-w_mb alpaca prompts: if the model actually answers them, a high
+    # w_mb was a scoring artifact (length asymmetry), not real refusal.
+    probe = wmb_samples[: len(xstest_prompts)]
+    with torch.no_grad():
+        for d in probe:
+            enc = tokenizer(first_user_msg.format(instruction=d["prompt"]) + response_key, return_tensors="pt").to(device)
+            gen = model.generate(**enc, max_new_tokens=max_new_tokens, do_sample=False, pad_token_id=pad_id)
+            d["generation"] = tokenizer.decode(gen[0, enc["input_ids"].shape[1] :], skip_special_tokens=True)
+
+    # dump prompts + generations + gate values for inspection
+    samples = {
+        "step": step,
+        "xstest_overrefusal": [{"prompt": p, "generation": g} for p, g in zip(xstest_prompts, gens)],
+        "wmb_easy": wmb_samples,
+    }
+    with open(os.path.join(out_dir, f"val_samples_step{step}.json"), "w") as fh:
+        json.dump(samples, fh, indent=2)
 
     for p, rg in zip(model_trainable, saved_rg):
         p.requires_grad_(rg)
@@ -529,6 +555,8 @@ def run_coop_training(cfg):
                 attack,
                 device_hp["tau_b"],
                 model_trainable,
+                out_dir,
+                step,
             )
             cases = four_case_frequencies(torch.cat(wh_hist), torch.cat(wm_hist))
             metrics.update({f"pipeline/case_{k}": v for k, v in cases.items()})

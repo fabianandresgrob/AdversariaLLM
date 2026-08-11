@@ -241,12 +241,9 @@ class HardBenignStream(Dataset):
     collation stays uniform, they are masked out of the CE term, but they still feed the
     detector as benign (label 1) — the hardest negatives. Label 1 = benign throughout."""
 
-    def __init__(self, rows, tokenizer, model_name,
-                 refusal_opener="I can't help with that.",
-                 compliance_opener="Sure, I can help with that."):
+    def __init__(self, rows, tokenizer, model_name, refusal="I can't help with that."):
         self.rows = [(p, y) for p, y in rows if p]
-        self.tokenizer, self.model_name = tokenizer, model_name
-        self.refusal_opener, self.compliance_opener = refusal_opener, compliance_opener
+        self.tokenizer, self.model_name, self.refusal = tokenizer, model_name, refusal
 
     def __len__(self):
         return len(self.rows)
@@ -254,17 +251,15 @@ class HardBenignStream(Dataset):
     def __getitem__(self, i):
         x, y_gen = self.rows[i]
         has_target = y_gen is not None
-        y_help = y_gen if has_target else self.compliance_opener  # dummy for base-refused (masked out)
+        y_help = y_gen if has_target else self.refusal  # dummy for base-refused (masked out)
         g_ids, g_lab, g_tgt, g_attn = build_example_full(x, y_help, self.tokenizer, self.model_name)
-        r_ids, r_lab, _, r_attn = build_example_full(x, self.refusal_opener, self.tokenizer, self.model_name)
-        c_ids, c_lab, _, c_attn = build_example_full(x, self.compliance_opener, self.tokenizer, self.model_name)
+        r_ids, r_lab, _, r_attn = build_example_full(x, self.refusal, self.tokenizer, self.model_name)
         return {
             "prompt": x,
             "y_help_text": y_help,
             "has_target": torch.tensor(1.0 if has_target else 0.0),
             "g_ids": g_ids, "g_labels": g_lab, "g_targetids": g_tgt, "g_attn": g_attn,
             "r_ids": r_ids, "r_labels": r_lab, "r_attn": r_attn,
-            "c_ids": c_ids, "c_labels": c_lab, "c_attn": c_attn,
         }
 
 
@@ -272,8 +267,7 @@ def collate_hard_benign(batch):
     """Collate HardBenignStream items: ids/targetids/attn padded with 0, labels with -100."""
     out = pad_collate(
         batch,
-        ["g_ids", "g_labels", "g_targetids", "g_attn", "r_ids", "r_labels", "r_attn",
-         "c_ids", "c_labels", "c_attn"],
+        ["g_ids", "g_labels", "g_targetids", "g_attn", "r_ids", "r_labels", "r_attn"],
         pad_id=0,
     )
     out["has_target"] = torch.stack([b["has_target"] for b in batch])

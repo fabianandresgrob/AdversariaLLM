@@ -29,8 +29,6 @@ lambda_kl: 1.0
 lambda_help: 1.0      # hard-benign gated CE
 lambda_help_easy: 0.0 # ablation hook (easy-benign ungated CE)
 lambda_kl_hard: 0.0   # ablation hook (hard-benign KL)
-refusal_opener: "I can't help with that."      # w_mb refuse side
-compliance_opener: "Sure, I can help with that."  # w_mb comply side
 
 # Stage A = no attack (clean prompt); Stage B = continuous embedding attack.
 attack:

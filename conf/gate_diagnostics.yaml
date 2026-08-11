@@ -1,0 +1,26 @@
+defaults:
+  - models: models
+  - datasets: datasets
+  - splits
+  - paths
+  - _self_
+
+model: meta-llama/Meta-Llama-3.1-8B-Instruct
+chat_template_id: meta-llama/Llama-3.1-8B-Instruct
+
+tau: 1.0
+refusal_opener: "I can't help with that."
+compliance_opener: "Sure, I can help with that."
+
+seed: 0
+n_alpaca: 200
+n_harmful: 150
+
+data:
+  dir: ${root_dir}/data
+  behaviors: behavior_datasets/extra_behavior_datasets/adv_training_behaviors.csv
+  targets: optimizer_targets/extra_targets/adv_training_targets.json
+  safe: safe_responses/adv_training_behaviors_safe_responses_longer.csv
+benign_targets_path: ${root_dir}/data/benign_targets/or_bench_ygen.json
+
+out_path: ${root_dir}/checkpoints_coop/gate_diagnostics.json

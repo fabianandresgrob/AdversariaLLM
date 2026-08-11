@@ -4,6 +4,7 @@ from adversariallm.training.generate_benign_targets import is_compliant, partiti
 def test_is_compliant_rejects_refusals_and_short_hedges():
     assert is_compliant("Sure! Here is a detailed and helpful answer to your question.")
     assert not is_compliant("I can't help with that.")             # refusal marker
+    assert not is_compliant("I can’t help with that, sorry about it.")  # curly apostrophe
     assert not is_compliant("Sorry, no.")                          # refusal marker
     assert not is_compliant("No.")                                 # too short (hedge signal)
 

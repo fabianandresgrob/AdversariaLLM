@@ -13,7 +13,7 @@ import json
 import logging
 import os
 
-from .coop_metrics import _REFUSAL_MARKERS
+from .coop_metrics import _REFUSAL_MARKERS, _norm
 
 log = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ def is_compliant(text: str, min_len: int = 20) -> bool:
     t = text.strip()
     if len(t) < min_len:
         return False
-    low = t.lower()
+    low = _norm(t)
     if low.startswith("sorry") or any(m in low for m in _REFUSAL_MARKERS):
         return False
     return True

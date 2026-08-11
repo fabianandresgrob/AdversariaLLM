@@ -78,6 +78,11 @@ def _gate(lp_pos, lp_neg, tau):
             for p, n in zip(lp_pos, lp_neg)]
 
 
+def _stats_by_tau(lp_pos, lp_neg, taus):
+    """Sweep τ on the same margins (free — no extra forward passes)."""
+    return {str(t): variant_stats(_gate(lp_pos, lp_neg, t)) for t in taus}
+
+
 def run_gate_diagnostics(cfg):
     from ..io_utils import load_model_and_tokenizer
     from .data import AdvTupleStream, load_dataset_prompts
@@ -86,10 +91,13 @@ def run_gate_diagnostics(cfg):
     model, tokenizer = load_model_and_tokenizer(cfg.models[cfg.model])
     device = next(model.parameters()).device
     model.eval()
-    mn, tau = cfg.chat_template_id, float(cfg.tau)
+    mn = cfg.chat_template_id
+    taus = [float(t) for t in cfg.taus]
+    primary = taus[len(taus) // 2]  # τ used for the per-example w in the dumped rows
     refuse, comply = cfg.refusal_opener, cfg.compliance_opener
     k = len(tokenizer(refuse)["input_ids"])
-    report = {"tau": tau, "k": k, "refusal_opener": refuse, "compliance_opener": comply}
+    report = {"taus": taus, "primary_tau": primary, "k": k,
+              "refusal_opener": refuse, "compliance_opener": comply}
 
     def benign_rows(prompts, answers):
         lp_refuse = _score(model, tokenizer, mn, [(p, refuse) for p in prompts], device)
@@ -97,15 +105,17 @@ def run_gate_diagnostics(cfg):
         lp_full = _score(model, tokenizer, mn, list(zip(prompts, answers)), device)
         lp_trunc = _score(model, tokenizer, mn,
                           [(p, truncate_completion(tokenizer, a, k) if a else "") for p, a in zip(prompts, answers)], device)
-        w_open = _gate(lp_comply, lp_refuse, tau)
-        w_full = _gate(lp_full, lp_refuse, tau)
-        w_trunc = _gate(lp_trunc, lp_refuse, tau)
+        w_open = _gate(lp_comply, lp_refuse, primary)
+        w_full = _gate(lp_full, lp_refuse, primary)
+        w_trunc = _gate(lp_trunc, lp_refuse, primary)
         rows = [{"prompt": p, "lp_refuse": r, "lp_comply": c, "lp_full": f, "lp_trunc": t,
                  "w_open": wo, "w_full": wf, "w_trunc": wt}
                 for p, r, c, f, t, wo, wf, wt in
                 zip(prompts, lp_refuse, lp_comply, lp_full, lp_trunc, w_open, w_full, w_trunc)]
-        stats = {v: variant_stats([row[f"w_{v}"] for row in rows]) for v in ("open", "full", "trunc")}
-        return {"stats": stats, "rows": rows}
+        stats_by_tau = {"open": _stats_by_tau(lp_comply, lp_refuse, taus),
+                        "full": _stats_by_tau(lp_full, lp_refuse, taus),
+                        "trunc": _stats_by_tau(lp_trunc, lp_refuse, taus)}
+        return {"stats_by_tau": stats_by_tau, "rows": rows}
 
     # harmful reference: w_harm should separate (model prefers y_harm over the safe refusal)
     adv = AdvTupleStream(cfg.data.dir, cfg.data.behaviors, cfg.data.targets, cfg.data.safe, tokenizer, mn).rows
@@ -113,9 +123,9 @@ def run_gate_diagnostics(cfg):
     xh = [x for x, _, _ in adv]
     lp_harm = _score(model, tokenizer, mn, [(x, yh) for x, yh, _ in adv], device)
     lp_safe = _score(model, tokenizer, mn, [(x, ys) for x, _, ys in adv], device)
-    w_harm = _gate(lp_safe, lp_harm, tau)  # sigmoid((lp_harm − lp_safe)/τ)
+    w_harm = _gate(lp_safe, lp_harm, primary)  # sigmoid((lp_harm − lp_safe)/τ)
     report["harmful"] = {
-        "stats": {"harm": variant_stats(w_harm)},
+        "stats_by_tau": {"harm": _stats_by_tau(lp_safe, lp_harm, taus)},
         "rows": [{"prompt": x, "lp_harm": h, "lp_safe": s, "w_harm": w}
                  for (x, _, _), h, s, w in zip(adv, lp_harm, lp_safe, w_harm)],
     }
@@ -134,9 +144,9 @@ def run_gate_diagnostics(cfg):
     # refused rows have no answer → only the target-free opener gate applies (want HIGH here)
     lp_r = _score(model, tokenizer, mn, [(p, refuse) for p in refused], device)
     lp_c = _score(model, tokenizer, mn, [(p, comply) for p in refused], device)
-    w_open_ref = _gate(lp_c, lp_r, tau)
+    w_open_ref = _gate(lp_c, lp_r, primary)
     report["orbench_refused"] = {
-        "stats": {"open": variant_stats(w_open_ref)},
+        "stats_by_tau": {"open": _stats_by_tau(lp_c, lp_r, taus)},
         "rows": [{"prompt": p, "lp_refuse": r, "lp_comply": c, "w_open": w}
                  for p, r, c, w in zip(refused, lp_r, lp_c, w_open_ref)],
     }
@@ -149,17 +159,21 @@ def run_gate_diagnostics(cfg):
 
 
 def _log_summary(report):
-    def line(name, s):
-        return f"  {name:22} n={s.get('n',0):4} mean={s.get('mean',float('nan')):.3f} median={s.get('median',float('nan')):.3f} frac>0.5={s.get('frac_gt0.5',float('nan')):.2f}"
+    taus = report["taus"]
 
-    log.info(f"=== gate diagnostics (τ={report['tau']}, k={report['k']}) ===")
+    def line(name, by_tau):
+        cells = " | ".join(f"τ={t}: mean={by_tau[str(t)].get('mean', float('nan')):.3f} "
+                           f"f>.5={by_tau[str(t)].get('frac_gt0.5', float('nan')):.2f}" for t in taus)
+        return f"  {name:8} n={by_tau[str(taus[0])].get('n', 0):4}  {cells}"
+
+    log.info(f"=== gate diagnostics (τ sweep {taus}, k={report['k']}) ===")
     log.info("HARMFUL ref (want HIGH — model prefers y_harm over refusal):")
-    log.info(line("w_harm", report["harmful"]["stats"]["harm"]))
+    log.info(line("w_harm", report["harmful"]["stats_by_tau"]["harm"]))
     log.info("ALPACA (all comply — want LOW):")
     for v in ("open", "full", "trunc"):
-        log.info(line(f"w_{v}", report["alpaca"]["stats"][v]))
+        log.info(line(f"w_{v}", report["alpaca"]["stats_by_tau"][v]))
     log.info("OR_BENCH answered (want LOW):")
     for v in ("open", "full", "trunc"):
-        log.info(line(f"w_{v}", report["orbench_answered"]["stats"][v]))
+        log.info(line(f"w_{v}", report["orbench_answered"]["stats_by_tau"][v]))
     log.info("OR_BENCH refused (want HIGH — opener gate only):")
-    log.info(line("w_open", report["orbench_refused"]["stats"]["open"]))
+    log.info(line("w_open", report["orbench_refused"]["stats_by_tau"]["open"]))

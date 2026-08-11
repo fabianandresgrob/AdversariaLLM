@@ -12,3 +12,6 @@ cache
 viz
 wandb
 embeddings/
+checkpoints_coop/
+checkpoints/
+.DS_Store

@@ -499,6 +499,18 @@ def run_coop_training(cfg):
     val_every = int(cfg.training.val_every)
     wh_hist, wm_hist = [], []  # accumulate per-example gates for four-case frequencies
 
+    # step-0 baseline: pretrained model + probe under the val attack, before any co-training
+    if val_every:
+        base = _coop_validate(
+            model, reader, layer, harmful_val_batches, calib_benign_batches, xstest_benign_batches,
+            xstest_prompts, easy_help_batches, tokenizer, template_id,
+            int(cfg.training.benign_val_max_new_tokens), attack, device_hp["tau_b"], model_trainable, out_dir, 0,
+        )
+        base.update({f"pipeline/case_{k}": float("nan") for k in "ABCD"})  # no training history yet
+        log.info("[step 0] " + " ".join(f"{k}={v:.4f}" for k, v in base.items()))
+        if wandb_run is not None:
+            wandb_run.log(base, step=0)
+
     model.train()
     for step in range(cfg.training.n_steps):
         adv_batch = _to_device(next(adv_iter), device)

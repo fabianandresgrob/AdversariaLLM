@@ -344,6 +344,19 @@ def _save_pair(model, reader, container, step, out_dir, tag):
     )
 
 
+def _seed_everything(seed):
+    """Seed training randomness (LoRA init, random probe init, loader shuffle order) so a seed
+    sweep is real. Eval splits stay on data.val_seed (fixed) — held-out data is not reseeded."""
+    import random
+
+    import numpy as np
+
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+
 def run_coop_training(cfg):
     import peft
     from omegaconf import OmegaConf
@@ -378,6 +391,8 @@ def run_coop_training(cfg):
     template_id = cfg.chat_template_id
     model, tokenizer = load_model_and_tokenizer(model_params)
     device = next(model.parameters()).device
+
+    _seed_everything(int(cfg.get("seed", 0)))  # governs LoRA init, probe init, loader shuffles
 
     model = peft.get_peft_model(
         model,

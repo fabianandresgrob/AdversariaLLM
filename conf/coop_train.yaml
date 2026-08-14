@@ -7,6 +7,7 @@ defaults:
 
 mode: coop
 name: coop_run
+seed: 0                # training randomness (LoRA/probe init, shuffle); eval splits use data.val_seed
 
 # Same target as model-CAT: models.yaml key for loading, separate id for get_chat_template.
 model: meta-llama/Meta-Llama-3.1-8B-Instruct

@@ -9,6 +9,11 @@ mode: coop
 name: coop_run
 seed: 0                # training randomness (LoRA/probe init, shuffle); eval splits use data.val_seed
 
+# Group Hydra outputs by run name (timestamp subdir keeps reruns of the same name separate).
+hydra:
+  run:
+    dir: outputs/${name}/${now:%Y-%m-%d_%H-%M-%S}
+
 # Same target as model-CAT: models.yaml key for loading, separate id for get_chat_template.
 model: meta-llama/Meta-Llama-3.1-8B-Instruct
 chat_template_id: meta-llama/Llama-3.1-8B-Instruct

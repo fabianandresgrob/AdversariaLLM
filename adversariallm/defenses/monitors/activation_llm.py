@@ -7,12 +7,12 @@ from peft import LoraConfig, TaskType, get_peft_model
 
 from ...io_utils import load_model_and_tokenizer
 from ._activation_detector_model import Detector, get_embed_weights
-from .base import Monitor, register_monitor
-from .tokenization import build_detector_batch
+from .activation_monitor import ActivationMonitor
+from .base import register_monitor
 
 
 @register_monitor
-class ActivationLLMMonitor(Monitor):
+class ActivationLLMMonitor(ActivationMonitor):
     """Mathieu's activation detector: reads the target model's hidden states."""
 
     NAME = "activation_llm"
@@ -74,7 +74,7 @@ class ActivationLLMMonitor(Monitor):
             batch_size=cfg.get("batch_size", 16),
         )
 
-    def _ensure_detector(self, target_model):
+    def _ensure_head(self, target_model):
         if self._detector is not None:
             return
         input_shape = get_embed_weights(target_model).shape[-1]
@@ -97,33 +97,7 @@ class ActivationLLMMonitor(Monitor):
         detector.eval()
         self._detector = detector
 
-    @torch.no_grad()
-    def score(self, prompts, responses, *, target_model, target_tokenizer):
-        # Documented coupling: this monitor only works on its training target model.
-        # Kept permissive until the exact name_or_path is confirmed on the cluster.
-        assert self.target_model_id is not None
-        self._ensure_detector(target_model)
-        device = next(target_model.parameters()).device
-
-        scores: list[float] = []
-        for start in range(0, len(prompts), self.batch_size):
-            p_chunk = prompts[start : start + self.batch_size]
-            r_chunk = responses[start : start + self.batch_size]
-            input_ids, target_ids, attention_mask = build_detector_batch(
-                p_chunk, r_chunk, target_tokenizer, self.target_model_id
-            )
-            input_ids = input_ids.to(device)
-            target_ids = target_ids.to(device)
-            attention_mask = attention_mask.to(device)
-
-            embeds = target_model.get_input_embeddings()(input_ids)
-            out = target_model(
-                inputs_embeds=embeds,
-                attention_mask=attention_mask,
-                output_hidden_states=True,
-            )
-            hidden_states = out.hidden_states[self.index_hidden_layer_detector]
-            _, logits_yes_no = self._detector(hidden_states, target_ids, attention_mask)
-            probs = torch.softmax(logits_yes_no.float(), dim=1)
-            scores.extend(probs[:, 0].tolist())  # column 0 == "yes" == harmful
-        return scores
+    def _head_logits(self, hidden, target_ids, attention_mask):
+        # column 0 == "yes" == harmful; the projection detector returns (aux, logits_yes_no)
+        _, logits_yes_no = self._detector(hidden, target_ids, attention_mask)
+        return logits_yes_no

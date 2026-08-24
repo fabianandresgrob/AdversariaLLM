@@ -24,7 +24,8 @@ def main(cfg: DictConfig) -> None:
     from adversariallm.training.coop_metrics import threshold_at_fpr
     from adversariallm.training.data import load_dataset_prompts
 
-    model_params = OmegaConf.merge(cfg.models[cfg.model], {"adapter_path": cfg.adapter_path})
+    model_params = OmegaConf.to_container(cfg.models[cfg.model], resolve=True)  # plain dict (unlock struct)
+    model_params["adapter_path"] = cfg.adapter_path
     model, tokenizer = load_model_and_tokenizer(model_params)
 
     monitor = LinearProbeMonitor.from_config(

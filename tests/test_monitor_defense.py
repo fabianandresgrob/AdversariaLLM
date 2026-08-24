@@ -3,6 +3,7 @@ from __future__ import annotations
 import torch
 
 from adversariallm.defenses.monitors import activation_llm as act_mod
+from adversariallm.defenses.monitors import activation_monitor as base_mod
 from adversariallm.defenses.monitors.activation_llm import ActivationLLMMonitor
 
 
@@ -36,8 +37,9 @@ class _FakeDetector:
 
 
 def test_activation_monitor_score_returns_p_yes(monkeypatch):
+    # score() lives in the ActivationMonitor base now, so patch build_detector_batch there.
     monkeypatch.setattr(
-        act_mod, "build_detector_batch",
+        base_mod, "build_detector_batch",
         lambda prompts, responses, tokenizer, model_name: (
             torch.zeros(len(prompts), 3, dtype=torch.long),
             torch.zeros(len(prompts), 3, dtype=torch.long),
@@ -169,5 +171,5 @@ def test_ensure_detector_uses_detector_model_name(monkeypatch):
         def parameters(self):
             yield torch.zeros(1)
 
-    monitor._ensure_detector(_FakeTarget())
+    monitor._ensure_head(_FakeTarget())
     assert captured["model_name"] == "google/gemma-3-1b-it"

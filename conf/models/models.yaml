@@ -91,6 +91,18 @@ cat_ul_450:
   chat_template: llama-3-instruct
   trust_remote_code: True
   adapter_path: ${root_dir}/checkpoints_cat/cat_ul_450/best_adapter
+coop_v2_B_long:
+  # Cooperative-pipeline model: base Llama-3.1-8B + the co-trained LoRA adapter.
+  # Pair with defense=coop_probe (the co-trained probe) for the full pipeline.
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: False
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: True
+  adapter_path: ${root_dir}/checkpoints_coop/coop_v2_B_long_eps005_s0/final_adapter
 meta-llama/Meta-Llama-3.1-70B-Instruct:
   id: meta-llama/Meta-Llama-3.1-70B-Instruct
   tokenizer_id: meta-llama/Meta-Llama-3.1-70B-Instruct

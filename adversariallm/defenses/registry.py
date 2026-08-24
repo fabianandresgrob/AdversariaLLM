@@ -26,6 +26,7 @@ DEFENSE_COMPATIBLE_ATTACKS = frozenset(
         "inpainting",
         "jailbreak_r1",
         "pair",
+        "replay",
     }
 )
 

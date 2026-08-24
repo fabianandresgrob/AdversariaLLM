@@ -179,6 +179,10 @@ class Attack(Generic[AttRes]):
                 from .random_search import RandomSearchAttack
 
                 return RandomSearchAttack
+            case "replay":
+                from .replay import ReplayAttack
+
+                return ReplayAttack
             case _:
                 raise ValueError(f"Unknown attack: {name}")
 

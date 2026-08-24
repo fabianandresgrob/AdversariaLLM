@@ -197,6 +197,15 @@ direct:
   version: 0.0.1
   generation_config: ${attacks._default.generation_config}
   seed: ${attacks._default.seed}
+replay:
+  # Transfer eval: replay a prior attack's adversarial prompts through the target.
+  # source = that run's results dir (holds <idx>/run.json). Set at run time.
+  name: replay
+  type: discrete
+  version: 0.0.1
+  generation_config: ${attacks._default.generation_config}
+  seed: ${attacks._default.seed}
+  source: ???
 gcg:
   name: gcg
   type: discrete

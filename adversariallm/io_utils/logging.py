@@ -59,9 +59,12 @@ def log_attack(run_config, result: AttackResult, cfg: DictConfig, date_time_stri
         offload_tensors(subrun_config, subrun_result, embed_dir)
 
         log_message.update(asdict(subrun_result))
+        # Group by run name (<attack>__<defense>__<model>) then timestamp, so outputs are
+        # self-documenting. Keep the timestamp at path[-3] (the judge reads it there).
+        run_name = f"{run_config.attack}__{run_config.defense or 'none'}__{str(run_config.model).replace('/', '-')}"
         # Find and reserve the first available run_i directory atomically.
         i = 0
-        log_dir = os.path.join(save_dir, date_time_string)
+        log_dir = os.path.join(save_dir, run_name, date_time_string)
         while True:
             run_dir = os.path.join(log_dir, str(i))
             try:

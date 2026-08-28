@@ -1,0 +1,24 @@
+defaults:
+  - models: models
+  - datasets: datasets
+  - splits
+  - paths
+  - _self_
+
+# Over-refusal (utility/helpfulness) eval: refusal rate on benign sets that look harmful.
+# Pairs with attack-harness ASR (robustness) to form the utility-vs-robustness trade-off.
+# Reuses coop's _coop_validate path (chat template + greedy gen + refusal_rate) for parity.
+model: meta-llama/Meta-Llama-3.1-8B-Instruct
+chat_template_id: meta-llama/Llama-3.1-8B-Instruct
+
+# name -> spec ('base' = un-adapted; or an adapter dir). Add coop/CAT via +checkpoints.<name>=<dir>
+checkpoints:
+  base: base
+
+datasets_eval: [xs_test, or_bench, alpaca]   # xs_test = over-refusal headline; alpaca = easy-benign sanity
+window: test          # train | val | test | all  (xs_test is held out entirely, so 'all' is fair)
+max_new_tokens: 32
+limit: null           # cap prompts per dataset
+val_seed: 0           # matches data.val_seed (same seeded windows as training)
+out: ${root_dir}/outputs/overrefusal
+dump_gens: false

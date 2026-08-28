@@ -11,6 +11,11 @@ alpaca:
   seed: 0
   idx: null
   shuffle: true
+magpie:
+  name: magpie
+  seed: 0
+  idx: null
+  shuffle: true
 jbb_behaviors:
   name: jbb_behaviors
   seed: 0

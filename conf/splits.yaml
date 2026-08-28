@@ -7,3 +7,4 @@ splits:
   or_bench:  {train: [0, 400], val: [400, 500], test: [500, 700]}
   xs_test:   {train: [0, 120], val: [120, 160], test: [160, 200]}
   ultrachat: {train: [0, 2000], val: [2000, 2200], test: [2200, 2400]}
+  magpie:    {train: [0, 2000], val: [2000, 2200], test: [2200, 2400]}

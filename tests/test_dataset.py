@@ -45,6 +45,27 @@ def test_alpaca_dataset():
         assert _is_conversation(conv)
 
 
+def test_magpie_registered():
+    from adversariallm.dataset import MagpieDataset
+    from adversariallm.dataset.prompt_dataset import PromptDataset
+
+    assert PromptDataset.from_name("magpie") is MagpieDataset
+
+
+def test_magpie_dataset():
+    from adversariallm.dataset import MagpieConfig, MagpieDataset
+
+    # small window: exercises the real schema (instruction/response) without materializing 300K
+    config = MagpieConfig(name="magpie", seed=0, shuffle=False, idx="list(range(0,4))")
+    dataset = MagpieDataset(config)
+
+    assert len(dataset) == 4
+    for conv in dataset:
+        assert len(conv) == 2 and _is_conversation(conv)
+        assert conv[0]["role"] == "user" and conv[1]["role"] == "assistant"
+        assert conv[0]["content"] and conv[1]["content"]   # real columns mapped, non-empty
+
+
 def test_jbb_behaviors_dataset():
     from adversariallm.dataset import JBBBehaviorsConfig, JBBBehaviorsDataset
 

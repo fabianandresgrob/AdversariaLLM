@@ -5,8 +5,8 @@ import json
 import torch
 
 from adversariallm.training.data import (
-    AdvTupleStream, HardBenignStream, collate_hard_benign, load_benign_targets,
-    split_adv_stream,
+    AdvTupleStream, HardBenignStream, build_kl_stream, collate_hard_benign,
+    load_benign_targets, split_adv_stream,
 )
 
 
@@ -79,3 +79,27 @@ def test_split_adv_stream_is_behavior_level(tmp_path):
     assert len(val.indices) == 1                          # deduped to one row per val behavior
     assert train_beh.isdisjoint(val_beh)                  # a behavior never straddles the split
     assert train_beh | val_beh == {"promptA", "promptB"}
+
+
+def test_build_kl_stream_routes_by_source(monkeypatch):
+    import adversariallm.training.data as d
+
+    seen = {}
+
+    class _RecStream:  # capture what UtilityStream is built with
+        def __init__(self, tok, mn, window=None, fraction=0.01, rows=None, max_length=None):
+            seen.clear()
+            seen.update(window=window, fraction=fraction, rows=rows, max_length=max_length)
+
+    monkeypatch.setattr(d, "UtilityStream", _RecStream)
+    # ultrachat -> built-in path: window/fraction, no injected rows
+    d.build_kl_stream({}, "ultrachat", None, "m", window=[0, 10], fraction=0.5, max_length=99)
+    assert seen["rows"] is None and seen["window"] == [0, 10] and seen["max_length"] == 99
+    # registry source -> rows via load_dataset_prompts, response-less rows dropped
+    monkeypatch.setattr(
+        d, "load_dataset_prompts",
+        lambda cfg, name, window, seed=0: (["p1", "p2", "p3"], ["r1", None, "r3"]),
+    )
+    d.build_kl_stream({}, "magpie", None, "m", window=[0, 3], max_length=42)
+    assert seen["rows"] == [("p1", "r1"), ("p3", "r3")]    # None response dropped
+    assert seen["max_length"] == 42

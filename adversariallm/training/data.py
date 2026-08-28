@@ -12,14 +12,23 @@ from ..defenses.monitors._activation_detector_model import get_chat_template
 def split_adv_stream(dataset, val_size, seed=0):
     """Split adversarial behaviors into disjoint (train, val) subsets.
 
-    The split is behavior-level and seeded, so the held-out behaviors used for
-    best-checkpoint selection stay fixed across runs.
+    Behavior-level (not row-level): a behavior's multiple targets never straddle the
+    split. Seeded, so the held-out behaviors stay fixed across runs. Val keeps one row
+    per behavior (first target) so validation cost is independent of targets/behavior.
     """
-    if not 0 < val_size < len(dataset):
-        raise ValueError(f"val_size must be in (0, {len(dataset)}), got {val_size}")
+    behaviors = list(dict.fromkeys(p for p, _, _ in dataset.rows))  # unique, first-appearance order
+    if not 0 < val_size < len(behaviors):
+        raise ValueError(f"val_size must be in (0, {len(behaviors)}), got {val_size}")
     g = torch.Generator().manual_seed(seed)
-    perm = torch.randperm(len(dataset), generator=g).tolist()
-    return Subset(dataset, perm[val_size:]), Subset(dataset, perm[:val_size])
+    perm = torch.randperm(len(behaviors), generator=g).tolist()
+    val_beh = {behaviors[i] for i in perm[:val_size]}
+    train_idx = [i for i, r in enumerate(dataset.rows) if r[0] not in val_beh]
+    val_idx, seen = [], set()  # one row per val behavior
+    for i, r in enumerate(dataset.rows):
+        if r[0] in val_beh and r[0] not in seen:
+            val_idx.append(i)
+            seen.add(r[0])
+    return Subset(dataset, train_idx), Subset(dataset, val_idx)
 
 
 def build_supervised_example(prompt, response, tokenizer, model_name):
@@ -98,14 +107,16 @@ class AdvTupleStream(Dataset):
         df = beh.merge(targets, on="BehaviorID")
         safe_map = dict(zip(safe["Behavior"], safe["Safe_Response"]))
 
-        def _first_target(t):
-            # adv_training_targets.json stores a list of targets per behavior;
-            # advbench_targets.json stores a single string. Use the first either way.
-            return t[0] if isinstance(t, (list, tuple)) else t
+        def _targets(t):
+            # adv_training_targets.json = list per behavior; advbench_targets.json = single string.
+            ts = list(t) if isinstance(t, (list, tuple)) else [t]
+            return [s for s in ts if str(s).strip()]  # drop empty targets
 
+        # one row per (behavior, target); all targets of a behavior share its y_safe.
         self.rows = [
-            (r["Behavior"], _first_target(r["target"]), safe_map.get(r["Behavior"], "I can't help with that."))
+            (r["Behavior"], tgt, safe_map.get(r["Behavior"], "I can't help with that."))
             for _, r in df.iterrows()
+            for tgt in _targets(r["target"])
         ]
         self.tokenizer, self.model_name = tokenizer, model_name
 

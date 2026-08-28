@@ -5,7 +5,8 @@ import json
 import torch
 
 from adversariallm.training.data import (
-    HardBenignStream, collate_hard_benign, load_benign_targets,
+    AdvTupleStream, HardBenignStream, collate_hard_benign, load_benign_targets,
+    split_adv_stream,
 )
 
 
@@ -45,3 +46,36 @@ def test_hard_benign_stream_masks_base_refused(monkeypatch):
     assert batch["g_ids"].shape[0] == 2 and batch["r_ids"].shape[0] == 2
     assert batch["prompt"] == ["a", "b"]
     assert batch["y_help_text"] == ["hi", "no"]   # target text (dummy=refusal for base-refused)
+
+
+def _write_adv_data(tmp_path, targets):
+    """Write minimal behaviors.csv / targets.json / safe.csv for AdvTupleStream."""
+    (tmp_path / "beh.csv").write_text(
+        "Behavior,BehaviorID\npromptA,b1\npromptB,b2\n"
+    )
+    (tmp_path / "safe.csv").write_text(
+        "Behavior,Safe_Response\npromptA,safeA\npromptB,safeB\n"
+    )
+    (tmp_path / "tgt.json").write_text(json.dumps(targets))
+    return AdvTupleStream(str(tmp_path), "beh.csv", "tgt.json", "safe.csv", _FakeTok(), "m")
+
+
+def test_adv_tuple_stream_explodes_targets_and_drops_empty(tmp_path):
+    ds = _write_adv_data(tmp_path, {"b1": ["A1", "A2", "  "], "b2": ["B1"]})
+    # 2 non-empty targets for A (empty dropped) + 1 for B = 3 rows
+    assert len(ds.rows) == 3
+    a_rows = [r for r in ds.rows if r[0] == "promptA"]
+    assert [r[1] for r in a_rows] == ["A1", "A2"]        # both A targets, empty dropped
+    assert all(r[2] == "safeA" for r in a_rows)          # all share A's single y_safe
+    assert ("promptB", "B1", "safeB") in ds.rows
+
+
+def test_split_adv_stream_is_behavior_level(tmp_path):
+    ds = _write_adv_data(tmp_path, {"b1": ["A1", "A2"], "b2": ["B1", "B2", "B3"]})
+    train, val = split_adv_stream(ds, val_size=1, seed=0)
+    train_beh = {ds.rows[i][0] for i in train.indices}
+    val_beh = {ds.rows[i][0] for i in val.indices}
+    assert len(val_beh) == 1                              # exactly one behavior held out
+    assert len(val.indices) == 1                          # deduped to one row per val behavior
+    assert train_beh.isdisjoint(val_beh)                  # a behavior never straddles the split
+    assert train_beh | val_beh == {"promptA", "promptB"}

@@ -15,10 +15,10 @@ chat_template_id: meta-llama/Llama-3.1-8B-Instruct
 checkpoints:
   base: base
 
-datasets_eval: [xs_test, or_bench, alpaca]   # xs_test = over-refusal headline; alpaca = easy-benign sanity
-window: test          # train | val | test | all  (xs_test is held out entirely, so 'all' is fair)
+datasets_eval: [xs_test]   # the over-refusal benchmark; add more (e.g. [xs_test, or_bench]) if wanted
+window: all           # xs_test is held out entirely -> eval all of it. Use window=test for or_bench/alpaca (avoids trained rows)
 max_new_tokens: 32
-limit: null           # cap prompts per dataset
+limit: null           # optional per-dataset cap (only needed if you add a large set like alpaca)
 val_seed: 0           # matches data.val_seed (same seeded windows as training)
 out: ${root_dir}/outputs/overrefusal
 dump_gens: false

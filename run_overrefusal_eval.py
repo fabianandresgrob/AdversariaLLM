@@ -9,8 +9,10 @@ window (test, or 'all' since xs_test is never trained on), not just 16 val promp
     cd ~/projects/AdversariaLLM
     pixi run python run_overrefusal_eval.py \
         +checkpoints.coop_C=checkpoints_coop/coop_v2_C_targets_eps005_s0/final_adapter \
-        +checkpoints.coop_D=checkpoints_coop/coop_v2_D_targets_magpie_eps005_s0/final_adapter \
-        window=all
+        +checkpoints.coop_D=checkpoints_coop/coop_v2_D_targets_magpie_eps005_s0/final_adapter
+
+    # add datasets explicitly if wanted (large sets need a limit):
+    #   datasets_eval=[xs_test,or_bench]        datasets_eval=[xs_test,alpaca] limit=200
 """
 from __future__ import annotations
 

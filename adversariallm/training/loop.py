@@ -218,7 +218,7 @@ def run_training(cfg):
     from ..defenses.monitors._activation_detector_model import get_chat_template
     from ..io_utils import load_model_and_tokenizer
     from .attacks import ContinuousEmbeddingAttack
-    from .data import AdvTupleStream, UtilityStream, collate_adv, collate_util, split_adv_stream
+    from .data import AdvTupleStream, build_kl_stream, collate_adv, collate_util, split_adv_stream
     from .reference import FrozenModelReference, LoRADisableReference
 
     container = OmegaConf.to_container(cfg, resolve=True)
@@ -271,7 +271,11 @@ def run_training(cfg):
         tokenizer=tokenizer,
         model_name=template_id,
     )
-    util_ds = UtilityStream(tokenizer, template_id, fraction=cfg.data.utility_fraction)
+    util_ds = build_kl_stream(
+        getattr(cfg, "datasets", None), cfg.data.kl_source, tokenizer, template_id,
+        window=(cfg.splits[cfg.data.kl_source].train if cfg.data.kl_source != "ultrachat" else None),
+        fraction=cfg.data.utility_fraction, max_length=cfg.data.kl_max_length, seed=cfg.data.val_seed,
+    )
 
     adv_train_ds, adv_val_ds = split_adv_stream(adv_ds, val_size=cfg.data.val_size, seed=cfg.data.val_seed)
 

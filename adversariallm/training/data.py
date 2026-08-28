@@ -141,19 +141,24 @@ class AdvTupleStream(Dataset):
 
 
 class UtilityStream(Dataset):
-    """UltraChat (x, y) for the KL term: first user turn + first model reply.
-    window=(start, end) selects a fixed index slice (the canonical split, conf/splits.yaml)."""
+    """(x, y) supervised pairs for the KL term. Default source = UltraChat (first user turn +
+    first model reply); pass rows=[(prompt, response), ...] to use any other source (e.g. a
+    registered dataset via load_dataset_prompts). window/fraction select the UltraChat slice.
+    max_length truncates long examples (e.g. Magpie responses run to ~90k chars)."""
 
-    def __init__(self, tokenizer, model_name, window=None, fraction=0.01):
-        from datasets import load_dataset
+    def __init__(self, tokenizer, model_name, window=None, fraction=0.01, rows=None, max_length=None):
+        if rows is not None:
+            self.rows = rows
+        else:
+            from datasets import load_dataset
 
-        ds = load_dataset("stingning/ultrachat", split="train")
-        if window is not None:
-            ds = ds.select(range(int(window[0]), int(window[1])))  # canonical split (coop)
-        elif 0 < fraction < 1.0:
-            ds = ds.select(range(int(fraction * len(ds))))  # fraction (model-CAT)
-        self.rows = [(d["data"][0], d["data"][1]) for d in ds if len(d["data"]) >= 2]
-        self.tokenizer, self.model_name = tokenizer, model_name
+            ds = load_dataset("stingning/ultrachat", split="train")
+            if window is not None:
+                ds = ds.select(range(int(window[0]), int(window[1])))  # canonical split (coop)
+            elif 0 < fraction < 1.0:
+                ds = ds.select(range(int(fraction * len(ds))))  # fraction (model-CAT)
+            self.rows = [(d["data"][0], d["data"][1]) for d in ds if len(d["data"]) >= 2]
+        self.tokenizer, self.model_name, self.max_length = tokenizer, model_name, max_length
 
     def __len__(self):
         return len(self.rows)
@@ -161,8 +166,21 @@ class UtilityStream(Dataset):
     def __getitem__(self, i):
         x, y = self.rows[i]
         ids, lab = build_supervised_example(x, y, self.tokenizer, self.model_name)
+        if self.max_length is not None and ids.numel() > self.max_length:
+            ids, lab = ids[: self.max_length], lab[: self.max_length]  # cap runaway lengths
         attn = torch.ones_like(ids)
         return {"input_ids": ids, "labels": lab, "attn": attn}
+
+
+def build_kl_stream(datasets_cfg, kl_source, tokenizer, model_name,
+                    window=None, fraction=0.01, max_length=None, seed=0):
+    """KL-leash UtilityStream from a named source. 'ultrachat' = the built-in loader (window
+    or fraction); any other name pulls (prompt, response) via the dataset registry."""
+    if kl_source == "ultrachat":
+        return UtilityStream(tokenizer, model_name, window=window, fraction=fraction, max_length=max_length)
+    prompts, responses = load_dataset_prompts(datasets_cfg, kl_source, window=window, seed=seed)
+    rows = [(p, r) for p, r in zip(prompts, responses) if r]  # KL needs a reference response
+    return UtilityStream(tokenizer, model_name, rows=rows, max_length=max_length)
 
 
 def pad_collate(batch, keys, pad_id=0):

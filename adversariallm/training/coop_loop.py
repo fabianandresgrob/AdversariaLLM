@@ -370,7 +370,7 @@ def run_coop_training(cfg):
         AdvTupleStream,
         BenignStream,
         HardBenignStream,
-        UtilityStream,
+        build_kl_stream,
         collate_adv,
         collate_benign,
         collate_hard_benign,
@@ -425,7 +425,10 @@ def run_coop_training(cfg):
         tokenizer=tokenizer,
         model_name=template_id,
     )
-    util_ds = UtilityStream(tokenizer, template_id, window=cfg.splits.ultrachat.train)
+    util_ds = build_kl_stream(
+        cfg.datasets, cfg.data.kl_source, tokenizer, template_id,
+        window=cfg.splits[cfg.data.kl_source].train, max_length=cfg.data.kl_max_length, seed=cfg.data.val_seed,
+    )
 
     adv_train_ds, adv_val_ds = split_adv_stream(adv_ds, val_size=cfg.data.val_size, seed=cfg.data.val_seed)
     adv_loader = DataLoader(adv_train_ds, batch_size=cfg.data.harmful_batch_size, shuffle=True, collate_fn=collate_adv)

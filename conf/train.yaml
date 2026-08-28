@@ -1,5 +1,7 @@
 defaults:
   - models: models
+  - datasets: datasets
+  - splits
   - paths
   - _self_
 
@@ -33,7 +35,9 @@ data:
   # _longer = 100 distinct contextual refusals; the plain file is one constant string
   # for every behavior (a much easier target to overfit toward).
   safe: safe_responses/adv_training_behaviors_safe_responses_longer.csv
-  utility_fraction: 0.01
+  utility_fraction: 0.01            # ultrachat-only: fraction of the set used as the KL leash
+  kl_source: ultrachat              # KL-leash dataset; any registered source (e.g. magpie) or ultrachat
+  kl_max_length: null               # truncate leash examples to N tokens (magpie responses run ~90k chars)
   harmful_batch_size: 8
   utility_batch_size: 8
   # Behaviors held out from training for best-checkpoint selection.

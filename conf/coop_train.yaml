@@ -53,7 +53,9 @@ data:
   val_size: 16                      # harmful behaviors held out for validation
   val_seed: 0
   # Benign split: easy = detector class + PINNED calibration; hard = gated-CE + detector (opt-in).
-  # KL uses ultrachat train. xs_test is NEVER a training source (held out for over-refusal + FPR).
+  kl_source: ultrachat              # KL-leash dataset; any registered source (e.g. magpie) or ultrachat
+  kl_max_length: null               # truncate leash examples to N tokens (magpie responses run ~90k chars)
+  # KL uses the kl_source train window. xs_test is NEVER a training source (held out for over-refusal + FPR).
   easy_benign_sources: [alpaca]     # detector easy-benign class (train windows); NOT xs_test
   calibration_benign: alpaca        # PINNED 1%-FPR threshold set (val window), frozen across runs
   hard_benign_sources: []           # opt-in; set to [or_bench] to enable the hard-benign term

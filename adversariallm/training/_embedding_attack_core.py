@@ -252,15 +252,10 @@ class EmbeddingSpaceAttack:
         # 4. compute loss
         target_loss = self.loss_fct(logits_flat, targets_flat)
 
-        # Add detector loss if needed
+        # Add detector loss if needed: the attacker wants the detector to score the adversarial
+        # example as benign. Each detector defines evasion_loss in its own convention.
         if self.use_detector:
-            # print("in calc_loss: hidden_sates.shape:", hidden_states.shape)
-            outputs, logits_yes_no = detector(hidden_states, target_ids, attention_mask)
-            B = logits_yes_no.size(0)
-            detector_loss = detector.compute_loss(
-                logits_yes_no, ground_truth="no"
-            )  # the attacker wants the detector to predict "no" for the adversarial examples
-
+            detector_loss = detector.evasion_loss(hidden_states, target_ids, attention_mask)
         else:
             detector_loss = torch.tensor(0.0, device=logits.device)
 

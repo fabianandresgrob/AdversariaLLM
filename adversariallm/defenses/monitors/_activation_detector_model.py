@@ -203,6 +203,13 @@ class Detector(nn.Module):
                 print(f"Token: {repr(token)} | Logit: {logit:.4f}")
 
 
+    def evasion_loss(self, hidden, target_ids, attention_mask):
+        """Loss a detector-aware attacker minimizes to make this detector predict benign — the
+        detector-side term of the Stage C embedding attack. Wraps compute_loss("no") so the
+        yes/no convention stays contained in this class."""
+        _, logits_yes_no = self(hidden, target_ids, attention_mask)
+        return self.compute_loss(logits_yes_no, ground_truth="no")
+
     def compute_loss(self, logits_yes_no, ground_truth):
         """ Compute the loss for the detector model.
         Args:

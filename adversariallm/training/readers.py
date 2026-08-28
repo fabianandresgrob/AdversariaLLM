@@ -16,6 +16,9 @@ from abc import ABC, abstractmethod
 import torch
 from torch import nn
 
+HARMFUL_COL = 0  # logits column convention (see module docstring): 0 = harmful, 1 = benign
+BENIGN_COL = 1
+
 
 def readout_index(target_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
     """Index of the last prompt token per row (the token before the response begins).
@@ -57,8 +60,15 @@ class Reader(ABC):
     def logits(self, hidden: torch.Tensor, target_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor: ...
 
     def p_harmful(self, hidden: torch.Tensor, target_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
-        """P(harmful) per row = softmax(logits)[:, 0]."""
-        return torch.softmax(self.logits(hidden, target_ids, attention_mask).float(), dim=-1)[:, 0]
+        """P(harmful) per row = softmax(logits)[:, HARMFUL_COL]."""
+        return torch.softmax(self.logits(hidden, target_ids, attention_mask).float(), dim=-1)[:, HARMFUL_COL]
+
+    def evasion_loss(self, hidden: torch.Tensor, target_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+        """Loss a detector-aware attacker minimizes to make this reader predict benign — the
+        detector-side term of the Stage C embedding attack. CE toward BENIGN_COL."""
+        logits = self.logits(hidden, target_ids, attention_mask)
+        target = torch.full((logits.size(0),), BENIGN_COL, dtype=torch.long, device=logits.device)
+        return nn.functional.cross_entropy(logits, target)
 
 
 class LinearProbe(Reader, nn.Module):

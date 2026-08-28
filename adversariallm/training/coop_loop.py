@@ -175,7 +175,7 @@ def _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch,
 def _coop_validate(
     model, reader, layer, harmful_batches, calib_benign_batches, xstest_benign_batches,
     xstest_prompts, easy_help_batches, tokenizer, template_id, max_new_tokens, attack, tau_b,
-    model_trainable, out_dir, step
+    model_trainable, out_dir, step, use_detector=False
 ):
     """Held-out metrics, namespaced so the component each one describes is unambiguous:
     ``detector/`` (probe quality), ``model/`` (utility), ``pipeline/`` (the joint outcome).
@@ -221,7 +221,8 @@ def _coop_validate(
     # compliance, and the joint pipeline failure at the 1%-FPR operating point.
     h_feats, harmful_scores, comply_flags, miss_flags = [], [], [], []
     for b in harmful_batches:
-        adv_embeds = _adv_embeds(attack, model, b)  # grad-enabled inner attack; returns detached embeds
+        # grad-enabled inner attack (detector-aware iff the run is); returns detached embeds
+        adv_embeds = _adv_embeds(attack, model, b, reader=reader, use_detector=use_detector)
         with torch.no_grad():
             h_hidden, logits_h = _hidden_and_logits(model, layer, inputs_embeds=adv_embeds, attention_mask=b["h_attn"])
             be, b_attn, b_labels = _benign_under_adv_prompt(model, adv_embeds, b)
@@ -328,12 +329,14 @@ def _coop_validate(
     return metrics
 
 
-def _adv_embeds(attack, model, adv_batch):
+def _adv_embeds(attack, model, adv_batch, reader=None, use_detector=False):
     """Stage B: perturbed embeddings from the continuous attack. Stage A (attack is None):
-    clean prompt embeddings, so the whole machine runs with no attack cost."""
+    clean prompt embeddings, so the whole machine runs with no attack cost. Stage C
+    (use_detector): the attack also evades the reader (detector-aware adversary). The attack
+    only optimizes the perturbation, so model and reader are frozen by the caller."""
     if attack is None:
         return model.get_input_embeddings()(adv_batch["h_ids"]).detach()
-    return attack.attack(model, adv_batch, detector=None, use_detector=False)
+    return attack.attack(model, adv_batch, detector=reader if use_detector else None, use_detector=use_detector)
 
 
 def _save_pair(model, reader, container, step, out_dir, tag):
@@ -488,7 +491,9 @@ def run_coop_training(cfg):
         for b in DataLoader(easy_help_ds, batch_size=cfg.data.harmful_batch_size, shuffle=False, collate_fn=collate_hard_benign)
     ]
 
-    # attack (Stage B) or None (Stage A)
+    layer = int(container["reader"].get("layer", -1)) if container.get("reader") else -1
+
+    # attack (Stage B: model-only; Stage C: also detector-aware via attack.use_detector) or None (Stage A)
     attack = None
     if cfg.attack.enabled:
         _, _, response_key, _, _ = get_chat_template(template_id)
@@ -499,12 +504,12 @@ def run_coop_training(cfg):
             iters=cfg.attack.iters,
             eps=cfg.attack.eps,
             lr=cfg.attack.lr,
+            detector_loss_coeff=cfg.attack.detector_loss_coeff,
+            detector_layer=layer,
         )
 
     opt_model = torch.optim.Adam(model_trainable, lr=cfg.training.model_lr)
     opt_det = torch.optim.Adam(reader_params, lr=cfg.training.detector_lr)
-
-    layer = int(container["reader"].get("layer", -1)) if container.get("reader") else -1
     n_det = int(cfg.training.n_detector_steps)
     warmup = int(cfg.training.rep_warmup_steps)
 
@@ -523,6 +528,7 @@ def run_coop_training(cfg):
             model, reader, layer, harmful_val_batches, calib_benign_batches, xstest_benign_batches,
             xstest_prompts, easy_help_batches, tokenizer, template_id,
             int(cfg.training.benign_val_max_new_tokens), attack, device_hp["tau_b"], model_trainable, out_dir, 0,
+            use_detector=cfg.attack.use_detector,
         )
         base.update({f"pipeline/case_{k}": float("nan") for k in "ABCD"})  # no training history yet
         log.info("[step 0] " + " ".join(f"{k}={v:.4f}" for k, v in base.items()))
@@ -534,12 +540,15 @@ def run_coop_training(cfg):
         adv_batch = _to_device(next(adv_iter), device)
         util_batch = _to_device(next(util_iter), device)
 
-        # ---- detector phase: model frozen, reader trainable ----
+        # ---- attack: model + reader both frozen, only the perturbation is optimized ----
         _set_requires_grad(model_trainable, False)
+        _set_requires_grad(reader_params, False)
+        adv_embeds = _adv_embeds(attack, model, adv_batch, reader=reader, use_detector=cfg.attack.use_detector)
+
+        # ---- detector phase: model frozen, reader trainable ----
         _set_requires_grad(reader_params, True)
         _assert_grad(model_trainable, False, "model(det phase)")
         _assert_grad(reader_params, True, "reader(det phase)")
-        adv_embeds = _adv_embeds(attack, model, adv_batch)
         det_losses = [
             _detector_step(
                 model, reader, opt_det, layer, adv_embeds, adv_batch,
@@ -589,6 +598,7 @@ def run_coop_training(cfg):
                 model_trainable,
                 out_dir,
                 step,
+                use_detector=cfg.attack.use_detector,
             )
             cases = four_case_frequencies(torch.cat(wh_hist), torch.cat(wm_hist))
             metrics.update({f"pipeline/case_{k}": v for k, v in cases.items()})

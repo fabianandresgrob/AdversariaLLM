@@ -42,6 +42,8 @@ attack:
   iters: 100
   eps: 1.0
   lr: 0.01
+  use_detector: false        # Stage C: attack also evades the reader (detector-aware adversary)
+  detector_loss_coeff: 0.5   # attacker's evade-detector vs elicit-harmful trade-off (used iff use_detector)
 
 data:
   dir: ${root_dir}/data

@@ -24,6 +24,7 @@ class ContinuousEmbeddingAttack(TrainingAttack):
         eps,
         lr,
         detector_loss_coeff=0.5,
+        detector_layer=-1,
     ):
         # EmbeddingSpaceAttack.__init__ signature (from source):
         #   (embed_weights, response_key, tokenizer, hidden_state_detector_index,
@@ -37,7 +38,7 @@ class ContinuousEmbeddingAttack(TrainingAttack):
             embed_weights,
             response_key,
             tokenizer,
-            hidden_state_detector_index=-1,
+            hidden_state_detector_index=detector_layer,
             iters=iters,
             opt_config={"type": "adam", "lr": lr},
             eps=eps,

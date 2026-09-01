@@ -69,7 +69,7 @@ training:
   n_steps: 450
   n_detector_steps: 1        # spec default (tunable ablation; δ=0/N=3 is a valid alt)
   rep_warmup_steps: 0        # default off (prefitted probe); >0 for the cold-probe ablation
-  checkpoint_every: 50
+  checkpoint_every: 250      # 4 step-tagged adapters/run (~180MB); enough to inspect the oscillation
   val_every: 25              # held-out recall@1%FPR, OOD over-refusal, four-case frequencies
   benign_gen_n: 16           # OOD benign prompts to free-generate on for the refusal rate
   benign_val_max_new_tokens: 32

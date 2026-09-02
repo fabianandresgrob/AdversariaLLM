@@ -21,7 +21,11 @@ max_new_tokens: 256   # judge needs full responses (>=128); 32 was too short to 
 limit: null           # optional per-dataset cap (only needed if you add a large set like alpaca)
 val_seed: 0           # matches data.val_seed (same seeded windows as training)
 out: ${root_dir}/outputs/overrefusal
-dump_gens: false
+
+# Generations are always cached to gens_cache_dir/gens_<name>_<ds>.json and reused on the next
+# run (matched by prompt set) -> re-judging with new judge settings skips regeneration entirely.
+gens_cache: true
+gens_cache_dir: ${out}
 
 # Opt-in LLM judge (Jonas's xstest harness). Off = the legacy string-match refusal_rate only.
 # On = also gemma-3-12b-it 3-way judge + degeneration detector, counting gibberish as refusal.

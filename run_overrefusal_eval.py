@@ -47,6 +47,24 @@ def _prompts(cfg, ds, which, limit):
     return out[:limit] if limit else out
 
 
+def _gens_path(cfg, name, ds):
+    return os.path.join(cfg.gens_cache_dir, f"gens_{name}_{ds}.json")
+
+
+def _load_cached_gens(cfg, name, ds, ds_prompts):
+    """Return cached generations for (name, ds) iff the file exists and its prompts match
+    the current prompt set exactly (guards against a changed window/seed/dataset). Else None."""
+    path = _gens_path(cfg, name, ds)
+    if not os.path.exists(path):
+        return None
+    with open(path) as f:
+        rows = json.load(f)
+    if [r["prompt"] for r in rows] != list(ds_prompts):
+        log.warning(f"  {ds:10s} [cache stale: prompts differ] {path}")
+        return None
+    return [r["generation"] for r in rows]
+
+
 @torch.no_grad()
 def _refusal_on(model, tokenizer, template_id, prompts, max_new_tokens):
     """Greedy-generate on each prompt, count refusals — identical to _coop_validate."""
@@ -77,11 +95,15 @@ def _judge_all(cfg, prompts, gens_by, datasets):
     )
 
     jid = cfg.judge.model
-    judge_params = {
-        "id": jid, "tokenizer_id": jid, "short_name": jid.split("/")[-1],
-        "developer_name": jid.split("/")[0] if "/" in jid else jid,
-        "compile": False, "dtype": cfg.judge.dtype, "chat_template": None, "trust_remote_code": False,
-    }
+    if jid in cfg.models:                              # reuse the repo's model entry (cache/chat-template settings)
+        judge_params = OmegaConf.to_container(cfg.models[jid], resolve=True)
+        judge_params["dtype"] = cfg.judge.dtype
+    else:
+        judge_params = {
+            "id": jid, "tokenizer_id": jid, "short_name": jid.split("/")[-1],
+            "developer_name": jid.split("/")[0] if "/" in jid else jid,
+            "compile": False, "dtype": cfg.judge.dtype, "chat_template": None, "trust_remote_code": False,
+        }
     log.info(f"loading judge {jid} ({cfg.judge.prompt_mode})")
     judge_model, judge_tok = load_model_and_tokenizer(judge_params)
     judge_gen = LocalTextGenerator(judge_model, judge_tok)
@@ -118,25 +140,38 @@ def main(cfg: DictConfig) -> None:
         log.info(f"{ds}: {len(prompts[ds])} prompts ({cfg.window} window)")
 
     os.makedirs(cfg.out, exist_ok=True)
+    os.makedirs(cfg.gens_cache_dir, exist_ok=True)
+    from adversariallm.training.coop_metrics import refusal_rate
+
     results = {}
     gens_by = {}                                       # (name, ds) -> generations, reused by the judge
     for name, spec in cfg.checkpoints.items():
         log.info(f"=== {name} ({spec}) ===")
-        model_params = OmegaConf.to_container(cfg.models[cfg.model], resolve=True)  # plain dict (unlock struct)
-        if spec != "base":
-            model_params["adapter_path"] = spec
-        model, tok = load_model_and_tokenizer(model_params)
         results[name] = {}
+        need_gen = []                                  # datasets with no reusable cache -> must generate
         for ds in datasets:
-            rate, gens = _refusal_on(model, tok, cfg.chat_template_id, prompts[ds], int(cfg.max_new_tokens))
-            results[name][ds] = rate
-            gens_by[(name, ds)] = gens
-            log.info(f"  {ds:10s} refusal={rate:.3f} (n={len(prompts[ds])})")
-            if cfg.dump_gens:
-                with open(os.path.join(cfg.out, f"gens_{name}_{ds}.json"), "w") as f:
+            cached = _load_cached_gens(cfg, name, ds, prompts[ds]) if cfg.gens_cache else None
+            if cached is not None:
+                gens_by[(name, ds)] = cached
+                results[name][ds] = refusal_rate(cached)
+                log.info(f"  {ds:10s} refusal={results[name][ds]:.3f} [cached, n={len(cached)}]")
+            else:
+                need_gen.append(ds)
+
+        if need_gen:                                   # only pay to load the eval model if something is uncached
+            model_params = OmegaConf.to_container(cfg.models[cfg.model], resolve=True)  # plain dict (unlock struct)
+            if spec != "base":
+                model_params["adapter_path"] = spec
+            model, tok = load_model_and_tokenizer(model_params)
+            for ds in need_gen:
+                rate, gens = _refusal_on(model, tok, cfg.chat_template_id, prompts[ds], int(cfg.max_new_tokens))
+                results[name][ds] = rate
+                gens_by[(name, ds)] = gens
+                log.info(f"  {ds:10s} refusal={rate:.3f} (n={len(prompts[ds])})")
+                with open(_gens_path(cfg, name, ds), "w") as f:  # always cache generations
                     json.dump([{"prompt": p, "generation": g} for p, g in zip(prompts[ds], gens)], f, indent=2)
-        del model
-        torch.cuda.empty_cache()
+            del model
+            torch.cuda.empty_cache()
 
     judged = _judge_all(cfg, prompts, gens_by, datasets) if cfg.judge.enabled else {}
 

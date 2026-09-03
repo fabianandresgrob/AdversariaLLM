@@ -114,6 +114,10 @@ coop-magpie-eps005-s0:
   chat_template: llama-3-instruct
   trust_remote_code: True
   adapter_path: ${root_dir}/checkpoints_coop/coop-magpie-eps005-s0/final_adapter
+  # Single source of truth for defense=coop_probe (see conf/defenses/defenses.yaml): it reads
+  # these via ${models.${model}.reader_path} / .reader_threshold, so no CLI overrides needed.
+  reader_path: ${root_dir}/checkpoints_coop/coop-magpie-eps005-s0/final_reader.pt
+  reader_threshold: 0.7754359465837486   # 1%-FPR tau from checkpoints_coop/.../threshold_1pct.json
 coop-magpie-eps005-detaware-ndet6-s0:
   # Cooperative-pipeline model (magpie leash, Stage C detector-aware attack, ndet=6, eps=0.05).
   # Pair with defense=coop_probe.
@@ -126,6 +130,8 @@ coop-magpie-eps005-detaware-ndet6-s0:
   chat_template: llama-3-instruct
   trust_remote_code: True
   adapter_path: ${root_dir}/checkpoints_coop/coop-magpie-eps005-detaware-ndet6-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/coop-magpie-eps005-detaware-ndet6-s0/final_reader.pt
+  reader_threshold: 0.26106592863798356
 meta-llama/Meta-Llama-3.1-70B-Instruct:
   id: meta-llama/Meta-Llama-3.1-70B-Instruct
   tokenizer_id: meta-llama/Meta-Llama-3.1-70B-Instruct

@@ -1,0 +1,61 @@
+defaults:
+  - models: models
+  - datasets: datasets
+  - splits
+  - paths
+  - _self_
+
+# Cross-attack eval: test a FINISHED coop checkpoint's model+detector pair under an attack
+# condition that may or may not match what it trained under (native / model-only / detector-aware).
+# Post-hoc only — never run during training. Reuses _coop_validate exactly, so numbers are
+# apples-to-apples with the training-time validation logs; only the driving attack changes.
+model: meta-llama/Meta-Llama-3.1-8B-Instruct
+chat_template_id: meta-llama/Llama-3.1-8B-Instruct
+
+reader:
+  type: linear
+  layer: -1
+
+# name -> {adapter, reader}. adapter: null = base model (no LoRA). reader: null = auto-derived
+# sibling of adapter (<tag>_adapter -> <tag>_reader.pt); set explicitly if that guess is wrong.
+# Add via +checkpoints.<name>.adapter=<dir> [+checkpoints.<name>.reader=<path>] on the CLI.
+checkpoints:
+  base:
+    adapter: null
+    reader: null
+
+# Attack conditions to run per checkpoint. "native" = read use_detector off the checkpoint's own
+# saved training cfg (in its reader.pt) -- not a bad default, per Fabian. true/false force
+# Stage C / Stage B regardless of how the checkpoint trained. Duplicates (e.g. native==true) are
+# deduped automatically, so listing all three is always safe.
+eval_use_detector: [native, true, false]
+
+# Held-out harmful behaviors to attack. Defaults to the SAME construction as training
+# (AdvTupleStream + split_adv_stream, deterministic on val_seed) -> the same 16 val behaviors
+# every run already validates on, so results compare directly to training logs. Swapping in a
+# different behaviors/targets/safe CSV trio (same schema) would eval on a different behavior set,
+# but a genuinely different harmful SOURCE (jbb_behaviors, strong_reject) needs its own y_harmful/
+# y_safe targets, which those datasets don't carry -- that's the bigger transfer-eval effort, not
+# a config swap here.
+harmful:
+  data_dir: ${root_dir}/data
+  behaviors: behavior_datasets/extra_behavior_datasets/adv_training_behaviors.csv
+  targets: optimizer_targets/extra_targets/adv_training_targets.json
+  safe: safe_responses/adv_training_behaviors_safe_responses_longer.csv
+  val_size: 16
+  val_seed: 0
+  batch_size: 4
+
+attack:
+  iters: 100
+  eps: 1.0
+  lr: 0.01
+  detector_loss_coeff: 0.5
+
+benign:
+  calibration_benign: alpaca   # sets the 1%-FPR threshold, same pinned source as training
+  benign_gen_n: 16
+  max_new_tokens: 32
+
+val_seed: 0            # benign split seed (matches data.val_seed elsewhere)
+out: ${root_dir}/outputs/cross_attack_eval

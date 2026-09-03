@@ -70,6 +70,37 @@ def _native_use_detector(train_cfg) -> bool:
     return bool((train_cfg.get("attack") or {}).get("use_detector", False))
 
 
+def _case_frequencies(model, reader, layer, attack, harmful_batches, use_detector, tau=1.0):
+    """pipeline/case_A..D on THIS eval's held-out harmful batches, under the given attack
+    condition. Same definition as training (w_harm/w_miss at a fixed 0.5 threshold, via
+    gating.py), but computed directly here rather than accumulated from training-step history --
+    NOT numerically comparable to a run's own training-log pipeline/case_*, only internally
+    consistent across the conditions this script runs (all on the same held-out data)."""
+    from adversariallm.training.coop_loop import _adv_embeds, _hidden_and_logits
+    from adversariallm.training.coop_metrics import four_case_frequencies
+    from adversariallm.training.gating import avg_logprob, w_harm as w_harm_fn, w_miss as w_miss_fn
+    from adversariallm.training.loop import _benign_under_adv_prompt
+
+    has_feats = hasattr(reader, "readout") and hasattr(reader, "linear")
+    wh_all, wm_all = [], []
+    for b in harmful_batches:
+        adv_embeds = _adv_embeds(attack, model, b, reader=reader, use_detector=use_detector)
+        with torch.no_grad():
+            h_hidden, logits_h = _hidden_and_logits(model, layer, inputs_embeds=adv_embeds, attention_mask=b["h_attn"])
+            be, b_attn, b_labels = _benign_under_adv_prompt(model, adv_embeds, b)
+            logits_s = model(inputs_embeds=be, attention_mask=b_attn).logits
+            if has_feats:
+                f = reader.readout(h_hidden, b["h_targetids"], b["h_attn"])
+                p_harm = torch.softmax(reader.linear(f).float(), dim=-1)[:, 0]
+            else:
+                p_harm = reader.p_harmful(h_hidden, b["h_targetids"], b["h_attn"])
+            lp_h = avg_logprob(logits_h[:, :-1], b["h_labels"][:, 1:])
+            lp_s = avg_logprob(logits_s[:, :-1], b_labels[:, 1:])
+            wh_all.append(w_harm_fn(lp_h, lp_s, tau=tau))
+            wm_all.append(w_miss_fn(p_harm))
+    return four_case_frequencies(torch.cat(wh_all), torch.cat(wm_all))
+
+
 @hydra.main(version_base=None, config_path="conf", config_name="cross_attack_eval")
 def main(cfg: DictConfig) -> None:
     from torch.utils.data import DataLoader
@@ -89,7 +120,8 @@ def main(cfg: DictConfig) -> None:
     for name, spec in cfg.checkpoints.items():
         log.info(f"=== {name} ===")
         model, tok, reader, train_cfg = _load_checkpoint(cfg, name, spec)
-        device = next(model.parameters()).device
+        model.requires_grad_(False)  # eval-only: freeze adapter+base so the attack's backward
+        device = next(model.parameters()).device  # only ever builds a graph for the perturbation
 
         # held-out harmful val batches: identical construction to training (deterministic split)
         adv_ds = AdvTupleStream(
@@ -139,24 +171,30 @@ def main(cfg: DictConfig) -> None:
                 tok, cfg.chat_template_id, int(cfg.benign.max_new_tokens), attack, 1.0,
                 [], cfg.out, 0, use_detector=use_det,
             )
+            cases = _case_frequencies(model, reader, layer, attack, harmful_batches, use_det)
             results[name][tag] = {
                 "native": use_det == native,
                 "comply": metrics["model/comply_rate"],
                 "recall": metrics["detector/recall@1fpr"],
                 "asr": metrics["pipeline/asr"],
                 "saved": metrics["pipeline/detector_saved"],
+                "case_A": cases["A"], "case_B": cases["B"], "case_C": cases["C"], "case_D": cases["D"],
             }
             log.info(f"  comply={metrics['model/comply_rate']:.3f} recall={metrics['detector/recall@1fpr']:.3f} "
-                     f"asr={metrics['pipeline/asr']:.3f} saved={metrics['pipeline/detector_saved']:.3f}")
+                     f"asr={metrics['pipeline/asr']:.3f} saved={metrics['pipeline/detector_saved']:.3f} "
+                     f"cases=A{cases['A']:.2f}/B{cases['B']:.2f}/C{cases['C']:.2f}/D{cases['D']:.2f}")
         del model
         torch.cuda.empty_cache()
 
     lines = ["", "# cross-attack eval (native = the attack condition the checkpoint trained under)",
-             f"{'checkpoint':28s} {'eval_attack':15s} {'native':7s} {'comply':>8s} {'recall':>8s} {'asr':>8s} {'saved':>8s}"]
+             "# case_A..D computed on THIS eval's held-out data (not the training log's pipeline/case_*)",
+             f"{'checkpoint':28s} {'eval_attack':15s} {'native':7s} {'comply':>8s} {'recall':>8s} {'asr':>8s} "
+             f"{'saved':>8s} {'A':>6s} {'B':>6s} {'C':>6s} {'D':>6s}"]
     for name, conds in results.items():
         for tag, m in conds.items():
             lines.append(f"{name:28s} {tag:15s} {str(m['native']):7s} "
-                        f"{m['comply']:8.3f} {m['recall']:8.3f} {m['asr']:8.3f} {m['saved']:8.3f}")
+                        f"{m['comply']:8.3f} {m['recall']:8.3f} {m['asr']:8.3f} {m['saved']:8.3f} "
+                        f"{m['case_A']:6.3f} {m['case_B']:6.3f} {m['case_C']:6.3f} {m['case_D']:6.3f}")
     print("\n".join(lines))
 
     with open(os.path.join(cfg.out, "cross_attack_eval.json"), "w") as f:

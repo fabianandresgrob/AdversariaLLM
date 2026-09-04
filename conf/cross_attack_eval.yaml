@@ -18,10 +18,24 @@ reader:
 
 # name -> {adapter, reader}. adapter: null = base model (no LoRA). reader: null = auto-derived
 # sibling of adapter (<tag>_adapter -> <tag>_reader.pt); set explicitly if that guess is wrong.
-# Add via +checkpoints.<name>.adapter=<dir> [+checkpoints.<name>.reader=<path>] on the CLI.
+# Add more via +checkpoints.<name>.adapter=<dir> [+checkpoints.<name>.reader=<path>] on the CLI.
+#
+# The default set is the ndet-controlled comparison: eps005_s0 and detaware_ndet1 differ ONLY in
+# use_detector (both ndet=1), so their gap isolates the detector-aware effect; detaware_ndet6 adds
+# the ndet=6 arm. base has no reader checkpoint -> its detector columns are random-probe noise,
+# only its comply_rate is meaningful (undefended reference).
 checkpoints:
   base:
     adapter: null
+    reader: null
+  eps005_s0:                                  # Stage B (use_detector=false), ndet=1
+    adapter: ${root_dir}/checkpoints_coop/coop-magpie-eps005-s0/final_adapter
+    reader: null
+  eps005_detaware_ndet1:                      # Stage C (use_detector=true), ndet=1 -- matched control
+    adapter: ${root_dir}/checkpoints_coop/coop-magpie-eps005-detaware-s0/final_adapter
+    reader: null
+  eps005_detaware_ndet6:                      # Stage C (use_detector=true), ndet=6
+    adapter: ${root_dir}/checkpoints_coop/coop-magpie-eps005-detaware-ndet6-s0/final_adapter
     reader: null
 
 # Attack conditions to run per checkpoint. "native" = read use_detector off the checkpoint's own

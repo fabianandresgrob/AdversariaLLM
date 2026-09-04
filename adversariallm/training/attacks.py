@@ -47,6 +47,16 @@ class ContinuousEmbeddingAttack(TrainingAttack):
             wandb_run=None,
         )
 
+    @property
+    def detector_loss_coeff(self):
+        """Attacker's evade-detector vs elicit-harm split: (1-c)*harm + c*evade. Settable so a
+        post-hoc eval can sweep the split on one attack object."""
+        return self._attack.detector_loss_coeff
+
+    @detector_loss_coeff.setter
+    def detector_loss_coeff(self, value):
+        self._attack.detector_loss_coeff = float(value)
+
     def attack(self, model, batch, detector=None, use_detector: bool = False):
         # EmbeddingSpaceAttack.attack returns an 8-tuple:
         #   (input_embeds, adv_perturbation, adv_perturbation_mask,

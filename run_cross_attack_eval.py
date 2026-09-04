@@ -64,6 +64,19 @@ def _load_checkpoint(cfg, name, spec):
     return model, tok, reader, train_cfg
 
 
+def _seed_everything(seed: int):
+    """Seed the attack's random perturbation init (_embedding_attack_core uses torch.randn), so
+    every checkpoint x condition is attacked from the same starting point -> paired comparison."""
+    import random
+
+    import numpy as np
+
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+
 def _native_use_detector(train_cfg) -> bool:
     if not train_cfg:
         return False
@@ -159,21 +172,33 @@ def main(cfg: DictConfig) -> None:
         )
 
         native = _native_use_detector(train_cfg)
-        conditions = sorted({native if c == "native" else bool(c) for c in cfg.eval_use_detector})
+        use_dets = sorted({native if c == "native" else bool(c) for c in cfg.eval_use_detector})
+        # model_only ignores the coefficient (no detector term); detector_aware gets one run per coeff.
+        conditions = [(u, float(c) if u else None)
+                      for u in use_dets
+                      for c in (cfg.eval_detector_coeffs if u else [None])]
 
         results[name] = {}
-        for use_det in conditions:
-            tag = "detector_aware" if use_det else "model_only"
+        for use_det, coeff in conditions:
+            tag = f"detaware_c{coeff:g}" if use_det else "model_only"
             log.info(f"[{name}] evaluating under {tag} attack (native={native})")
+            # Re-seed per condition so every checkpoint x condition starts the attack from the SAME
+            # random perturbation -> a paired comparison (n=16 is far too small to average noise out).
+            _seed_everything(int(cfg.seed))
+            if use_det:
+                attack.detector_loss_coeff = coeff
             metrics = _coop_validate(
                 model, reader, layer, harmful_batches, calib_batches, xs_batches, xs_prompts,
                 [],  # easy_help_batches: w_mb sanity check not needed for this eval
                 tok, cfg.chat_template_id, int(cfg.benign.max_new_tokens), attack, 1.0,
                 [], cfg.out, 0, use_detector=use_det,
             )
+            _seed_everything(int(cfg.seed))  # same init for the case pass as the metrics pass
             cases = _case_frequencies(model, reader, layer, attack, harmful_batches, use_det)
             results[name][tag] = {
-                "native": use_det == native,
+                "native": use_det == native and (coeff is None or coeff == float(cfg.attack.detector_loss_coeff)),
+                "use_detector": use_det,
+                "coeff": coeff,
                 "comply": metrics["model/comply_rate"],
                 "recall": metrics["detector/recall@1fpr"],
                 "asr": metrics["pipeline/asr"],
@@ -188,11 +213,11 @@ def main(cfg: DictConfig) -> None:
 
     lines = ["", "# cross-attack eval (native = the attack condition the checkpoint trained under)",
              "# case_A..D computed on THIS eval's held-out data (not the training log's pipeline/case_*)",
-             f"{'checkpoint':28s} {'eval_attack':15s} {'native':7s} {'comply':>8s} {'recall':>8s} {'asr':>8s} "
+             f"{'checkpoint':28s} {'eval_attack':16s} {'native':7s} {'comply':>8s} {'recall':>8s} {'asr':>8s} "
              f"{'saved':>8s} {'A':>6s} {'B':>6s} {'C':>6s} {'D':>6s}"]
     for name, conds in results.items():
         for tag, m in conds.items():
-            lines.append(f"{name:28s} {tag:15s} {str(m['native']):7s} "
+            lines.append(f"{name:28s} {tag:16s} {str(m['native']):7s} "
                         f"{m['comply']:8.3f} {m['recall']:8.3f} {m['asr']:8.3f} {m['saved']:8.3f} "
                         f"{m['case_A']:6.3f} {m['case_B']:6.3f} {m['case_C']:6.3f} {m['case_D']:6.3f}")
     print("\n".join(lines))

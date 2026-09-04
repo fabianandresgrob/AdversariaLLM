@@ -48,7 +48,7 @@ eval_use_detector: [native, true, false]
 # + c*evade_detector, so c=0 is pure Stage B and higher c strips weight off eliciting harm.
 # This is the dilution ablation: it maps how much of a "hardened" comply_rate is really just the
 # attacker spending its fixed budget elsewhere. >0.75 degenerates (barely tries to elicit harm).
-eval_detector_coeffs: [0.25, 0.5, 0.75]
+eval_detector_coeffs: [0.1, 0.25, 0.5, 0.75]
 
 seed: 0                # seeds the attack's random perturbation init -> paired, reproducible runs
 

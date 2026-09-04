@@ -203,22 +203,31 @@ def main(cfg: DictConfig) -> None:
                 "recall": metrics["detector/recall@1fpr"],
                 "asr": metrics["pipeline/asr"],
                 "saved": metrics["pipeline/detector_saved"],
+                "p_mean": metrics.get("detector/harmful_score_mean", float("nan")),
+                "p_min": metrics.get("detector/harmful_score_min", float("nan")),
+                "margin": metrics.get("detector/harmful_margin_min", float("nan")),
+                "thr": metrics.get("detector/thr_1fpr", float("nan")),
                 "case_A": cases["A"], "case_B": cases["B"], "case_C": cases["C"], "case_D": cases["D"],
             }
             log.info(f"  comply={metrics['model/comply_rate']:.3f} recall={metrics['detector/recall@1fpr']:.3f} "
                      f"asr={metrics['pipeline/asr']:.3f} saved={metrics['pipeline/detector_saved']:.3f} "
+                     f"p_mean={metrics.get('detector/harmful_score_mean', float('nan')):.3f} "
+                     f"margin={metrics.get('detector/harmful_margin_min', float('nan')):+.3f} "
                      f"cases=A{cases['A']:.2f}/B{cases['B']:.2f}/C{cases['C']:.2f}/D{cases['D']:.2f}")
         del model
         torch.cuda.empty_cache()
 
     lines = ["", "# cross-attack eval (native = the attack condition the checkpoint trained under)",
              "# case_A..D computed on THIS eval's held-out data (not the training log's pipeline/case_*)",
-             f"{'checkpoint':28s} {'eval_attack':16s} {'native':7s} {'comply':>8s} {'recall':>8s} {'asr':>8s} "
-             f"{'saved':>8s} {'A':>6s} {'B':>6s} {'C':>6s} {'D':>6s}"]
+             "# p_mean/p_min = P(harmful) the probe gives attacked harmful; margin = p_min - thr",
+             "#   (margin near 0 => the attack nearly evaded; large => evasion going nowhere)",
+             f"{'checkpoint':28s} {'eval_attack':16s} {'comply':>8s} {'recall':>8s} {'asr':>8s} "
+             f"{'saved':>8s} {'p_mean':>8s} {'p_min':>8s} {'margin':>8s} {'A':>6s} {'B':>6s} {'C':>6s} {'D':>6s}"]
     for name, conds in results.items():
         for tag, m in conds.items():
-            lines.append(f"{name:28s} {tag:16s} {str(m['native']):7s} "
+            lines.append(f"{name:28s} {tag:16s} "
                         f"{m['comply']:8.3f} {m['recall']:8.3f} {m['asr']:8.3f} {m['saved']:8.3f} "
+                        f"{m['p_mean']:8.3f} {m['p_min']:8.3f} {m['margin']:+8.3f} "
                         f"{m['case_A']:6.3f} {m['case_B']:6.3f} {m['case_C']:6.3f} {m['case_D']:6.3f}")
     print("\n".join(lines))
 

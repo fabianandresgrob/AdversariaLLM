@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import logging
+import os
 from typing import Any
 
 from ..lm_utils import LocalTextGenerator
@@ -7,6 +10,24 @@ from ..lm_utils.text_generation import GenerationResult, RetryOverrides
 from ..types import Conversation
 from .base import DefenseDecision, TargetSystem
 from .monitors import build_monitor
+
+log = logging.getLogger(__name__)
+
+
+def _calibrated_threshold(monitor_cfg, fallback):
+    """Prefer the calibrated operating point written next to the checkpoint by
+    run_calibrate_probe.py; the config value is only a fallback."""
+    ckpt = (monitor_cfg or {}).get("checkpoint_path")
+    if not ckpt:
+        return fallback
+    path = os.path.join(os.path.dirname(str(ckpt)), "threshold_1pct.json")
+    if not os.path.exists(path):
+        log.warning(f"no calibration at {path}; using threshold={fallback} (NOT the 1%-FPR point)")
+        return fallback
+    with open(path) as fh:
+        thr = float(json.load(fh)["threshold"])
+    log.info(f"threshold={thr:.6f} (1%-FPR, from {path})")
+    return thr
 
 
 def _last_user_content(conv: Conversation) -> str:
@@ -30,12 +51,13 @@ class MonitorDefense(TargetSystem):
 
     @classmethod
     def from_config(cls, cfg, *, model, tokenizer, default_generate_kwargs=None) -> "MonitorDefense":
-        monitor = build_monitor(dict(cfg["monitor"]))
+        monitor_cfg = dict(cfg["monitor"])
+        monitor = build_monitor(monitor_cfg)
         return cls(
             model=model,
             tokenizer=tokenizer,
             monitor=monitor,
-            threshold=float(cfg.get("threshold", 0.5)),
+            threshold=_calibrated_threshold(monitor_cfg, float(cfg.get("threshold", 0.5))),
             refusal_text=cfg["refusal_text"],
             default_generate_kwargs=default_generate_kwargs,
         )

@@ -14,6 +14,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
+from typing import Optional
 
 import torch
 
@@ -29,7 +30,8 @@ class ReplayConfig:
     version: str = ""
     generation_config: GenerationConfig = field(default_factory=GenerationConfig)
     seed: int = 0
-    source: str = "???"  # phase-1 attack results dir holding <idx>/run.json
+    source: str = "???"  # phase-1 attack results dir, searched recursively for run.json
+    source_dataset: Optional[str] = None  # only load runs from this dataset (the dir name omits it)
 
 
 def _user_content(conv):
@@ -47,12 +49,20 @@ def _pick_adv_prompt(steps):
     return _user_content(best["model_input"])
 
 
-def _load_adv_prompts(source):
-    """behavior text -> adversarial prompt, from a prior attack's per-run run.json files."""
+def _load_adv_prompts(source, source_dataset=None):
+    """behavior text -> adversarial prompt, from a prior attack's per-run run.json files.
+
+    Recursive: chunked array jobs write one <date>/<time> dir per task, so `source` is
+    normally the whole <attack>__<defense>__<model> dir. Oldest-first, so a rerun of the
+    same behavior wins. The dir name does not encode the dataset -- pass source_dataset to
+    avoid mixing a different behavior set that lives in the same directory."""
     mapping = {}
-    for rj in sorted(glob.glob(os.path.join(source, "*", "run.json"))):
+    paths = glob.glob(os.path.join(source, "**", "run.json"), recursive=True)
+    for rj in sorted(paths, key=os.path.getmtime):
         with open(rj) as f:
             data = json.load(f)
+        if source_dataset and (data.get("config") or {}).get("dataset") != source_dataset:
+            continue
         for run in data.get("runs", []):
             behavior = _user_content(run.get("original_prompt", []))
             adv = _pick_adv_prompt(run.get("steps", []))
@@ -68,7 +78,7 @@ class ReplayAttack(Attack):
     @torch.no_grad
     def run(self, target: TargetSystem, dataset) -> AttackResult:
         t0 = time.time()
-        adv = _load_adv_prompts(self.config.source)
+        adv = _load_adv_prompts(self.config.source, getattr(self.config, "source_dataset", None))
 
         original_conversations: list[Conversation] = []
         generation_conversations: list[Conversation] = []

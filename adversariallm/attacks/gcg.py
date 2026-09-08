@@ -25,6 +25,7 @@ Extensively tested against a variety of models, including:
 The implementation is inspired by nanoGCG, but fixes several issues in nanoGCG,
 mostly related to tokenization.
 """
+import contextlib
 import gc
 import logging
 import math
@@ -77,6 +78,78 @@ class GCGConfig:
     grow_target: bool = False
     grad_smoothing: int = 1  # 1 = no smoothing, 2 = smooth over 2 tokens, etc.
     grad_momentum: float = 0.0  # momentum over steps
+    # Detector-aware (adaptive) GCG: also drive the coop probe toward "benign".
+    # loss = (1 - coeff) * elicit_target + coeff * evade_detector, in BOTH the gradient and the
+    # candidate ranking. coeff=0 / checkpoint=None -> exactly the standard attack.
+    detector_checkpoint: Optional[str] = None  # coop <tag>_reader.pt
+    detector_loss_coeff: float = 0.0
+    detector_layer: int = -1
+
+
+def load_detector(checkpoint_path: str, model: PreTrainedModel):
+    """Load a coop probe (a <tag>_reader.pt pair checkpoint, or a bare probe state_dict)."""
+    from ..training.readers import LinearProbe
+
+    ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    state = ckpt["reader"] if isinstance(ckpt, dict) and "reader" in ckpt else ckpt
+    probe = LinearProbe(state["linear.weight"].shape[1])  # (2, input_dim)
+    probe.load_state_dict(state)
+    return probe.to(next(model.parameters()).device).eval()
+
+
+class LayerCapture:
+    """Grab one layer's hidden state via a hook instead of output_hidden_states, which would
+    materialize every layer for all `search_width` candidates (~14 GB at 512).
+
+    Only layer=-1 is supported: hidden_states[-1] is taken AFTER the final norm, so the
+    equivalent hook point is model.model.norm, NOT the last decoder layer.
+    """
+
+    def __init__(self, model: PreTrainedModel, layer: int):
+        if layer != -1:
+            raise ValueError(f"LayerCapture supports layer=-1 only, got {layer}")
+        self.module = self._final_norm(model)
+        self.hidden = None
+        self._handle = None
+
+    @staticmethod
+    def _final_norm(model):
+        """The module whose output IS hidden_states[-1]. get_decoder() unwraps PEFT/LoRA too."""
+        decoder = model.get_decoder() if hasattr(model, "get_decoder") else getattr(model, "model", None)
+        norm = getattr(decoder, "norm", None)
+        if norm is None:
+            raise ValueError(f"could not locate the final norm on {type(model).__name__}")
+        return norm
+
+    def _hook(self, _module, _inputs, output):
+        self.hidden = output[0] if isinstance(output, tuple) else output
+
+    def __enter__(self):
+        self.hidden = None
+        self._handle = self.module.register_forward_hook(self._hook)
+        return self
+
+    def __exit__(self, *exc):
+        self._handle.remove()
+        self._handle = None
+        return False
+
+
+def detector_readout_masks(batch: int, prompt_len: int, target_ids: Tensor, device) -> tuple[Tensor, Tensor]:
+    """(target_ids, attention_mask) shaped so readers.readout_index lands on the last prompt
+    token of GCG's [pre][attack][post][target] layout — i.e. prompt_len - 1.
+
+    Built rather than index-computed so the probe is read through the exact same function used
+    in coop training and by LinearProbeMonitor at eval; the two cannot drift apart. Works for
+    the prefix-cache path too, where hidden covers only [attack][post][target] and prompt_len
+    is correspondingly shorter.
+    """
+    tgt_len = target_ids.size(1)
+    total = prompt_len + tgt_len
+    attn = torch.ones(batch, total, dtype=torch.long, device=device)
+    tgt = torch.zeros(batch, total, dtype=torch.long, device=device)
+    tgt[:, prompt_len:] = target_ids[:, :tgt_len].to(device)  # nonzero only in the response region
+    return tgt, attn
 
 
 def compute_loss(shift_logits: Tensor, shift_labels: Tensor, loss_type: str, disallowed_ids: Tensor, mellowmax_alpha: float = 1.0, tokenizer: Optional[PreTrainedTokenizerBase] = None) -> Tensor:
@@ -245,6 +318,7 @@ def compute_loss(shift_logits: Tensor, shift_labels: Tensor, loss_type: str, dis
 
 
 class GCGAttack(Attack):
+    detector = None  # set in run(); None = standard (non-detector-aware) GCG
     def __init__(self, config: GCGConfig):
         super().__init__(config)
         self.tokenizer = None  # Will be set in run()
@@ -275,10 +349,40 @@ class GCGAttack(Attack):
         assert isinstance(embeddings, torch.Tensor), "embeddings are expected to be a tensor"
         num_embeddings = embeddings.size(0)
         self.not_allowed_ids = self.not_allowed_ids[self.not_allowed_ids < num_embeddings]
+
+        # detector-aware mode: off unless a probe is configured with a nonzero coefficient
+        self.detector = None
+        if self.config.detector_checkpoint and self.config.detector_loss_coeff > 0:
+            self.detector = load_detector(self.config.detector_checkpoint, model)
+            logging.info(
+                f"detector-aware GCG: coeff={self.config.detector_loss_coeff} "
+                f"layer={self.config.detector_layer} probe={self.config.detector_checkpoint}"
+            )
+
         runs = []
         for conversation in dataset:
             runs.append(self._attack_single_conversation(model, tokenizer, conversation))
         return AttackResult(runs=runs)
+
+    def _capture(self, model):
+        """Hook the probe's layer for this forward, or a no-op when not detector-aware."""
+        if self.detector is None:
+            return contextlib.nullcontext()
+        return LayerCapture(model, self.config.detector_layer)
+
+    def _evasion_term(self, capture, batch: int, prompt_len: int, target_ids: Tensor) -> Optional[Tensor]:
+        """Per-example (B,) CE pushing the probe toward benign, or None when not detector-aware.
+
+        target_ids must be the slice actually appended to this forward (grow_target shortens it),
+        so the synthesized masks match the captured hidden length."""
+        if self.detector is None or capture is None or capture.hidden is None:
+            return None
+        assert capture.hidden.size(1) == prompt_len + target_ids.size(1), (
+            f"detector readout length mismatch: hidden {capture.hidden.size(1)} != "
+            f"prompt {prompt_len} + target {target_ids.size(1)}"
+        )
+        tgt, attn = detector_readout_masks(batch, prompt_len, target_ids, capture.hidden.device)
+        return self.detector.evasion_loss(capture.hidden, tgt, attn, reduction="none")
 
     def _attack_single_conversation(self, model, tokenizer, conversation) -> SingleAttackRunResult:
         t0 = time.time()
@@ -528,11 +632,14 @@ class GCGAttack(Attack):
             for i, layer in enumerate(self.prefix_cache.layers):
                 layer.keys = layer.keys[:1, :, :T].expand(B, -1, -1, -1)
                 layer.values = layer.values[:1, :, :T].expand(B, -1, -1, -1)
-            outputs = model(
-                inputs_embeds=input_embeds,
-                past_key_values=self.prefix_cache,
-                use_cache=True,
-            )
+            # hidden covers only [attack][post][target] here; pre is served from the cache
+            prompt_len = attack_ids.shape[1] + self.post_embeds.size(1)
+            with self._capture(model) as capture:
+                outputs = model(
+                    inputs_embeds=input_embeds,
+                    past_key_values=self.prefix_cache,
+                    use_cache=True,
+                )
             for i, layer in enumerate(self.prefix_cache.layers):
                 layer.keys = layer.keys[:1]
                 layer.values = layer.values[:1]
@@ -547,7 +654,9 @@ class GCGAttack(Attack):
                 ],
                 dim=1,
             )
-            outputs = model(inputs_embeds=input_embeds)
+            prompt_len = self.pre_prompt_embeds.size(1) + attack_ids.shape[1] + self.post_embeds.size(1)
+            with self._capture(model) as capture:
+                outputs = model(inputs_embeds=input_embeds)
         flops = get_flops(model, input_embeds.shape[1], 0, "forward")
 
         logits = outputs.logits
@@ -557,6 +666,13 @@ class GCGAttack(Attack):
 
         loss = compute_loss(shift_logits, shift_labels, self.config.loss, self.not_allowed_ids, self.config.mellowmax_alpha, self.tokenizer)  # (B,)
 
+        evasion = self._evasion_term(capture, B, prompt_len, self.target_ids[:, :self.target_length])  # (B,) or None
+        if evasion is not None:  # rank candidates on elicit-target AND evade-detector
+            c = self.config.detector_loss_coeff
+            loss = (1 - c) * loss + c * evasion.to(loss.dtype)
+
+        # acc stays on the target objective: it means "the target was elicited", and drives
+        # early_stop -- a detector-evading candidate that does not elicit is not a success.
         acc: torch.BoolTensor = (shift_logits.argmax(-1) == shift_labels).all(-1)  # (B, T) -> (B,)
 
         if self.config.early_stop:
@@ -960,11 +1076,13 @@ class SubstitutionSelectionStrategy:
             for i, layer in enumerate(self.prefix_cache.layers):
                 layer.keys = layer.keys[:1, :, :T].expand(B, -1, -1, -1)
                 layer.values = layer.values[:1, :, :T].expand(B, -1, -1, -1)
-            output = model(
-                inputs_embeds=input_embeds,
-                past_key_values=self.prefix_cache,
-                use_cache=True,
-            )
+            grad_prompt_len = optim_embeds.shape[1] + self.post_embeds.size(1)
+            with self._capture(model) as grad_capture:
+                output = model(
+                    inputs_embeds=input_embeds,
+                    past_key_values=self.prefix_cache,
+                    use_cache=True,
+                )
             for i, layer in enumerate(self.prefix_cache.layers):
                 layer.keys = layer.keys[:1]
                 layer.values = layer.values[:1]
@@ -979,7 +1097,9 @@ class SubstitutionSelectionStrategy:
                 ],
                 dim=1,
             )
-            output = model(inputs_embeds=input_embeds)
+            grad_prompt_len = self.pre_prompt_embeds.size(1) + optim_embeds.shape[1] + self.post_embeds.size(1)
+            with self._capture(model) as grad_capture:
+                output = model(inputs_embeds=input_embeds)
         logits = output.logits
 
         # Shift logits so token n-1 predicts token n
@@ -989,6 +1109,11 @@ class SubstitutionSelectionStrategy:
 
         loss = compute_loss(shift_logits, shift_labels, self.config.loss, self.not_allowed_ids, self.config.mellowmax_alpha, self.tokenizer)
         loss = loss.mean()
+
+        grad_evasion = self._evasion_term(grad_capture, B, grad_prompt_len, self.target_ids)
+        if grad_evasion is not None:  # steer the gradient toward evasion as well
+            c = self.config.detector_loss_coeff
+            loss = (1 - c) * loss + c * grad_evasion.mean().to(loss.dtype)
 
         optim_ids_onehot_grad = torch.autograd.grad(
             outputs=[loss],

@@ -63,12 +63,21 @@ class Reader(ABC):
         """P(harmful) per row = softmax(logits)[:, HARMFUL_COL]."""
         return torch.softmax(self.logits(hidden, target_ids, attention_mask).float(), dim=-1)[:, HARMFUL_COL]
 
-    def evasion_loss(self, hidden: torch.Tensor, target_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+    def evasion_loss(
+        self,
+        hidden: torch.Tensor,
+        target_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
+        reduction: str = "mean",
+    ) -> torch.Tensor:
         """Loss a detector-aware attacker minimizes to make this reader predict benign — the
-        detector-side term of the Stage C embedding attack. CE toward BENIGN_COL."""
+        detector-side term of the Stage C embedding attack. CE toward BENIGN_COL.
+
+        reduction="none" returns the per-example (B,) loss, which a discrete attacker needs to
+        rank candidate substitutions against each other."""
         logits = self.logits(hidden, target_ids, attention_mask)
         target = torch.full((logits.size(0),), BENIGN_COL, dtype=torch.long, device=logits.device)
-        return nn.functional.cross_entropy(logits, target)
+        return nn.functional.cross_entropy(logits, target, reduction=reduction)
 
 
 class LinearProbe(Reader, nn.Module):

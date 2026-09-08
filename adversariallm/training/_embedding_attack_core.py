@@ -116,9 +116,9 @@ class EmbeddingSpaceAttack:
         self.iters = iters
         self.opt_config = opt_config
         self.detector_loss_coeff = detector_loss_coeff
-        if relative_lr:
-            self.opt_config["lr"] = self.opt_config["lr"] * self.eps
         self.eps = eps * self.embedding_norm
+        if relative_lr:  # lr is expressed as a fraction of the ball radius, so scale it after eps
+            self.opt_config["lr"] = self.opt_config["lr"] * self.eps
         self.wandb_step = 0
         self.use_detector = False
         self.hidden_state_detector_index = hidden_state_detector_index

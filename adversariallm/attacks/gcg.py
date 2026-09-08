@@ -317,8 +317,37 @@ def compute_loss(shift_logits: Tensor, shift_labels: Tensor, loss_type: str, dis
     return loss
 
 
-class GCGAttack(Attack):
-    detector = None  # set in run(); None = standard (non-detector-aware) GCG
+class DetectorAware:
+    """The probe hooks shared by everything that runs a detector-aware forward.
+
+    Implementors hold a GCGConfig as self.config and the loaded probe as self.detector;
+    detector=None means plain GCG and every method here degrades to a no-op.
+    """
+
+    detector = None  # set by the owner; None = standard (non-detector-aware) GCG
+
+    def _capture(self, model):
+        """Hook the probe's layer for this forward, or a no-op when not detector-aware."""
+        if self.detector is None:
+            return contextlib.nullcontext()
+        return LayerCapture(model, self.config.detector_layer)
+
+    def _evasion_term(self, capture, batch: int, prompt_len: int, target_ids: Tensor) -> Optional[Tensor]:
+        """Per-example (B,) CE pushing the probe toward benign, or None when not detector-aware.
+
+        target_ids must be the slice actually appended to this forward (grow_target shortens it),
+        so the synthesized masks match the captured hidden length."""
+        if self.detector is None or capture is None or capture.hidden is None:
+            return None
+        assert capture.hidden.size(1) == prompt_len + target_ids.size(1), (
+            f"detector readout length mismatch: hidden {capture.hidden.size(1)} != "
+            f"prompt {prompt_len} + target {target_ids.size(1)}"
+        )
+        tgt, attn = detector_readout_masks(batch, prompt_len, target_ids, capture.hidden.device)
+        return self.detector.evasion_loss(capture.hidden, tgt, attn, reduction="none")
+
+
+class GCGAttack(DetectorAware, Attack):
     def __init__(self, config: GCGConfig):
         super().__init__(config)
         self.tokenizer = None  # Will be set in run()
@@ -363,26 +392,6 @@ class GCGAttack(Attack):
         for conversation in dataset:
             runs.append(self._attack_single_conversation(model, tokenizer, conversation))
         return AttackResult(runs=runs)
-
-    def _capture(self, model):
-        """Hook the probe's layer for this forward, or a no-op when not detector-aware."""
-        if self.detector is None:
-            return contextlib.nullcontext()
-        return LayerCapture(model, self.config.detector_layer)
-
-    def _evasion_term(self, capture, batch: int, prompt_len: int, target_ids: Tensor) -> Optional[Tensor]:
-        """Per-example (B,) CE pushing the probe toward benign, or None when not detector-aware.
-
-        target_ids must be the slice actually appended to this forward (grow_target shortens it),
-        so the synthesized masks match the captured hidden length."""
-        if self.detector is None or capture is None or capture.hidden is None:
-            return None
-        assert capture.hidden.size(1) == prompt_len + target_ids.size(1), (
-            f"detector readout length mismatch: hidden {capture.hidden.size(1)} != "
-            f"prompt {prompt_len} + target {target_ids.size(1)}"
-        )
-        tgt, attn = detector_readout_masks(batch, prompt_len, target_ids, capture.hidden.device)
-        return self.detector.evasion_loss(capture.hidden, tgt, attn, reduction="none")
 
     def _attack_single_conversation(self, model, tokenizer, conversation) -> SingleAttackRunResult:
         t0 = time.time()
@@ -444,7 +453,8 @@ class GCGAttack(Attack):
             self.target_embeds,
             self.target_ids,
             self.not_allowed_ids,
-            self.tokenizer
+            self.tokenizer,
+            self.detector,
         )
         losses = []
         times = []
@@ -713,9 +723,10 @@ class AttackBuffer:
         return self.buffer[-1][0]
 
 
-class SubstitutionSelectionStrategy:
-    def __init__(self, config: GCGConfig, prefix_cache: list[tuple[Tensor, Tensor]], pre_prompt_embeds: Tensor, post_embeds: Tensor, target_embeds: Tensor, target_ids: Tensor, not_allowed_ids: Tensor, tokenizer: PreTrainedTokenizerBase):
+class SubstitutionSelectionStrategy(DetectorAware):
+    def __init__(self, config: GCGConfig, prefix_cache: list[tuple[Tensor, Tensor]], pre_prompt_embeds: Tensor, post_embeds: Tensor, target_embeds: Tensor, target_ids: Tensor, not_allowed_ids: Tensor, tokenizer: PreTrainedTokenizerBase, detector=None):
         self.config = config
+        self.detector = detector  # the gradient is detector-aware only when the owner passes one
         self.strategy = config.token_selection
         self.prefix_cache = prefix_cache
         self.pre_prompt_embeds = pre_prompt_embeds

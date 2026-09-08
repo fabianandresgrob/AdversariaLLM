@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import glob
 import json
 import logging
 import os
@@ -14,19 +15,39 @@ from .monitors import build_monitor
 log = logging.getLogger(__name__)
 
 
-def _calibrated_threshold(monitor_cfg, fallback):
+def _calibrated_threshold(monitor_cfg, fallback, calibration_path=None):
     """Prefer the calibrated operating point written next to the checkpoint by
-    run_calibrate_probe.py; the config value is only a fallback."""
-    ckpt = (monitor_cfg or {}).get("checkpoint_path")
-    if not ckpt:
-        return fallback
-    path = os.path.join(os.path.dirname(str(ckpt)), "threshold_1pct.json")
-    if not os.path.exists(path):
-        log.warning(f"no calibration at {path}; using threshold={fallback} (NOT the 1%-FPR point)")
-        return fallback
+    run_calibrate_probe.py; the config value is only a fallback.
+
+    run_calibrate_probe.py names its output for the FPR it calibrated at
+    (threshold_1pct.json, threshold_5pct.json, ...), so match the whole family
+    rather than assuming the fpr=0.01 default. An explicit calibration_path in
+    the defense config wins over the search."""
+    if calibration_path:
+        path = str(calibration_path)
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"calibration_path={path} does not exist")
+    else:
+        ckpt = (monitor_cfg or {}).get("checkpoint_path")
+        if not ckpt:
+            return fallback
+        pattern = os.path.join(os.path.dirname(str(ckpt)), "threshold_*pct.json")
+        found = sorted(glob.glob(pattern))
+        if not found:
+            log.warning(f"no calibration matching {pattern}; using threshold={fallback} (NOT a calibrated point)")
+            return fallback
+        if len(found) > 1:
+            raise ValueError(
+                f"{len(found)} calibrations match {pattern}: {found}. "
+                "Set defense.calibration_path to pick the operating point explicitly."
+            )
+        path = found[0]
     with open(path) as fh:
-        thr = float(json.load(fh)["threshold"])
-    log.info(f"threshold={thr:.6f} (1%-FPR, from {path})")
+        calib = json.load(fh)
+    thr = float(calib["threshold"])
+    fpr = calib.get("fpr")
+    at_fpr = f"{float(fpr):.1%} FPR" if isinstance(fpr, (int, float)) else "unrecorded FPR"
+    log.info(f"threshold={thr:.6f} ({at_fpr}, from {path})")
     return thr
 
 
@@ -53,11 +74,12 @@ class MonitorDefense(TargetSystem):
     def from_config(cls, cfg, *, model, tokenizer, default_generate_kwargs=None) -> "MonitorDefense":
         monitor_cfg = dict(cfg["monitor"])
         monitor = build_monitor(monitor_cfg)
+        calibration_path = cfg.get("calibration_path")
         return cls(
             model=model,
             tokenizer=tokenizer,
             monitor=monitor,
-            threshold=_calibrated_threshold(monitor_cfg, float(cfg.get("threshold", 0.5))),
+            threshold=_calibrated_threshold(monitor_cfg, float(cfg.get("threshold", 0.5)), calibration_path),
             refusal_text=cfg["refusal_text"],
             default_generate_kwargs=default_generate_kwargs,
         )

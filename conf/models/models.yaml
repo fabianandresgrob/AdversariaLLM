@@ -103,6 +103,8 @@ coop_v2_B_long:
   chat_template: llama-3-instruct
   trust_remote_code: True
   adapter_path: ${root_dir}/checkpoints_coop/coop_v2_B_long_eps005_s0/final_adapter
+  # defense=coop_probe reads reader_path from here; its threshold comes from the calibration file.
+  reader_path: ${root_dir}/checkpoints_coop/coop_v2_B_long_eps005_s0/final_reader.pt
 coop-magpie-eps005-s0:
   # Cooperative-pipeline model (magpie leash, Stage B, eps=0.05). Pair with defense=coop_probe.
   id: meta-llama/Meta-Llama-3.1-8B-Instruct

@@ -317,6 +317,17 @@ def compute_loss(shift_logits: Tensor, shift_labels: Tensor, loss_type: str, dis
     return loss
 
 
+def _cfg(config, key: str, default=None):
+    """Read an optional knob.
+
+    Attacks are handed the raw DictConfig from attacks.yaml, never an instantiated
+    GCGConfig, so the dataclass defaults above do NOT apply at runtime -- a key absent
+    from the YAML raises ConfigAttributeError instead. Keep the detector knobs optional
+    so configs written before detector-aware GCG still run.
+    """
+    return getattr(config, key, default)
+
+
 class DetectorAware:
     """The probe hooks shared by everything that runs a detector-aware forward.
 
@@ -330,7 +341,7 @@ class DetectorAware:
         """Hook the probe's layer for this forward, or a no-op when not detector-aware."""
         if self.detector is None:
             return contextlib.nullcontext()
-        return LayerCapture(model, self.config.detector_layer)
+        return LayerCapture(model, _cfg(self.config, "detector_layer", -1))
 
     def _evasion_term(self, capture, batch: int, prompt_len: int, target_ids: Tensor) -> Optional[Tensor]:
         """Per-example (B,) CE pushing the probe toward benign, or None when not detector-aware.
@@ -381,11 +392,12 @@ class GCGAttack(DetectorAware, Attack):
 
         # detector-aware mode: off unless a probe is configured with a nonzero coefficient
         self.detector = None
-        if self.config.detector_checkpoint and self.config.detector_loss_coeff > 0:
-            self.detector = load_detector(self.config.detector_checkpoint, model)
+        if _cfg(self.config, "detector_checkpoint") and _cfg(self.config, "detector_loss_coeff", 0.0) > 0:
+            self.detector = load_detector(_cfg(self.config, "detector_checkpoint"), model)
             logging.info(
-                f"detector-aware GCG: coeff={self.config.detector_loss_coeff} "
-                f"layer={self.config.detector_layer} probe={self.config.detector_checkpoint}"
+                f"detector-aware GCG: coeff={_cfg(self.config, 'detector_loss_coeff', 0.0)} "
+                f"layer={_cfg(self.config, 'detector_layer', -1)} "
+                f"probe={_cfg(self.config, 'detector_checkpoint')}"
             )
 
         runs = []

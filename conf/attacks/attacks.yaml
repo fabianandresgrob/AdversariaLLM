@@ -233,6 +233,11 @@ gcg:
   grow_target: False
   grad_smoothing: 1
   grad_momentum: 0.0   # 0.5 works quite well
+  # Detector-aware GCG: loss = (1 - coeff) * elicit_target + coeff * evade_detector, in both the
+  # gradient and the candidate ranking. Off unless a probe is set AND coeff > 0.
+  detector_checkpoint: null   # path to a coop <tag>_reader.pt
+  detector_loss_coeff: 0.0
+  detector_layer: -1
 gcg_refusal:
   name: gcg_refusal
   type: discrete

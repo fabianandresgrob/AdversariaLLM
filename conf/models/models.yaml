@@ -156,6 +156,19 @@ coop-magpie-eps005-detaware-ndet10-s0:
   trust_remote_code: True
   adapter_path: ${root_dir}/checkpoints_coop/coop-magpie-eps005-detaware-ndet10-s0/final_adapter
   reader_path: ${root_dir}/checkpoints_coop/coop-magpie-eps005-detaware-ndet10-s0/final_reader.pt
+coop-magpie-eps1-norep-s0:
+  # CAT-equivalent control: coop training with eps=1 (refusal taught everywhere, detector ignored)
+  # and lambda_rep=0 (no representation term) -> plain embedding-adversarial training, matched to
+  # the coop runs on data/attack/leash/LoRA/steps/seed. Evaluate model-alone (defense=none).
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: False
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: True
+  adapter_path: ${root_dir}/checkpoints_coop/coop-magpie-eps1-norep-s0/final_adapter
 meta-llama/Meta-Llama-3.1-70B-Instruct:
   id: meta-llama/Meta-Llama-3.1-70B-Instruct
   tokenizer_id: meta-llama/Meta-Llama-3.1-70B-Instruct

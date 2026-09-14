@@ -32,9 +32,6 @@ delta: 0.0            # rep-gate floor; LOCKED at 0 (v1 stability result)
 lambda_beh: 1.0
 lambda_rep: 1.0
 lambda_kl: 1.0
-lambda_help: 1.0      # hard-benign gated CE
-lambda_help_easy: 0.0 # ablation hook (easy-benign ungated CE)
-lambda_kl_hard: 0.0   # ablation hook (hard-benign KL)
 
 # Stage A = no attack (clean prompt); Stage B = continuous embedding attack.
 attack:
@@ -54,14 +51,12 @@ data:
   utility_batch_size: 4
   val_size: 16                      # harmful behaviors held out for validation
   val_seed: 0
-  # Benign split: easy = detector class + PINNED calibration; hard = gated-CE + detector (opt-in).
+  # Benign split: easy = detector class + PINNED calibration.
   kl_source: ultrachat              # KL-leash dataset; any registered source (e.g. magpie) or ultrachat
   kl_max_length: null               # truncate leash examples to N tokens (magpie responses run ~90k chars)
   # KL uses the kl_source train window. xs_test is NEVER a training source (held out for over-refusal + FPR).
   easy_benign_sources: [alpaca]     # detector easy-benign class (train windows); NOT xs_test
   calibration_benign: alpaca        # PINNED 1%-FPR threshold set (val window), frozen across runs
-  hard_benign_sources: []           # opt-in; set to [or_bench] to enable the hard-benign term
-  benign_targets_path: ${root_dir}/data/benign_targets/or_bench_ygen.json
 
 training:
   model_lr: 5.0e-5

@@ -60,11 +60,10 @@ def _hidden_and_logits(model, layer, *, inputs_embeds=None, input_ids=None, atte
     return out.hidden_states[layer], out.logits
 
 
-def _detector_step(model, reader, opt_det, layer, adv_embeds, adv_batch, easy_batch, hard_batch, device):
+def _detector_step(model, reader, opt_det, layer, adv_embeds, adv_batch, easy_batch, device):
     """One detector update: model frozen, reader trainable. Mixed batch — attacked harmful
-    (label 0) plus easy benign and hard benign (both label 1). Diverse benign is what stops the
-    OOD over-firing; hard benign is the case-F near-harmful FPR pressure. Model forwards under
-    no_grad so only the reader trains. Label convention asserted: harmful=0, benign=1."""
+    (label 0) plus easy benign (label 1). Diverse benign is what stops the OOD over-firing.
+    Model forwards under no_grad so only the reader trains. Label convention: harmful=0, benign=1."""
     opt_det.zero_grad(set_to_none=True)
     logits_parts, labels_parts = [], []
 
@@ -81,13 +80,6 @@ def _detector_step(model, reader, opt_det, layer, adv_embeds, adv_batch, easy_ba
         logits_parts.append(logits_b)
         labels_parts.append(torch.ones(logits_b.size(0), dtype=torch.long, device=device))  # benign = 1
 
-    if hard_batch is not None:
-        with torch.no_grad():
-            g_hidden, _ = _hidden_and_logits(model, layer, input_ids=hard_batch["g_ids"], attention_mask=hard_batch["g_attn"])
-        logits_g = reader.logits(g_hidden, hard_batch["g_targetids"], hard_batch["g_attn"])
-        logits_parts.append(logits_g)
-        labels_parts.append(torch.ones(logits_g.size(0), dtype=torch.long, device=device))  # benign = 1
-
     logits = torch.cat(logits_parts, dim=0)
     labels = torch.cat(labels_parts, dim=0)
     loss = detector_ce(logits, labels)
@@ -97,19 +89,16 @@ def _detector_step(model, reader, opt_det, layer, adv_embeds, adv_batch, easy_ba
 
 
 def _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch,
-                easy_batch, hard_batch, hp, use_rep, warming, device):
-    """One model update: reader frozen, model trainable. Three disjoint example types summed
+                easy_batch, hp, use_rep, warming, device):
+    """One model update: reader frozen, model trainable. Two disjoint example types summed
     with per-subset normalizers into one backward:
 
         harmful      : lambda_beh * [eps+(1-eps)*w_D] * CE(y_safe)
                      + lambda_rep * [delta+(1-delta)*w_M] * detector_ce(reader(h), harmful=0)
-        easy benign  : lambda_kl * KL(model||ref)        (+ lambda_help_easy*CE, ablation hook)
-        hard benign  : lambda_help * w_M^b * CE(y_gen)    masked to has_target
-                                                          (+ lambda_kl_hard*KL, ablation hook)
+        easy benign  : lambda_kl * KL(model||ref)
 
     No away term. Gates are stop-gradient. During warmup (`warming`): rep term off and the
-    harmful behavior gate is forced to eps=1 (w_D is meaningless while a cold probe warms);
-    the hard-benign term is detector-independent and stays on."""
+    harmful behavior gate is forced to eps=1 (w_D is meaningless while a cold probe warms)."""
     opt_model.zero_grad(set_to_none=True)
     logs = {}
     total = torch.zeros((), device=device)
@@ -144,27 +133,6 @@ def _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch,
         kl = utility_kl(u_logits, r_logits, attention_mask=easy_batch["attn"])
         total = total + hp["lambda_kl"] * kl
         logs["kl"] = kl.item()
-        if hp["lambda_help_easy"] > 0:  # ablation hook (default 0): ungated easy-benign CE
-            easy_ce = per_example_ce(u_logits[:, :-1], easy_batch["labels"][:, 1:]).mean()
-            total = total + hp["lambda_help_easy"] * easy_ce
-
-    # ---- hard benign: gated CE toward y_gen, masked to has_target ----
-    if hard_batch is not None:
-        g_hidden, g_logits = _hidden_and_logits(model, layer, input_ids=hard_batch["g_ids"], attention_mask=hard_batch["g_attn"])
-        r_logits_hb = model(input_ids=hard_batch["r_ids"], attention_mask=hard_batch["r_attn"]).logits
-        lp_gen = avg_logprob(g_logits[:, :-1], hard_batch["g_labels"][:, 1:])
-        lp_ref = avg_logprob(r_logits_hb[:, :-1], hard_batch["r_labels"][:, 1:])
-        wmb = w_refuse(lp_ref, lp_gen, tau=hp["tau_b"])
-        mask = hard_batch["has_target"]  # (B,) 1.0 / 0.0
-        help_ce = per_example_ce(g_logits[:, :-1], hard_batch["g_labels"][:, 1:])
-        denom = mask.sum().clamp_min(1.0)
-        help_term = (mask * wmb * help_ce).sum() / denom
-        total = total + hp["lambda_help"] * help_term
-        logs.update(help=help_term.item(), wmb_mean=wmb.mean().item(),
-                    wmb_open=(wmb > 0.5).float().mean().item())
-        if hp["lambda_kl_hard"] > 0:  # ablation hook (default 0): hard-benign KL
-            r_ref = ref.logits(inputs_embeds=model.get_input_embeddings()(hard_batch["g_ids"]), attention_mask=hard_batch["g_attn"])
-            total = total + hp["lambda_kl_hard"] * utility_kl(g_logits, r_ref, attention_mask=hard_batch["g_attn"])
 
     total.backward()
     opt_model.step()
@@ -382,13 +350,12 @@ def run_coop_training(cfg):
     from .data import (
         AdvTupleStream,
         BenignStream,
-        HardBenignStream,
+        HelpRefusePairStream,
         build_kl_stream,
         collate_adv,
         collate_benign,
-        collate_hard_benign,
+        collate_help_pair,
         collate_util,
-        load_benign_targets,
         load_dataset_prompts,
         split_adv_stream,
     )
@@ -397,7 +364,7 @@ def run_coop_training(cfg):
     container = OmegaConf.to_container(cfg, resolve=True)
     device_hp = {k: container[k] for k in (
         "tau", "tau_b", "epsilon", "delta",
-        "lambda_beh", "lambda_rep", "lambda_kl", "lambda_help", "lambda_help_easy", "lambda_kl_hard",
+        "lambda_beh", "lambda_rep", "lambda_kl",
     )}
 
     model_params = cfg.models[cfg.model]
@@ -458,18 +425,6 @@ def run_coop_training(cfg):
     )
     easy_benign_iter = _cycle(easy_benign_loader)
 
-    # hard benign (opt-in; default []): near-harmful prompts + generated y_gen targets
-    hard_benign_iter = None
-    if cfg.data.hard_benign_sources:
-        hb_rows, hb_total, hb_refused = load_benign_targets(cfg.data.benign_targets_path)
-        log.info(f"hard benign: {hb_total} prompts, {hb_refused} base-refused "
-                 f"({hb_refused / max(hb_total, 1):.1%} pre-existing over-refusal)")
-        hard_benign_ds = HardBenignStream(hb_rows, tokenizer, template_id)
-        hard_benign_loader = DataLoader(
-            hard_benign_ds, batch_size=cfg.data.harmful_batch_size, shuffle=True, collate_fn=collate_hard_benign
-        )
-        hard_benign_iter = _cycle(hard_benign_loader)
-
     # held-out validation: clean harmful (from the split)
     harmful_val_batches = [
         _to_device(b, device)
@@ -495,10 +450,10 @@ def run_coop_training(cfg):
     ]
     xstest_prompts = [p for p, _ in xstest_ds.rows[: int(cfg.training.benign_gen_n)]]
     # easy-help batches for the w_M^b sanity (easy benign, shipped responses vs refuse dummy)
-    easy_help_ds = HardBenignStream([(p, r) for p, r in zip(calib_prompts, calib_resp)], tokenizer, template_id)
+    easy_help_ds = HelpRefusePairStream([(p, r) for p, r in zip(calib_prompts, calib_resp)], tokenizer, template_id)
     easy_help_batches = [
         _to_device(b, device)
-        for b in DataLoader(easy_help_ds, batch_size=cfg.data.harmful_batch_size, shuffle=False, collate_fn=collate_hard_benign)
+        for b in DataLoader(easy_help_ds, batch_size=cfg.data.harmful_batch_size, shuffle=False, collate_fn=collate_help_pair)
     ]
 
     layer = int(container["reader"].get("layer", -1)) if container.get("reader") else -1
@@ -563,7 +518,6 @@ def run_coop_training(cfg):
             _detector_step(
                 model, reader, opt_det, layer, adv_embeds, adv_batch,
                 _to_device(next(easy_benign_iter), device),
-                _to_device(next(hard_benign_iter), device) if hard_benign_iter is not None else None,
                 device,
             )
             for _ in range(n_det)
@@ -579,7 +533,6 @@ def run_coop_training(cfg):
         logs, wh, wm = _model_step(
             model, reader, ref, opt_model, layer, adv_embeds, adv_batch,
             util_batch,
-            _to_device(next(hard_benign_iter), device) if hard_benign_iter is not None else None,
             device_hp, use_rep, warming, device,
         )
         logs["det"] = sum(det_losses) / len(det_losses)

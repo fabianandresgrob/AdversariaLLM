@@ -155,9 +155,8 @@ def gate_stats(weights) -> dict:
     """Diagnostics for a per-example soft gate (e.g. w_M^b), the §8 benign-gate sanity set.
 
     - mean: average gate value.
-    - frac_open: fraction > 0.5 — the inertness / example-supply signal. Near 0 means the gated
-      term has essentially no examples to act on (a gate reweights, it cannot create), so any
-      lambda_help result on it is noise.
+    - frac_open: fraction > 0.5 — the inertness / example-supply signal. Near 0 means the gate
+      is firing on essentially nothing (a gate reweights, it cannot create examples).
     - frac_sat_hi / frac_sat_lo: fraction > 0.99 / < 0.01. An all-saturated batch means tau is
       wrong and the soft gate has silently become a hard switch.
     """

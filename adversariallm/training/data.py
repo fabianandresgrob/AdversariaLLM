@@ -245,30 +245,11 @@ def collate_benign(batch):
     return out
 
 
-def load_benign_targets(path):
-    """Read a generated hard-benign target file into (rows, n_total, n_refused).
-
-    File format: JSON list of {"prompt": str, "y_gen": str | null}. y_gen is null for a
-    base-refused prompt (the base model would not answer it), which is kept — not dropped —
-    because it is the hardest negative for the detector; n_refused is the base's pre-existing
-    over-refusal count (a reported result, §4/§7 of the spec)."""
-    import json
-
-    with open(path) as fh:
-        data = json.load(fh)
-    rows = [(d["prompt"], d.get("y_gen")) for d in data if d.get("prompt")]
-    n_refused = sum(1 for _, y in rows if y is None)
-    return rows, len(rows), n_refused
-
-
-class HardBenignStream(Dataset):
-    """Hard (near-harmful) benign prompts with a GENERATED helpful target y_gen and a fixed
-    canned refusal. Provides two model forwards per row — help (prompt+y_gen) and refuse
-    (prompt+refusal) — for the gated CE term and the w_M^b gate, plus the detector's benign
-    readout (read off the help forward's last-prompt-token hidden state). Base-refused rows
-    (y_gen is None) carry has_target=0: their help forward is a dummy (the refusal string) so
-    collation stays uniform, they are masked out of the CE term, but they still feed the
-    detector as benign (label 1) — the hardest negatives. Label 1 = benign throughout."""
+class HelpRefusePairStream(Dataset):
+    """Benign prompts paired with a helpful target y_help and a fixed canned refusal. Provides
+    two model forwards per row — help (prompt+y_help) and refuse (prompt+refusal) — which is
+    what the w_M^b benign-gate diagnostic needs. Rows with y_help None carry has_target=0 and
+    use the refusal string as a dummy so collation stays uniform."""
 
     def __init__(self, rows, tokenizer, model_name, refusal="I can't help with that."):
         self.rows = [(p, y) for p, y in rows if p]
@@ -278,9 +259,9 @@ class HardBenignStream(Dataset):
         return len(self.rows)
 
     def __getitem__(self, i):
-        x, y_gen = self.rows[i]
-        has_target = y_gen is not None
-        y_help = y_gen if has_target else self.refusal  # dummy for base-refused (masked out)
+        x, y = self.rows[i]
+        has_target = y is not None
+        y_help = y if has_target else self.refusal  # dummy for targetless rows (masked out)
         g_ids, g_lab, g_tgt, g_attn = build_example_full(x, y_help, self.tokenizer, self.model_name)
         r_ids, r_lab, _, r_attn = build_example_full(x, self.refusal, self.tokenizer, self.model_name)
         return {
@@ -292,8 +273,8 @@ class HardBenignStream(Dataset):
         }
 
 
-def collate_hard_benign(batch):
-    """Collate HardBenignStream items: ids/targetids/attn padded with 0, labels with -100."""
+def collate_help_pair(batch):
+    """Collate HelpRefusePairStream items: ids/targetids/attn padded with 0, labels with -100."""
     out = pad_collate(
         batch,
         ["g_ids", "g_labels", "g_targetids", "g_attn", "r_ids", "r_labels", "r_attn"],

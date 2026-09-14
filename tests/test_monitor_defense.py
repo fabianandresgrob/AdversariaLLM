@@ -40,7 +40,7 @@ def test_activation_monitor_score_returns_p_yes(monkeypatch):
     # score() lives in the ActivationMonitor base now, so patch build_detector_batch there.
     monkeypatch.setattr(
         base_mod, "build_detector_batch",
-        lambda prompts, responses, tokenizer, model_name: (
+        lambda prompts, responses, tokenizer: (
             torch.zeros(len(prompts), 3, dtype=torch.long),
             torch.zeros(len(prompts), 3, dtype=torch.long),
             torch.ones(len(prompts), 3, dtype=torch.long),
@@ -135,15 +135,16 @@ def test_monitor_registered_and_buildable(monkeypatch):
     assert defended.threshold == 0.5
 
 
-def test_ensure_detector_uses_detector_model_name(monkeypatch):
+def test_ensure_detector_uses_detector_tokenizer(monkeypatch):
     # Regression: the Detector's internal scaffold must be built with the DETECTOR
-    # (gemma) chat template, not the target model's. Passing the wrong model name
-    # here silently produces meaningless logits.
+    # (gemma) chat template, not the target model's. split_user_turn reads it off the
+    # tokenizer it is handed, so passing the target tokenizer here would silently
+    # produce meaningless logits.
     captured = {}
 
     class _FakeDetectorCls:
-        def __init__(self, model, tokenizer, config, model_name):
-            captured["model_name"] = model_name
+        def __init__(self, model, tokenizer, config):
+            captured["tokenizer"] = tokenizer
 
         def to(self, device):
             return self
@@ -172,4 +173,4 @@ def test_ensure_detector_uses_detector_model_name(monkeypatch):
             yield torch.zeros(1)
 
     monitor._ensure_head(_FakeTarget())
-    assert captured["model_name"] == "google/gemma-3-1b-it"
+    assert captured["tokenizer"] is monitor.detector_tokenizer

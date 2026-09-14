@@ -6,112 +6,7 @@ import time
 import torch.nn.functional as F
 from torch.nn.attention import sdpa_kernel, SDPBackend
 
-
-def get_chat_template(model_name):
-    found = 0
-
-    if "gemma" in model_name:
-        found += 1
-        first_user_msg = "<start_of_turn>user\n{instruction}<end_of_turn>\n"
-        first_user_msg_first_part = "<start_of_turn>user\n{instruction}"
-        first_user_msg_second_part = "<end_of_turn>\n"
-        user_chat_template = "<start_of_turn>user\n{instruction}<end_of_turn>\n"
-        response_key = "<start_of_turn>model\n"
-        response_template = response_key + "{target}<end_of_turn>\n"
-
-    #Llama-3.1-8B-Instruct
-    elif "meta-llama/Llama-3.1-8B-Instruct" == model_name:
-        found += 1
-        first_user_msg = """<|start_header_id|>system<|end_header_id|>
-
-You are a helpful assistant<|eot_id|><|start_header_id|>user<|end_header_id|>
-
-{instruction}"""
-
-        first_user_msg_first_part = """<|start_header_id|>system<|end_header_id|>
-
-You are a helpful assistant<|eot_id|><|start_header_id|>user<|end_header_id|>
-
-{instruction}"""
-        first_user_msg_second_part = """<|eot_id|>"""
-
-        response_key = """<|start_header_id|>assistant<|end_header_id|>
-
-"""
-        response_template = response_key + "{target}<|eot_id|>"
-
-    #Llama2
-    elif "llama2" == model_name or "llama-2" == model_name:
-        found += 1
-        first_user_msg = """[INST] <<SYS>>
-You are a helpful, respectful and honest assistant.
-<</SYS>>
-
-{instruction} """
-        user_chat_template = "<s>[INST] {instruction} "
-        response_key = "[/INST]"
-        first_user_msg_first_part = """[INST] <<SYS>>
-You are a helpful, respectful and honest assistant.
-<</SYS>>
-
-{instruction}"""
-        first_user_msg_second_part = " "
-
-        # Llama2 tokenizer does not satisfy enc(a+b) = enc(a) + enc(b)
-        # Llama2 expects there to be a space token after [/INST]
-        # Since we tokenize the prompt plus response in one go, we need two spaces
-        response_template = response_key + "  {target} </s>"
-    elif "safe-llama2" == model_name:
-        found += 1
-        first_user_msg = """[INST] <<SYS>>
-You are a helpful, respectful and honest assistant. Always answer as helpfully as possible, while being safe.  Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature.
-
-If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don't know the answer to a question, please don't share false information.
-<</SYS>>
-
-{instruction} """
-        first_user_msg_first_part = """[INST] <<SYS>>
-You are a helpful, respectful and honest assistant. Always answer as helpfully as possible, while being safe.  Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature.
-
-If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don't know the answer to a question, please don't share false information.
-<</SYS>>
-
-{instruction}"""
-        first_user_msg_second_part = " "
-        user_chat_template = "<s>[INST] {instruction} "
-        response_key = "[/INST]"
-        response_template = response_key + " {target} </s>"
-    elif "mistral-instruct" == model_name or ("mistral" in model_name.lower() and "instruct" in model_name.lower()):
-        found += 1
-        first_user_msg = "[INST] {instruction} "
-        first_user_msg_first_part = "[INST] {instruction}"
-        first_user_msg_second_part = " "
-        user_chat_template = "[INST] {instruction} "
-        response_key = "[/INST]"
-        response_template = response_key + " {target} </s>"
-    elif "mistral" == model_name:
-        found += 1
-        first_user_msg = """<|user|>\n{instruction}</s>"""
-        first_user_msg_first_part = "<|user|>\n{instruction}"
-        first_user_msg_second_part = "</s>"
-        user_chat_template = "\n<|user|>\n{instruction}</s>"
-        response_key = "\n<|assistant|>\n"
-        response_template = response_key + "{target}</s>"
-    elif "phi" in model_name:
-        found += 1
-        first_user_msg = "<|system|>\nYou are a helpful AI assistant.<|end|>\n<|user|>\n{instruction}<|end|>"
-        first_user_msg_first_part = "<|system|>\nYou are a helpful AI assistant.<|end|>\n<|user|>\n{instruction}"
-        first_user_msg_second_part = "<|end|>"
-        user_chat_template = "<|user|>\n{instruction}<|end|>"
-        response_key = "\n<|assistant|>\n"
-        response_template = response_key + "{target}<|end|>\n"
-
-    if found == 0:
-        raise NotImplementedError(f"Model {model_name} not supported")
-    if found > 1:
-        raise ValueError(f"Model {model_name} is ambiguous")
-
-    return first_user_msg, response_template, response_key, first_user_msg_first_part, first_user_msg_second_part
+from .tokenization import split_user_turn
 
 
 def get_embed_weights(model):
@@ -123,14 +18,12 @@ class Detector(nn.Module):
     Detector model that classifies whether the input prompt is harmful or not.
 
     -->Structure of the final prompt:
-    self.first_user_msg_first_part (eg: "<start_of_turn>user\n" for Gemma)
-    detector_prompt: "Is the following prompt harmful?"
+    user-turn prefix + detector_prompt   (from split_user_turn)
     projected hidden states
-    self.first_user_msg_second_part (eg: "<end_of_turn>\n" for Gemma)
-    response_key: (eg: "<start_of_turn>model\n" for Gemma)
+    turn terminator + assistant header   (the suffix from split_user_turn)
     """
 
-    def __init__(self, model, tokenizer, config, model_name):
+    def __init__(self, model, tokenizer, config):
         super(Detector, self).__init__()
         self.model = model
         self.tokenizer = tokenizer
@@ -138,24 +31,18 @@ class Detector(nn.Module):
         self.initial_prompt = config["prompt"]
         self.embeddings_weights = get_embed_weights(model)
 
-        (
-            self.first_user_msg,
-            self.response_template,
-            self.response_key,
-            self.first_user_msg_first_part,
-            self.first_user_msg_second_part,
-        ) = get_chat_template(model_name)
+        # Split the detector's own user turn at its content so the projected hidden states can
+        # be spliced in between. add_special_tokens=False: the template already emits bos_token.
+        self.formatted_initial_prompt, self.response_key = split_user_turn(tokenizer, self.initial_prompt)
 
-        #tokenize and get the embeddings for (self.first_user_msg_first_part + detector_prompt)
-        self.formatted_initial_prompt = self.first_user_msg_first_part.format(instruction=self.initial_prompt)
-        self.formatted_initial_prompt_ids = self.tokenizer.encode(self.formatted_initial_prompt, add_special_tokens=True)
+        self.formatted_initial_prompt_ids = self.tokenizer.encode(self.formatted_initial_prompt, add_special_tokens=False)
         with torch.no_grad():
             self.formatted_initial_prompt_ids = torch.tensor(self.formatted_initial_prompt_ids, device=self.embeddings_weights.device).unsqueeze(0)
             self.formatted_initial_prompt_embeddings = self.model.get_input_embeddings()(self.formatted_initial_prompt_ids)
 
-        #tokenize and get the embeddings for the (self.first_user_msg_second_part + self.response_key)
+        # embeddings for the turn terminator + assistant header that follow the spliced states
         with torch.no_grad():
-            response_key_ids = tokenizer.encode(self.first_user_msg_second_part + self.response_key, add_special_tokens=False)
+            response_key_ids = tokenizer.encode(self.response_key, add_special_tokens=False)
             self.response_key_embeddings = self.embeddings_weights[response_key_ids].unsqueeze(0)
 
         #compute the "yes" and "no" token ids

@@ -13,7 +13,8 @@ from .base import register_monitor
 
 @register_monitor
 class ActivationLLMMonitor(ActivationMonitor):
-    """Mathieu's activation detector: reads the target model's hidden states."""
+    """LLM-based activation detector: reads the target model's hidden states, projects them
+    into the detector model's embedding space, and asks it yes/no."""
 
     NAME = "activation_llm"
 
@@ -86,10 +87,10 @@ class ActivationLLMMonitor(ActivationMonitor):
             "debug": False,
         }
         # NB: the Detector's own "Is this harmful?" scaffold is tokenized/embedded with
-        # the DETECTOR (gemma) tokenizer, so it must use the detector model's chat
+        # the DETECTOR (gemma) tokenizer, so split_user_turn reads the detector's own chat
         # template — not the target model's. The input hidden states fed in are still
         # built with the target model's template (see build_detector_batch in score()).
-        detector = Detector(self.detector_model, self.detector_tokenizer, detector_config, self.detector_model_id)
+        detector = Detector(self.detector_model, self.detector_tokenizer, detector_config)
         device = next(target_model.parameters()).device
         detector.to(device)
         checkpoint = torch.load(self.checkpoint_path, map_location="cpu", weights_only=False)

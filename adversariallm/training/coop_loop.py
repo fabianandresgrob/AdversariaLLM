@@ -160,7 +160,7 @@ def _coop_validate(
     Model params are frozen for the whole call (validation never updates them) and restored
     after, so the attack differentiates the perturbation without building model-param graphs;
     every model forward here is wrapped in an explicit no_grad."""
-    from ..defenses.monitors._activation_detector_model import get_chat_template
+    from .data import render_prompt
 
     was_training = model.training
     model.eval()
@@ -272,12 +272,11 @@ def _coop_validate(
     wmb_samples.sort(key=lambda d: d["w_mb"], reverse=True)  # gate false-positives on top
 
     # model over-refusal: free generation on HELD-OUT xs_test benign (clean — benign is never attacked)
-    first_user_msg, _, response_key, _, _ = get_chat_template(template_id)
     gens = []
     pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
     with torch.no_grad():
         for p in xstest_prompts:
-            enc = tokenizer(first_user_msg.format(instruction=p) + response_key, return_tensors="pt").to(device)
+            enc = tokenizer(render_prompt(tokenizer, p), return_tensors="pt", add_special_tokens=False).to(device)
             out = model.generate(**enc, max_new_tokens=max_new_tokens, do_sample=False, pad_token_id=pad_id)
             gens.append(tokenizer.decode(out[0, enc["input_ids"].shape[1] :], skip_special_tokens=True))
     metrics["model/refusal_rate_ood"] = refusal_rate(gens)
@@ -287,7 +286,7 @@ def _coop_validate(
     probe = wmb_samples[: len(xstest_prompts)]
     with torch.no_grad():
         for d in probe:
-            enc = tokenizer(first_user_msg.format(instruction=d["prompt"]) + response_key, return_tensors="pt").to(device)
+            enc = tokenizer(render_prompt(tokenizer, d["prompt"]), return_tensors="pt", add_special_tokens=False).to(device)
             gen = model.generate(**enc, max_new_tokens=max_new_tokens, do_sample=False, pad_token_id=pad_id)
             d["generation"] = tokenizer.decode(gen[0, enc["input_ids"].shape[1] :], skip_special_tokens=True)
 
@@ -344,7 +343,6 @@ def run_coop_training(cfg):
     from peft import LoraConfig
     from torch.utils.data import DataLoader
 
-    from ..defenses.monitors._activation_detector_model import get_chat_template
     from ..io_utils import load_model_and_tokenizer
     from .attacks import ContinuousEmbeddingAttack
     from .data import (
@@ -356,6 +354,7 @@ def run_coop_training(cfg):
         collate_benign,
         collate_help_pair,
         collate_util,
+        generation_prefix,
         load_dataset_prompts,
         split_adv_stream,
     )
@@ -461,7 +460,7 @@ def run_coop_training(cfg):
     # attack (Stage B: model-only; Stage C: also detector-aware via attack.use_detector) or None (Stage A)
     attack = None
     if cfg.attack.enabled:
-        _, _, response_key, _, _ = get_chat_template(template_id)
+        response_key = generation_prefix(tokenizer)
         attack = ContinuousEmbeddingAttack(
             model.get_input_embeddings().weight,
             response_key,

@@ -1,0 +1,2 @@
+# Lockfiles are generated; suppress their diffs so they don't drown out real changes.
+pixi.lock -diff

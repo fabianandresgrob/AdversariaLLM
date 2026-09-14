@@ -2,10 +2,10 @@
 
 A reader maps a target-model hidden-state tensor to a harmful/benign score. v1 is a
 linear probe on the residual-stream activation at the last prompt token — the same
-readout position the vendored activation detector uses, so it reuses build_detector_batch
+readout position the activation detector uses, so it reuses build_detector_batch
 unchanged. Richer readers (MLP, the gemma detector) slot in behind the same interface.
 
-Label convention (from the predecessor detector): logits column 0 = harmful ("yes"),
+Label convention: logits column 0 = harmful ("yes"),
 column 1 = benign ("no").
 """
 

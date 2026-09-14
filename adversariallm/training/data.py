@@ -6,7 +6,39 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset, Subset
 
-from ..defenses.monitors._activation_detector_model import get_chat_template
+def render_prompt(tokenizer, prompt):
+    """Prompt rendered up to the generation onset (assistant header, no content).
+
+    Uses the tokenizer's own chat template — set from models.yaml `chat_template` by
+    load_model_and_tokenizer — so training, attacks and eval all agree."""
+    return tokenizer.apply_chat_template(
+        [{"role": "user", "content": prompt}], tokenize=False, add_generation_prompt=True
+    )
+
+
+def render_full(tokenizer, prompt, response):
+    """Prompt + assistant response, terminated. Pairs with render_prompt for label masking."""
+    return tokenizer.apply_chat_template(
+        [{"role": "user", "content": prompt}, {"role": "assistant", "content": response}],
+        tokenize=False,
+        add_generation_prompt=False,
+    )
+
+
+def generation_prefix(tokenizer):
+    """The assistant-header scaffold the template appends at generation onset (the old
+    registry's `response_key`). Derived by diffing the same conversation rendered with and
+    without add_generation_prompt, so it works for any model's template."""
+    conv = [{"role": "user", "content": "x"}]
+    without = tokenizer.apply_chat_template(conv, tokenize=False, add_generation_prompt=False)
+    with_ = tokenizer.apply_chat_template(conv, tokenize=False, add_generation_prompt=True)
+    return with_[len(without):]
+
+
+def _encode(tokenizer, text):
+    """Tokenize a rendered chat string. add_special_tokens=False because the jinja already
+    emits bos_token — letting the tokenizer add another double-prepends BOS."""
+    return tokenizer(text, add_special_tokens=False)["input_ids"]
 
 
 def split_adv_stream(dataset, val_size, seed=0):
@@ -31,18 +63,16 @@ def split_adv_stream(dataset, val_size, seed=0):
     return Subset(dataset, train_idx), Subset(dataset, val_idx)
 
 
-def build_supervised_example(prompt, response, tokenizer, model_name):
+def build_supervised_example(prompt, response, tokenizer):
     """Return (input_ids, labels) with prompt tokens set to -100 in labels."""
-    first_user_msg, response_template, response_key, _, _ = get_chat_template(model_name)
-    full = first_user_msg.format(instruction=prompt) + response_template.format(target=response)
-    input_ids = torch.tensor(tokenizer(full)["input_ids"], dtype=torch.long)
-    prompt_len = len(tokenizer(first_user_msg.format(instruction=prompt) + response_key)["input_ids"])
+    input_ids = torch.tensor(_encode(tokenizer, render_full(tokenizer, prompt, response)), dtype=torch.long)
+    prompt_len = len(_encode(tokenizer, render_prompt(tokenizer, prompt)))
     labels = input_ids.clone()
     labels[:prompt_len] = -100
     return input_ids, labels
 
 
-def build_example_full(prompt, response, tokenizer, model_name):
+def build_example_full(prompt, response, tokenizer):
     """Return (input_ids, labels, target_ids, attn).
 
     - labels: prompt region set to -100 (CE convention used by the losses).
@@ -50,10 +80,8 @@ def build_example_full(prompt, response, tokenizer, model_name):
       convention used by ContinuousEmbeddingAttack: 0 = prompt/pad, real id = response).
     - attn: all-ones attention mask (per-example; padding handled by the collate).
     """
-    first_user_msg, response_template, response_key, _, _ = get_chat_template(model_name)
-    full = first_user_msg.format(instruction=prompt) + response_template.format(target=response)
-    input_ids = torch.tensor(tokenizer(full)["input_ids"], dtype=torch.long)
-    prompt_len = len(tokenizer(first_user_msg.format(instruction=prompt) + response_key)["input_ids"])
+    input_ids = torch.tensor(_encode(tokenizer, render_full(tokenizer, prompt, response)), dtype=torch.long)
+    prompt_len = len(_encode(tokenizer, render_prompt(tokenizer, prompt)))
     labels = input_ids.clone()
     labels[:prompt_len] = -100
     target_ids = input_ids.clone()
@@ -62,15 +90,13 @@ def build_example_full(prompt, response, tokenizer, model_name):
     return input_ids, labels, target_ids, attn
 
 
-def build_prompt_only(prompt, tokenizer, model_name):
-    """Prompt + response-key scaffold, no completion. target_ids all-zero, so the reader's
-    readout falls back to the last real token — the last response-key token, i.e. the
+def build_prompt_only(prompt, tokenizer):
+    """Prompt up to the generation onset, no completion. target_ids all-zero, so the reader's
+    readout falls back to the last real token — the last assistant-header token, i.e. the
     generation-onset position. This is the SAME readout position as build_example_full
     (which reads the token just before the response), so a probe trained on these transfers
     to the in-loop harmful examples (prompt + response). Returns (input_ids, target_ids, attn)."""
-    first_user_msg, _, response_key, _, _ = get_chat_template(model_name)
-    text = first_user_msg.format(instruction=prompt) + response_key
-    ids = torch.tensor(tokenizer(text)["input_ids"], dtype=torch.long)
+    ids = torch.tensor(_encode(tokenizer, render_prompt(tokenizer, prompt)), dtype=torch.long)
     return ids, torch.zeros_like(ids), torch.ones_like(ids)
 
 
@@ -125,8 +151,8 @@ class AdvTupleStream(Dataset):
 
     def __getitem__(self, i):
         x, y_h, y_b = self.rows[i]
-        h_ids, h_lab, h_tgt, h_attn = build_example_full(x, y_h, self.tokenizer, self.model_name)
-        b_ids, b_lab, b_tgt, b_attn = build_example_full(x, y_b, self.tokenizer, self.model_name)
+        h_ids, h_lab, h_tgt, h_attn = build_example_full(x, y_h, self.tokenizer)
+        b_ids, b_lab, b_tgt, b_attn = build_example_full(x, y_b, self.tokenizer)
         return {
             "prompt": x,
             "h_ids": h_ids,
@@ -165,7 +191,7 @@ class UtilityStream(Dataset):
 
     def __getitem__(self, i):
         x, y = self.rows[i]
-        ids, lab = build_supervised_example(x, y, self.tokenizer, self.model_name)
+        ids, lab = build_supervised_example(x, y, self.tokenizer)
         if self.max_length is not None and ids.numel() > self.max_length:
             ids, lab = ids[: self.max_length], lab[: self.max_length]  # cap runaway lengths
         attn = torch.ones_like(ids)
@@ -235,7 +261,7 @@ class BenignStream(Dataset):
 
     def __getitem__(self, i):
         x, y = self.rows[i]
-        ids, _, tgt, attn = build_example_full(x, y, self.tokenizer, self.model_name)
+        ids, _, tgt, attn = build_example_full(x, y, self.tokenizer)
         return {"d_ids": ids, "d_targetids": tgt, "d_attn": attn, "prompt": x}
 
 
@@ -262,8 +288,8 @@ class HelpRefusePairStream(Dataset):
         x, y = self.rows[i]
         has_target = y is not None
         y_help = y if has_target else self.refusal  # dummy for targetless rows (masked out)
-        g_ids, g_lab, g_tgt, g_attn = build_example_full(x, y_help, self.tokenizer, self.model_name)
-        r_ids, r_lab, _, r_attn = build_example_full(x, self.refusal, self.tokenizer, self.model_name)
+        g_ids, g_lab, g_tgt, g_attn = build_example_full(x, y_help, self.tokenizer)
+        r_ids, r_lab, _, r_attn = build_example_full(x, self.refusal, self.tokenizer)
         return {
             "prompt": x,
             "y_help_text": y_help,

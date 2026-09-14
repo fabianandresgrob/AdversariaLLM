@@ -215,10 +215,10 @@ def run_training(cfg):
     from omegaconf import OmegaConf
     from torch.utils.data import DataLoader
 
-    from ..defenses.monitors._activation_detector_model import get_chat_template
     from ..io_utils import load_model_and_tokenizer
     from .attacks import ContinuousEmbeddingAttack
-    from .data import AdvTupleStream, build_kl_stream, collate_adv, collate_util, split_adv_stream
+    from .data import (AdvTupleStream, build_kl_stream, collate_adv, collate_util,
+                       generation_prefix, split_adv_stream)
     from .reference import FrozenModelReference, LoRADisableReference
 
     container = OmegaConf.to_container(cfg, resolve=True)
@@ -288,7 +288,7 @@ def run_training(cfg):
     util_loader = DataLoader(util_ds, batch_size=cfg.data.utility_batch_size, shuffle=True, collate_fn=collate_util)
 
     # attack
-    _, _, response_key, _, _ = get_chat_template(template_id)
+    response_key = generation_prefix(tokenizer)
     attack = ContinuousEmbeddingAttack(
         model.get_input_embeddings().weight,
         response_key,
@@ -410,16 +410,15 @@ def _benign_refusal_rate(model, tokenizer, prompts, template_id, max_new_tokens)
     """Fraction of benign prompts the model refuses when generating freely.
     Free generation (not teacher forcing) is required: over-refusal is a property of what
     the model produces on its own, not of its likelihood on a supplied continuation."""
-    from ..defenses.monitors._activation_detector_model import get_chat_template
+    from .data import render_prompt
 
-    first_user_msg, _, response_key, _, _ = get_chat_template(template_id)
     was_training = model.training
     model.eval()
     device = next(model.parameters()).device
     refusals = 0
     for p in prompts:
-        text = first_user_msg.format(instruction=p) + response_key
-        ids = tokenizer(text, return_tensors="pt").input_ids.to(device)
+        text = render_prompt(tokenizer, p)
+        ids = tokenizer(text, return_tensors="pt", add_special_tokens=False).input_ids.to(device)
         out = model.generate(ids, max_new_tokens=max_new_tokens, do_sample=False)
         gen = tokenizer.decode(out[0, ids.shape[1] :], skip_special_tokens=True).strip().lower()
         if gen.startswith("sorry") or "i can't" in gen or "i cannot" in gen or "i can not" in gen:

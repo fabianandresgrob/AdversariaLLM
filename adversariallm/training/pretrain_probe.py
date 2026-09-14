@@ -45,7 +45,6 @@ def _features(model, tokenizer, template_id, prompts, layer, device, batch_size=
 def run_pretrain_probe(cfg):
     from omegaconf import OmegaConf
 
-    from ..defenses.monitors._activation_detector_model import get_chat_template
     from ..io_utils import load_model_and_tokenizer
 
     container = OmegaConf.to_container(cfg, resolve=True)
@@ -54,7 +53,6 @@ def run_pretrain_probe(cfg):
     model, tokenizer = load_model_and_tokenizer(model_params)
     model.eval()
     device = next(model.parameters()).device
-    get_chat_template(template_id)  # fail fast if the template id is unsupported
     layer = int(cfg.reader.layer)
 
     # harmful = the TRAIN behavior set (advbench), disjoint from the HarmBench test set.

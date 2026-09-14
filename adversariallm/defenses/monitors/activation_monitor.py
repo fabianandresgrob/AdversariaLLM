@@ -40,7 +40,7 @@ class ActivationMonitor(Monitor):
             p_chunk = prompts[start : start + self.batch_size]
             r_chunk = responses[start : start + self.batch_size]
             input_ids, target_ids, attention_mask = build_detector_batch(
-                p_chunk, r_chunk, target_tokenizer, self.target_model_id
+                p_chunk, r_chunk, target_tokenizer
             )
             input_ids = input_ids.to(device)
             target_ids = target_ids.to(device)

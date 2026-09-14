@@ -6,15 +6,25 @@ from adversariallm.training.data import build_supervised_example, split_adv_stre
 
 
 class _FakeTok:
+    """Tokenizer stub so these tests run offline (the real chat template needs the gated
+    Llama tokenizer). Arbitrary shape: user -> "U<content>", assistant -> "R<content>E",
+    generation prompt -> "R"."""
+
     def __call__(self, text, **kw):
         return {"input_ids": [ord(c) for c in text]}
 
+    def apply_chat_template(self, conv, tokenize=False, add_generation_prompt=False, **kw):
+        s = ""
+        for m in conv:
+            if m["role"] == "user":
+                s += "U" + m["content"]
+            elif m["role"] == "assistant":
+                s += "R" + m["content"] + "E"
+        return s + ("R" if add_generation_prompt else "")
 
-def test_prompt_tokens_are_masked_in_labels(monkeypatch):
-    import adversariallm.training.data as d
-    monkeypatch.setattr(d, "get_chat_template",
-                        lambda m: ("U{instruction}", "R{target}E", "R", "U{instruction}", ""))
-    ids, labels = build_supervised_example("ab", "xy", _FakeTok(), "meta-llama/Llama-3.1-8B-Instruct")
+
+def test_prompt_tokens_are_masked_in_labels():
+    ids, labels = build_supervised_example("ab", "xy", _FakeTok())
     # full = "Uab" + "RxyE"; prompt_with_key = "UabR" -> prompt_len 4
     assert ids.tolist() == [ord(c) for c in "UabRxyE"]
     assert labels.tolist() == [-100, -100, -100, -100, ord("x"), ord("y"), ord("E")]

@@ -68,15 +68,14 @@ def _load_cached_gens(cfg, name, ds, ds_prompts):
 @torch.no_grad()
 def _refusal_on(model, tokenizer, template_id, prompts, max_new_tokens):
     """Greedy-generate on each prompt, count refusals — identical to _coop_validate."""
-    from adversariallm.defenses.monitors._activation_detector_model import get_chat_template
+    from adversariallm.training.data import render_prompt
     from adversariallm.training.coop_metrics import refusal_rate
 
-    first_user_msg, _, response_key, _, _ = get_chat_template(template_id)
     device = next(model.parameters()).device
     pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
     gens = []
     for p in prompts:
-        enc = tokenizer(first_user_msg.format(instruction=p) + response_key, return_tensors="pt").to(device)
+        enc = tokenizer(render_prompt(tokenizer, p), return_tensors="pt", add_special_tokens=False).to(device)
         out = model.generate(**enc, max_new_tokens=max_new_tokens, do_sample=False, pad_token_id=pad_id)
         gens.append(tokenizer.decode(out[0, enc["input_ids"].shape[1]:], skip_special_tokens=True))
     return refusal_rate(gens), gens

@@ -11,16 +11,24 @@ from adversariallm.training.data import (
 
 
 class _FakeTok:
+    """Tokenizer stub so these tests run offline (the real chat template needs the gated
+    Llama tokenizer). Arbitrary shape: user -> "U<content>", assistant -> "R<content>E",
+    generation prompt -> "R"."""
+
     def __call__(self, text, **kw):
         return {"input_ids": [ord(c) for c in text]}
 
+    def apply_chat_template(self, conv, tokenize=False, add_generation_prompt=False, **kw):
+        s = ""
+        for m in conv:
+            if m["role"] == "user":
+                s += "U" + m["content"]
+            elif m["role"] == "assistant":
+                s += "R" + m["content"] + "E"
+        return s + ("R" if add_generation_prompt else "")
 
-_TEMPLATE = ("U{instruction}", "R{target}E", "R", "U{instruction}", "")
 
-
-def test_help_refuse_pair_stream_masks_targetless_rows(monkeypatch):
-    import adversariallm.training.data as d
-    monkeypatch.setattr(d, "get_chat_template", lambda m: _TEMPLATE)
+def test_help_refuse_pair_stream_masks_targetless_rows():
     rows = [("a", "hi"), ("b", None)]          # one with target, one without
     ds = HelpRefusePairStream(rows, _FakeTok(), "m", refusal="no")
     with_target, refused = ds[0], ds[1]

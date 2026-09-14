@@ -6,30 +6,28 @@ from adversariallm.defenses.monitors.tokenization import build_detector_batch
 
 
 class _FakeTokenizer:
-    """Char-level tokenizer where enc(a + b) == enc(a) + enc(b)."""
+    """Char-level tokenizer (enc(a + b) == enc(a) + enc(b)) with a stub chat template:
+    user -> "U<content>", assistant -> "R<content>E", generation prompt -> "R"."""
 
     def __call__(self, text, **kwargs):
         return {"input_ids": [ord(c) for c in text]}
 
+    def apply_chat_template(self, conv, tokenize=False, add_generation_prompt=False, **kw):
+        s = ""
+        for m in conv:
+            if m["role"] == "user":
+                s += "U" + m["content"]
+            elif m["role"] == "assistant":
+                s += "R" + m["content"] + "E"
+        return s + ("R" if add_generation_prompt else "")
 
-def _patch_template(monkeypatch):
-    from adversariallm.defenses.monitors import tokenization as tok_mod
 
-    def fake_template(_model_name):
-        # first_user_msg, response_template, response_key, first_part, second_part
-        return ("U{instruction}", "R{target}E", "R", "U{instruction}", "")
-
-    monkeypatch.setattr(tok_mod, "get_chat_template", fake_template)
-
-
-def test_target_ids_mask_prompt_region(monkeypatch):
-    _patch_template(monkeypatch)
+def test_target_ids_mask_prompt_region():
     tok = _FakeTokenizer()
     input_ids, target_ids, attention_mask = build_detector_batch(
         prompts=["ab"],
         responses=["xy"],
         tokenizer=tok,
-        model_name="meta-llama/Llama-3.1-8B-Instruct",
     )
     # full = "U" + "ab" + "R" + "xy" + "E"  -> "UabRxyE" -> 7 tokens
     assert input_ids.shape == (1, 7)
@@ -39,14 +37,12 @@ def test_target_ids_mask_prompt_region(monkeypatch):
     assert attention_mask[0].tolist() == [1, 1, 1, 1, 1, 1, 1]
 
 
-def test_batch_is_right_padded_with_zero(monkeypatch):
-    _patch_template(monkeypatch)
+def test_batch_is_right_padded_with_zero():
     tok = _FakeTokenizer()
     input_ids, target_ids, attention_mask = build_detector_batch(
         prompts=["a", "abc"],
         responses=["y", "y"],
         tokenizer=tok,
-        model_name="meta-llama/Llama-3.1-8B-Instruct",
     )
     assert input_ids.shape[0] == 2
     # shorter row padded on the right with 0; its attention_mask padded with 0

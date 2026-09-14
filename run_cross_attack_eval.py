@@ -118,10 +118,10 @@ def _case_frequencies(model, reader, layer, attack, harmful_batches, use_detecto
 def main(cfg: DictConfig) -> None:
     from torch.utils.data import DataLoader
 
-    from adversariallm.defenses.monitors._activation_detector_model import get_chat_template
     from adversariallm.training.attacks import ContinuousEmbeddingAttack
     from adversariallm.training.coop_loop import _coop_validate
     from adversariallm.training.data import (
+        generation_prefix,
         AdvTupleStream, BenignStream, collate_adv, collate_benign, load_dataset_prompts, split_adv_stream,
     )
     from adversariallm.training.loop import _to_device
@@ -164,7 +164,7 @@ def main(cfg: DictConfig) -> None:
         ]
         xs_prompts = [p for p, _ in xs_ds.rows[: int(cfg.benign.benign_gen_n)]]
 
-        _, _, response_key, _, _ = get_chat_template(cfg.chat_template_id)
+        response_key = generation_prefix(tok)
         attack = ContinuousEmbeddingAttack(
             model.get_input_embeddings().weight, response_key, tok,
             iters=int(cfg.attack.iters), eps=float(cfg.attack.eps), lr=float(cfg.attack.lr),

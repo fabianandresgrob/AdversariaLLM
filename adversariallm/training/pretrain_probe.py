@@ -31,7 +31,7 @@ def _features(model, tokenizer, template_id, prompts, layer, device, batch_size=
     for start in range(0, len(prompts), batch_size):
         chunk = prompts[start : start + batch_size]
         items = [
-            dict(zip(("d_ids", "d_targetids", "d_attn"), build_prompt_only(p, tokenizer, template_id))) for p in chunk
+            dict(zip(("d_ids", "d_targetids", "d_attn"), build_prompt_only(p, tokenizer))) for p in chunk
         ]
         batch = pad_collate(items, ["d_ids", "d_targetids", "d_attn"], pad_id=0)
         ids = batch["d_ids"].to(device)

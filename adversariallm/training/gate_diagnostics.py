@@ -57,7 +57,7 @@ def _score(model, tokenizer, model_name, pairs, device, batch_size=8):
     for i in range(0, len(pairs), batch_size):
         chunk = pairs[i : i + batch_size]
         valid = [(p, c) for p, c in chunk if c and c.strip()]
-        exs = [build_supervised_example(p, c, tokenizer, model_name) for p, c in valid]
+        exs = [build_supervised_example(p, c, tokenizer) for p, c in valid]
         if exs:
             ids = pad_sequence([e[0] for e in exs], batch_first=True, padding_value=pad_id).to(device)
             lab = pad_sequence([e[1] for e in exs], batch_first=True, padding_value=-100).to(device)

@@ -422,3 +422,26 @@ Qwen/Qwen2.5-0.5B-Instruct:
   dtype: bfloat16
   chat_template: null
   trust_remote_code: True
+# --- chat-template diagnostic: same checkpoints, TRAINING-format template ---
+# Identical to their counterparts except chat_template. Pair each with its normal-template
+# twin to isolate how much measured robustness is train/attack format shift.
+coop-magpie-eps005-s0-cooptmpl:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: False
+  dtype: bfloat16
+  chat_template: llama-3-instruct-cooptrain
+  trust_remote_code: True
+  adapter_path: ${root_dir}/checkpoints_coop/coop-magpie-eps005-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/coop-magpie-eps005-s0/final_reader.pt
+meta-llama-3.1-8b-instruct-cooptmpl:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: False
+  dtype: bfloat16
+  chat_template: llama-3-instruct-cooptrain
+  trust_remote_code: True

@@ -1,0 +1,18 @@
+{#- Reproduces the format the coop/CAT models were TRAINED on (the hardcoded registry in
+    _activation_detector_model.get_chat_template for meta-llama/Llama-3.1-8B-Instruct).
+    Differs from llama-3-instruct.jinja in exactly two ways, both deliberate:
+      1. no "Cutting Knowledge Date / Today Date" block
+      2. the USER turn is NOT closed with <|eot_id|> (the registry drops it; assistant turns keep it)
+    Diagnostic only — use it to attack/eval a model in its own training format. #}
+{{- bos_token }}
+{{- "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful assistant<|eot_id|>" }}
+{%- for message in messages %}
+{%- if message['role'] == 'user' %}
+{{- '<|start_header_id|>user<|end_header_id|>\n\n' + message['content'] | trim }}
+{%- elif message['role'] == 'assistant' %}
+{{- '<|start_header_id|>assistant<|end_header_id|>\n\n' + message['content'] | trim + '<|eot_id|>' }}
+{%- endif %}
+{%- endfor %}
+{%- if add_generation_prompt %}
+{{- '<|start_header_id|>assistant<|end_header_id|>\n\n' }}
+{%- endif %}

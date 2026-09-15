@@ -22,7 +22,7 @@ reader:
   type: linear        # linear | (mlp/gemma later)
   layer: -1           # target-model hidden layer the probe reads
 # "random" or a pretrained probe.pt from run_pretrain_probe (fixes the OOD-benign collapse).
-probe_init: ${root_dir}/checkpoints_probe/probe_v2/probe.pt
+probe_init: ${root_dir}/checkpoints_probe/probe_v3/probe.pt
 
 # Gating / objective (design doc §3-§6). Floors default to the decoupled (1,1) control.
 tau: 1.0

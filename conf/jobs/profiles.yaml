@@ -4,6 +4,8 @@ run_coop_train.py:
   config_name: coop_train
   name_key: name
   wandb_dir_key: wandb.dir
+  rerun_overrides:
+    output.overwrite: true   # a rerun deliberately replaces the finished checkpoint (guard in coop_loop)
 run_train.py:
   config_name: train
   name_key: name

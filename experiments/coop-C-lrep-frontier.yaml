@@ -11,7 +11,10 @@ overrides:
   data.kl_source: magpie
   data.kl_max_length: 1024
   epsilon: 0.05
-  output.checkpoint_path: $MYPROJECT/checkpoints_coop/C-lrep-frontier
+  output.checkpoint_path: ${root_dir}/checkpoints_coop/C-lrep-frontier
 sweep:
   lambda_rep: [0.0, 0.25, 0.5]
   seed: [0, 1, 2]
+artifacts:
+  - checkpoints_coop/C-lrep-frontier/{name}/final_adapter
+  - checkpoints_coop/C-lrep-frontier/{name}/final_reader.pt

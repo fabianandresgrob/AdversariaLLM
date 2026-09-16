@@ -13,7 +13,10 @@ overrides:
   data.kl_source: magpie
   data.kl_max_length: 1024
   attack.use_detector: true
-  output.checkpoint_path: $MYPROJECT/checkpoints_coop/E-adaptive
+  output.checkpoint_path: ${root_dir}/checkpoints_coop/E-adaptive
 sweep:
   training.n_detector_steps: [1, 3, 6]
   seed: [0, 1, 2]
+artifacts:
+  - checkpoints_coop/E-adaptive/{name}/final_adapter
+  - checkpoints_coop/E-adaptive/{name}/final_reader.pt

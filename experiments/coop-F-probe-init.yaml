@@ -12,7 +12,10 @@ overrides:
   data.kl_source: magpie
   data.kl_max_length: 1024
   probe_init: random
-  output.checkpoint_path: $MYPROJECT/checkpoints_coop/F-probe-init
+  output.checkpoint_path: ${root_dir}/checkpoints_coop/F-probe-init
 sweep:
   training.rep_warmup_steps: [0, 100]
   seed: [0, 1, 2]
+artifacts:
+  - checkpoints_coop/F-probe-init/{name}/final_adapter
+  - checkpoints_coop/F-probe-init/{name}/final_reader.pt

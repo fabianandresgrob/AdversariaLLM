@@ -12,7 +12,10 @@ overrides:
   data.kl_max_length: 1024
   epsilon: 1.0
   lambda_rep: 0.0
-  output.checkpoint_path: $MYPROJECT/checkpoints_coop/B-cat-frontier
+  output.checkpoint_path: ${root_dir}/checkpoints_coop/B-cat-frontier
 sweep:
   lambda_beh: [0.25, 0.5, 1.0]
   seed: [0, 1, 2]
+artifacts:
+  - checkpoints_coop/B-cat-frontier/{name}/final_adapter
+  - checkpoints_coop/B-cat-frontier/{name}/final_reader.pt

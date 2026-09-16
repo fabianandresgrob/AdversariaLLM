@@ -12,6 +12,9 @@ overrides:
   delta: 1.0
   data.kl_source: magpie
   data.kl_max_length: 1024
-  output.checkpoint_path: $MYPROJECT/checkpoints_coop/G-delta
+  output.checkpoint_path: ${root_dir}/checkpoints_coop/G-delta
 sweep:
   seed: [0, 1, 2]
+artifacts:
+  - checkpoints_coop/G-delta/{name}/final_adapter
+  - checkpoints_coop/G-delta/{name}/final_reader.pt

@@ -14,6 +14,9 @@ overrides:
   epsilon: 0.05
   data.kl_source: ultrachat
   data.kl_max_length: 1024
-  output.checkpoint_path: $MYPROJECT/checkpoints_coop/D1-leash-source
+  output.checkpoint_path: ${root_dir}/checkpoints_coop/D1-leash-source
 sweep:
   seed: [0, 1, 2]
+artifacts:
+  - checkpoints_coop/D1-leash-source/{name}/final_adapter
+  - checkpoints_coop/D1-leash-source/{name}/final_reader.pt

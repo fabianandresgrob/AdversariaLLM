@@ -2,7 +2,7 @@
 account: hai_1370
 partition: dc-hwai
 gpus_per_node: 4
-cpus_per_slot: 32          # 128 cores / 4
+cpus_per_slot: 16          # 64 physical cores / 4 (dc-hwai counts cores, not hyperthreads; 128 is rejected)
 mem_per_slot: 120G         # 512 GiB / 4, with headroom
 node_time: "24:00:00"      # node-job walltime (billing is actual usage)
 default_time_per_run: "12:00:00"

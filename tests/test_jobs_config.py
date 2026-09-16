@@ -25,7 +25,7 @@ def _hydra_profiles():
 def test_jureca_site():
     site = load_site(REPO, "jureca")
     assert site.account == "hai_1370" and site.partition == "dc-hwai"
-    assert site.gpus_per_node == 4 and site.cpus_per_slot == 32 and site.mem_per_slot == "120G"
+    assert site.gpus_per_node == 4 and site.cpus_per_slot == 16 and site.mem_per_slot == "120G"
     assert parse_duration(site.node_time) == 24 * 3600 and parse_duration(site.default_time_per_run) == 12 * 3600
     assert site.max_nodes_per_submit == 4
     assert site.env == {"WANDB_MODE": "offline", "HF_HUB_OFFLINE": "1", "HF_DATASETS_OFFLINE": "1",

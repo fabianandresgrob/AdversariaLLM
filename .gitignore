@@ -16,3 +16,4 @@ checkpoints_coop/
 checkpoints/
 .DS_Store
 slurm_logs/
+wandb_logs/

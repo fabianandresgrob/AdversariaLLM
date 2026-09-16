@@ -1,0 +1,8 @@
+# jsc-jobs integration check on dc-hwai: 4 runs start together, 2 start as slots free up; sleep-90 fails on purpose.
+entrypoint: jsc_jobs.fixtures.sleep_gpu
+name: sleep-{seconds}
+time_per_run: "00:10:00"
+overrides:
+  fail_if_seconds: 90
+sweep:
+  seconds: [60, 90, 120, 180, 240, 300]

@@ -1,0 +1,36 @@
+# jsc-jobs launch profiles: what the manager injects per entrypoint.
+# config_name must match the script's @hydra.main config (checked by tests/test_jobs_config.py).
+run_coop_train.py:
+  config_name: coop_train
+  name_key: name
+  wandb_dir_key: wandb.dir
+run_train.py:
+  config_name: train
+  name_key: name
+  wandb_dir_key: wandb.dir
+run_attacks.py:
+  config_name: config
+  uses_db: true
+  extra_overrides:
+    attacks.inpainting.custom_data_path: $MYPROJECT/data/inpainting_attack.csv
+  rerun_overrides:
+    overwrite: true
+run_judges.py:
+  config_name: judge
+  uses_db: true
+run_sampling.py:
+  config_name: sampling
+  uses_db: true
+run_cross_attack_eval.py:
+  config_name: cross_attack_eval
+run_overrefusal_eval.py:
+  config_name: overrefusal
+run_pretrain_probe.py:
+  config_name: pretrain_probe
+  name_key: name
+run_calibrate_probe.py:
+  config_name: calibrate_probe
+run_gate_diagnostics.py:
+  config_name: gate_diagnostics
+run_generate_benign_targets.py:
+  config_name: generate_benign_targets

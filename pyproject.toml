@@ -98,6 +98,7 @@ beartype = ">=0.20,<1"
 filelock = ">=3.17,<4"
 
 [tool.pixi.tasks]
+jobs = "python -m jsc_jobs"
 
 [tool.pixi.dependencies]
 python = "==3.10.16"

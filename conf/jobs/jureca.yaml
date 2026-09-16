@@ -1,0 +1,14 @@
+# JURECA-DC site config for jsc-jobs (select with JOBS_SITE=jureca). Times quoted: unquoted 24:00:00 is a YAML int.
+account: hai_1370
+partition: dc-hwai
+gpus_per_node: 4
+cpus_per_slot: 32          # 128 cores / 4
+mem_per_slot: 120G         # 512 GiB / 4, with headroom
+node_time: "24:00:00"      # node-job walltime (billing is actual usage)
+default_time_per_run: "12:00:00"
+max_nodes_per_submit: 4
+env:                       # exported into every run (compute nodes have no internet)
+  WANDB_MODE: offline
+  HF_HUB_OFFLINE: "1"
+  HF_DATASETS_OFFLINE: "1"
+  TRANSFORMERS_OFFLINE: "1"

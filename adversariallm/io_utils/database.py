@@ -20,9 +20,13 @@ from .data_analysis import get_nested_value, normalize_value_for_grouping
 def get_mongodb_connection() -> Database:
     """Get a MongoDB connection.
 
-    Connects to MongoDB using connection details from a config file or environment
-    variables. Falls back to a default localhost connection if not specified.
+    With ADVLLM_DB=file:<dir> (JSC clusters: no network on compute nodes) returns jsc-jobs' file-backed
+    stand-in with the same `runs` collection API. Otherwise connects to MongoDB using environment variables.
     """
+    if os.environ.get("ADVLLM_DB", "").startswith("file:"):
+        from jsc_jobs.filedb import FileDatabase, db_root_from_env
+
+        return FileDatabase(db_root_from_env())
     user = os.environ.get("MONGODB_USER")
     password = os.environ.get("MONGODB_PASSWORD")
     host = os.environ.get("MONGODB_HOST")

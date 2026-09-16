@@ -1,0 +1,18 @@
+# B: model-only AT baseline. eps=1 + lambda_rep=0 IS model-CAT by construction (matched on
+# data/attack/steps/LoRA/seed). lambda_beh varies so CAT gets its OWN over-refusal frontier --
+# without it we only compare against CAT at its worst point (0.764 over-refusal).
+entrypoint: run_coop_train.py
+name: B-cat-lbeh{lambda_beh}-s{seed}
+time_per_run: "05:00:00"
+overrides:
+  attack.enabled: true
+  training.n_steps: 1000
+  training.val_every: 25
+  data.kl_source: magpie
+  data.kl_max_length: 1024
+  epsilon: 1.0
+  lambda_rep: 0.0
+  output.checkpoint_path: $MYPROJECT/checkpoints_coop/B-cat-frontier
+sweep:
+  lambda_beh: [0.25, 0.5, 1.0]
+  seed: [0, 1, 2]

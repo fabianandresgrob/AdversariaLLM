@@ -480,7 +480,18 @@ def run_coop_training(cfg):
     adv_iter, util_iter = _cycle(adv_loader), _cycle(util_loader)
     run_name = container.get("name") or "coop_run"
     out_dir = os.path.join(cfg.output.checkpoint_path, run_name)
+    # A finished run already here means two configs resolved to the same name — silently
+    # clobbering it would swap one experiment's weights for another's. Namespace via
+    # output.checkpoint_path per experiment, or pass output.overwrite=true deliberately.
+    if os.path.exists(os.path.join(out_dir, "final_adapter")) and not container["output"].get("overwrite"):
+        raise FileExistsError(
+            f"{out_dir}/final_adapter exists. Use a distinct name, set a per-experiment "
+            f"output.checkpoint_path, or pass output.overwrite=true to replace it."
+        )
     os.makedirs(out_dir, exist_ok=True)
+    # self-describing checkpoint dir: the eval side reads THIS, never the directory name
+    with open(os.path.join(out_dir, "run_config.json"), "w") as fh:
+        json.dump(container, fh, indent=2, default=str)
     wandb_run = _init_wandb(cfg, container)
 
     val_every = int(cfg.training.val_every)

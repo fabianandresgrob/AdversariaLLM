@@ -1,0 +1,17 @@
+# D2: leash STRENGTH (Leo's "increase utility weight"). Well motivated now that the leash is
+# known to move BOTH utility and detector stability. With block A's lambda_kl=1 this is a
+# 3-point curve {1,2,4}.
+entrypoint: run_coop_train.py
+name: D2-lkl{lambda_kl}-s{seed}
+time_per_run: "05:00:00"
+overrides:
+  attack.enabled: true
+  training.n_steps: 1000
+  training.val_every: 25
+  epsilon: 0.05
+  data.kl_source: magpie
+  data.kl_max_length: 1024
+  output.checkpoint_path: $MYPROJECT/checkpoints_coop/D2-leash-strength
+sweep:
+  lambda_kl: [2.0, 4.0]
+  seed: [0, 1, 2]

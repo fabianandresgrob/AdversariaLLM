@@ -70,7 +70,9 @@ training:
   benign_val_max_new_tokens: 32
 
 output:
+  # per-experiment subdir keeps two ablations from resolving to the same run name
   checkpoint_path: ${root_dir}/checkpoints_coop
+  overwrite: false      # true = replace a finished run in place (guard is opt-out)
 
 wandb:
   enabled: true

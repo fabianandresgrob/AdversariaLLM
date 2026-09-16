@@ -1,0 +1,19 @@
+# E: detector-aware adversary + the two-timescale lever. Make-or-break: does the co-trained
+# probe keep up when the attacker optimises to evade it? The attacker gets 100 iterations per
+# step, the detector gets n_detector_steps. Diagnostic is case_B vs case_D and detector_saved
+# (ndet1 -> model carries safety; ndet6 -> detector does), not just final recall.
+entrypoint: run_coop_train.py
+name: E-nd{training.n_detector_steps}-s{seed}
+time_per_run: "07:00:00"
+overrides:
+  attack.enabled: true
+  training.n_steps: 1000
+  training.val_every: 25
+  epsilon: 0.05
+  data.kl_source: magpie
+  data.kl_max_length: 1024
+  attack.use_detector: true
+  output.checkpoint_path: $MYPROJECT/checkpoints_coop/E-adaptive
+sweep:
+  training.n_detector_steps: [1, 3, 6]
+  seed: [0, 1, 2]

@@ -1,0 +1,17 @@
+# G: delta is LOCKED at 0 on a v1 stability result. A reviewer will ask why the rep gate has
+# a floor of zero while the behaviour gate has a floor of eps. One config makes the lock
+# defensible rather than arbitrary.
+entrypoint: run_coop_train.py
+name: G-delta1-s{seed}
+time_per_run: "05:00:00"
+overrides:
+  attack.enabled: true
+  training.n_steps: 1000
+  training.val_every: 25
+  epsilon: 0.05
+  delta: 1.0
+  data.kl_source: magpie
+  data.kl_max_length: 1024
+  output.checkpoint_path: $MYPROJECT/checkpoints_coop/G-delta
+sweep:
+  seed: [0, 1, 2]

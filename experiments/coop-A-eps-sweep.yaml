@@ -1,0 +1,15 @@
+# A: epsilon sweep -- the coupling floor, the contribution. n=3 because eps=0 previously
+# collapsed on 1 of 3 seeds (over-refusal {0.076, 0.084, 0.436}).
+entrypoint: run_coop_train.py
+name: A-eps{epsilon}-s{seed}
+time_per_run: "05:00:00"
+overrides:
+  attack.enabled: true
+  training.n_steps: 1000
+  training.val_every: 25
+  data.kl_source: magpie
+  data.kl_max_length: 1024
+  output.checkpoint_path: $MYPROJECT/checkpoints_coop/A-eps-sweep
+sweep:
+  epsilon: [0.0, 0.05, 0.25, 1.0]
+  seed: [0, 1, 2]

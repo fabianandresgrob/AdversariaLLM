@@ -1,0 +1,18 @@
+# F: does the method need a pretrained probe at all? Prior cold seeds said no (recall
+# 0.81-0.92, no OOD collapse) but pre-fix. rep_warmup_steps is a config hook that has never
+# been properly exercised -- if it changes nothing, delete it rather than ship dead config.
+entrypoint: run_coop_train.py
+name: F-cold-warm{training.rep_warmup_steps}-s{seed}
+time_per_run: "05:00:00"
+overrides:
+  attack.enabled: true
+  training.n_steps: 1000
+  training.val_every: 25
+  epsilon: 0.05
+  data.kl_source: magpie
+  data.kl_max_length: 1024
+  probe_init: random
+  output.checkpoint_path: $MYPROJECT/checkpoints_coop/F-probe-init
+sweep:
+  training.rep_warmup_steps: [0, 100]
+  seed: [0, 1, 2]

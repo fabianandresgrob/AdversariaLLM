@@ -1,0 +1,17 @@
+# C: lambda_rep frontier -- cooperation vs capability. At matched eps=1, lambda_rep 1->0
+# recovered 13.5 ARC points. lambda_rep IS the cooperation mechanism, so this traces the
+# trade-off rather than treating it as a fixed penalty. lambda_rep=1.0 comes from block A.
+entrypoint: run_coop_train.py
+name: C-lrep{lambda_rep}-s{seed}
+time_per_run: "05:00:00"
+overrides:
+  attack.enabled: true
+  training.n_steps: 1000
+  training.val_every: 25
+  data.kl_source: magpie
+  data.kl_max_length: 1024
+  epsilon: 0.05
+  output.checkpoint_path: $MYPROJECT/checkpoints_coop/C-lrep-frontier
+sweep:
+  lambda_rep: [0.0, 0.25, 0.5]
+  seed: [0, 1, 2]

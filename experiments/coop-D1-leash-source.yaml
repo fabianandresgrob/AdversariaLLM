@@ -1,0 +1,19 @@
+# D1: leash SOURCE. The ultrachat+exploded run came back MMLU 0.3618 vs a 0.6818 base --
+# barely above MMLU's 0.25 floor, i.e. a BROKEN model, matching "oscillates, never settles"
+# in the detector metrics. That was n=1 under the malformed template. 3 clean seeds either
+# establish "a diverse KL leash stabilises co-training" or retire it as an artifact.
+# NOTE: kl_max_length=1024 truncates magpie (long responses) but rarely ultrachat, so this is
+# "magpie truncated" vs "ultrachat effectively untruncated" -- state that in the writeup.
+entrypoint: run_coop_train.py
+name: D1-ultrachat-s{seed}
+time_per_run: "05:00:00"
+overrides:
+  attack.enabled: true
+  training.n_steps: 1000
+  training.val_every: 25
+  epsilon: 0.05
+  data.kl_source: ultrachat
+  data.kl_max_length: 1024
+  output.checkpoint_path: $MYPROJECT/checkpoints_coop/D1-leash-source
+sweep:
+  seed: [0, 1, 2]

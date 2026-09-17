@@ -12,6 +12,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib.ticker import MaxNLocator  # noqa: E402
 import pandas as pd  # noqa: E402
 
 from collect_eval import swept_knobs  # noqa: E402
@@ -40,6 +41,8 @@ def _style(ax):
     for side in ("left", "bottom"):
         ax.spines[side].set_color(GRID)
     ax.tick_params(colors=TEXT_SECONDARY, labelsize=8)
+    ax.xaxis.set_major_locator(MaxNLocator(5))
+    ax.yaxis.set_major_locator(MaxNLocator(6))
 
 
 def _refusal_col(df):
@@ -52,6 +55,14 @@ def _config_means(block_df: pd.DataFrame, knob: str | None, cols: list[str]) -> 
     stats = block_df.groupby(key)[present].agg(["mean", "std"])
     stats.index.name = "knob"
     return stats
+
+
+def _fmt(value) -> str:
+    try:
+        f = float(value)
+        return str(int(f)) if f.is_integer() else f"{f:g}"
+    except ValueError:
+        return str(value)
 
 
 def _knob_order(values):
@@ -70,15 +81,22 @@ def plot_tradeoff(df: pd.DataFrame, path: Path) -> None:
     base = df[(df["kind"] == "reference") & (df["run"] == "base")]
     ncols = 4
     nrows = -(-len(blocks) // ncols)
-    fig, axes = plt.subplots(nrows, ncols, figsize=(3.2 * ncols, 2.9 * nrows), sharex=True, sharey=True,
-                             facecolor=SURFACE, squeeze=False)
+    # independent axes: a broken block (e.g. utility ~0) must not flatten every other panel
+    fig, axes = plt.subplots(nrows, ncols, figsize=(3.4 * ncols, 3.0 * nrows), facecolor=SURFACE, squeeze=False)
     for ax, block in zip(axes.flat, blocks):
         _style(ax)
         block_df = coop[coop["block"] == block]
         knobs = swept_knobs(block_df)
         knob = knobs[0] if knobs else None
         stats = _config_means(block_df, knob, ["utility_mean_pct", refusal])
-        for label in _knob_order(list(stats.index)):
+        if not base.empty and base["utility_mean_pct"].notna().any():
+            bx, by = base[refusal].iloc[0], base["utility_mean_pct"].iloc[0]
+            if pd.notna(bx):
+                ax.axvline(bx, color=TEXT_SECONDARY, linestyle="--", linewidth=1)
+            ax.axhline(by, color=TEXT_SECONDARY, linestyle="--", linewidth=1)
+            ax.annotate("base", (1, by), xycoords=("axes fraction", "data"), xytext=(-2, 3),
+                        textcoords="offset points", fontsize=7, color=TEXT_SECONDARY, ha="right")
+        for i, label in enumerate(_knob_order(list(stats.index))):
             row = stats.loc[label]
             x, y = row[(refusal, "mean")], row[("utility_mean_pct", "mean")]
             if pd.isna(x) or pd.isna(y):
@@ -86,17 +104,13 @@ def plot_tradeoff(df: pd.DataFrame, path: Path) -> None:
             ax.errorbar(x, y, xerr=row[(refusal, "std")], yerr=row[("utility_mean_pct", "std")], fmt="o",
                         ms=6, color=SERIES, ecolor=SERIES, elinewidth=1, capsize=0,
                         markeredgecolor=SURFACE, markeredgewidth=1.5)
-            if knob:
-                ax.annotate(f"{label}", (x, y), xytext=(5, 4), textcoords="offset points", fontsize=7, color=TEXT)
-        if not base.empty and base["utility_mean_pct"].notna().any():
-            bx, by = base[refusal].iloc[0], base["utility_mean_pct"].iloc[0]
-            ax.plot(bx, by, marker="D", ms=6, color=TEXT_SECONDARY, linestyle="none")
-            ax.annotate("base", (bx, by), xytext=(5, -10), textcoords="offset points", fontsize=7,
-                        color=TEXT_SECONDARY)
+            if knob:  # alternate above/below so neighbouring configs don't overprint
+                ax.annotate(_fmt(label), (x, y), xytext=(6, 7 if i % 2 == 0 else -12), textcoords="offset points",
+                            fontsize=7, color=TEXT)
         ax.set_title(f"{block}" + (f"  ({knob})" if knob else ""), fontsize=9, color=TEXT, loc="left")
     for ax in axes.flat[len(blocks):]:
         ax.set_visible(False)
-    for ax in axes[-1]:
+    for ax in axes.flat[: len(blocks)]:
         ax.set_xlabel("xs_test over-refusal" + (" (judge)" if refusal == REFUSAL else ""), fontsize=8,
                       color=TEXT_SECONDARY)
     for ax in axes[:, 0]:
@@ -132,7 +146,7 @@ def plot_sweep(df: pd.DataFrame, block: str, path: Path) -> bool:
             ax.axhline(base[col].iloc[0], color=TEXT_SECONDARY, linestyle="--", linewidth=1)
             ax.annotate("base", (len(order) - 1, base[col].iloc[0]), xytext=(0, 3), textcoords="offset points",
                         fontsize=7, color=TEXT_SECONDARY, ha="right")
-        ax.set_xticks(list(xs), order)
+        ax.set_xticks(list(xs), [_fmt(k) for k in order])
         ax.set_xlabel(knob, fontsize=8, color=TEXT_SECONDARY)
         ax.set_title(label, fontsize=9, color=TEXT, loc="left")
     fig.suptitle(f"{block}: metrics vs {knob} (mean ± std over seeds)", fontsize=10, color=TEXT, x=0.01, ha="left")

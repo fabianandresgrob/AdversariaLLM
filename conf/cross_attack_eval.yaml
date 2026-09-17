@@ -24,6 +24,10 @@ reader:
 # use_detector (both ndet=1), so their gap isolates the detector-aware effect; detaware_ndet6 adds
 # the ndet=6 arm. base has no reader checkpoint -> its detector columns are random-probe noise,
 # only its comply_rate is meaningful (undefended reference).
+# Single-checkpoint mode (used by generated eval experiments): adapter_path set -> evaluate only that
+# adapter (reader auto-derived as its sibling) and ignore the checkpoints map below.
+adapter_path: null
+
 checkpoints:
   base:
     adapter: null

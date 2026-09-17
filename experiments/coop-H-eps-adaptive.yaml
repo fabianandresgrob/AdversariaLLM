@@ -1,0 +1,20 @@
+# H (round 2): epsilon under a detector-aware adversary -- the regime where eps can actually be ranked
+# (tier A saturated at pipeline/asr=0). One-factor change from A: attack.use_detector=true, ndet=1.
+# eps=0.05 is NOT rerun: E-nd1 (coop-E-adaptive, E-nd1-s{0,1,2}) is exactly that config.
+entrypoint: run_coop_train.py
+name: H-eps{epsilon}-s{seed}
+time_per_run: "05:00:00"
+overrides:
+  attack.enabled: true
+  training.n_steps: 1000
+  training.val_every: 25
+  data.kl_source: magpie
+  data.kl_max_length: 1024
+  attack.use_detector: true
+  output.checkpoint_path: ${root_dir}/checkpoints_coop/H-eps-adaptive
+sweep:
+  epsilon: [0.0, 0.25, 1.0]
+  seed: [0, 1, 2]
+artifacts:
+  - checkpoints_coop/H-eps-adaptive/{name}/final_adapter
+  - checkpoints_coop/H-eps-adaptive/{name}/final_reader.pt

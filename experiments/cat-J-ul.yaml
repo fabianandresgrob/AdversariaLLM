@@ -1,0 +1,19 @@
+# J (round 2): CAT with the aggressive unlikelihood away objective (cat_ul_450's objective), matched as cat-J-ce.
+entrypoint: run_train.py
+name: J-ul-away{lambda_away}-s{seed}
+time_per_run: "05:00:00"
+overrides:
+  data.kl_source: magpie
+  data.kl_max_length: 1024
+  training.n_steps: 1000
+  data.harmful_batch_size: 4
+  data.utility_batch_size: 4
+  training.lr: 5.0e-5
+  update_mode: lora
+  output.checkpoint_path: ${root_dir}/checkpoints_cat/J-cat
+  model_objective: ul
+  lambda_away: 1.0
+sweep:
+  seed: [0, 1, 2]
+artifacts:
+  - checkpoints_cat/J-cat/{name}/final_adapter

@@ -228,6 +228,10 @@ def run_training(cfg):
     model, tokenizer = load_model_and_tokenizer(model_params)
     device = next(model.parameters()).device
 
+    from .coop_loop import _seed_everything
+
+    _seed_everything(int(cfg.get("seed", 0)))  # LoRA init + loader shuffles, so a CAT seed sweep is real
+
     update_mode = cfg.update_mode
     if update_mode == "lora":
         import peft

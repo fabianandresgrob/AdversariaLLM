@@ -1,0 +1,21 @@
+# J (round 2): the real CAT baseline (run_train.py, mode=model_cat: away + toward + KL), matched to the coop
+# grid on data, leash, steps, batch sizes, lr, LoRA and the attack (same ContinuousEmbeddingAttack: iters 100,
+# eps 1.0, lr 0.01). lambda_away is CAT's over-refusal dial; tier B (coop, no away term) is its away-term ablation.
+entrypoint: run_train.py
+name: J-ce-away{lambda_away}-s{seed}
+time_per_run: "05:00:00"
+overrides:
+  data.kl_source: magpie
+  data.kl_max_length: 1024
+  training.n_steps: 1000
+  data.harmful_batch_size: 4
+  data.utility_batch_size: 4
+  training.lr: 5.0e-5
+  update_mode: lora
+  output.checkpoint_path: ${root_dir}/checkpoints_cat/J-cat
+  model_objective: ce
+sweep:
+  lambda_away: [0.25, 0.5, 1.0]
+  seed: [0, 1, 2]
+artifacts:
+  - checkpoints_cat/J-cat/{name}/final_adapter

@@ -1,0 +1,23 @@
+# I (round 2): ablation from the best-known config, detector-aware. Full = eps=0.05, lambda_kl=2, ndet=6,
+# easy_benign_sources=[alpaca, or_bench], magpie/1024, attack.use_detector=true.
+# Row 'lkl1': leash back to the round-1 default: does the D2 leash win survive adaptively?
+entrypoint: run_coop_train.py
+name: I-lkl1-s{seed}
+time_per_run: "05:00:00"
+overrides:
+  attack.enabled: true
+  training.n_steps: 1000
+  training.val_every: 25
+  data.kl_source: magpie
+  data.kl_max_length: 1024
+  epsilon: 0.05
+  attack.use_detector: true
+  lambda_kl: 1.0
+  training.n_detector_steps: 6
+  data.easy_benign_sources: [alpaca, or_bench]
+  output.checkpoint_path: ${root_dir}/checkpoints_coop/I-ablation
+sweep:
+  seed: [0, 1, 2]
+artifacts:
+  - checkpoints_coop/I-ablation/{name}/final_adapter
+  - checkpoints_coop/I-ablation/{name}/final_reader.pt

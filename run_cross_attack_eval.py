@@ -130,7 +130,8 @@ def main(cfg: DictConfig) -> None:
     layer = int(cfg.reader.layer)
 
     results = {}
-    for name, spec in cfg.checkpoints.items():
+    checkpoints = {"model": {"adapter": cfg.adapter_path, "reader": None}} if cfg.get("adapter_path") else cfg.checkpoints
+    for name, spec in checkpoints.items():
         log.info(f"=== {name} ===")
         model, tok, reader, train_cfg = _load_checkpoint(cfg, name, spec)
         model.requires_grad_(False)  # eval-only: freeze adapter+base so the attack's backward

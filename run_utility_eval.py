@@ -92,7 +92,19 @@ def write_summary(out: str, cfg: DictConfig) -> dict:
         raise FileNotFoundError(f"lm_eval finished but wrote no results_*.json under {out}")
     with open(found[-1]) as fh:
         results = json.load(fh)
+    headline = {  # task-level scores in percent; the full per-subtask detail stays in "results"
+        name: round(100 * results["results"][task][metric], 2)
+        for name, (task, metric) in {
+            "mmlu_pct": ("mmlu_llama", "exact_match,strict_match"),
+            "arc_c_pct": ("arc_challenge_llama", "exact_match,strict_match"),
+            "gsm8k_pct": ("gsm8k_llama", "exact_match,strict_match"),
+            "gsm8k_flexible_pct": ("gsm8k_llama", "exact_match,flexible_extract"),
+            "mmlu_pro_pct": ("mmlu_pro_llama", "exact_match,strict_match"),
+        }.items()
+        if metric in results["results"].get(task, {})
+    }
     summary = {
+        "summary": headline,
         "results": results["results"],
         "results_file": found[-1],
         "adapter_path": cfg.adapter_path,

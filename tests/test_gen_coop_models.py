@@ -5,7 +5,7 @@ import pytest
 import yaml
 from omegaconf import OmegaConf
 
-from gen_coop_models import BEGIN, END, main, update_models_yaml
+from gen_coop_models import BEGIN, END, main, strip_generated, update_models_yaml
 
 BASE = {
     "id": "meta-llama/Meta-Llama-3.1-8B-Instruct",
@@ -111,6 +111,8 @@ def test_defense_interpolation_resolves_generated_name(tmp_path):
     assert cfg.checkpoint_path == "/r/checkpoints_coop/A-eps-sweep/A-eps0.25-s2/final_reader.pt"
 
 
-def test_real_models_yaml_round_trips_without_checkpoints():
+def test_real_models_yaml_regenerates_identically():
     text = (Path(__file__).resolve().parents[1] / "conf" / "models" / "models.yaml").read_text()
-    assert yaml.safe_load(update_models_yaml(text, {})) == yaml.safe_load(text)
+    hand_written = yaml.safe_load(strip_generated(text)) or {}
+    generated = {k: v for k, v in yaml.safe_load(text).items() if k not in hand_written}
+    assert update_models_yaml(text, generated) == text

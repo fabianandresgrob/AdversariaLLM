@@ -445,3 +445,632 @@ meta-llama-3.1-8b-instruct-cooptmpl:
   dtype: bfloat16
   chat_template: llama-3-instruct-cooptrain
   trust_remote_code: True
+# >>> generated coop checkpoints (gen_coop_models.py) >>>
+A-eps0p0-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/A-eps-sweep/A-eps0.0-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/A-eps-sweep/A-eps0.0-s0/final_reader.pt
+A-eps0p0-s1:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/A-eps-sweep/A-eps0.0-s1/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/A-eps-sweep/A-eps0.0-s1/final_reader.pt
+A-eps0p0-s2:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/A-eps-sweep/A-eps0.0-s2/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/A-eps-sweep/A-eps0.0-s2/final_reader.pt
+A-eps0p05-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/A-eps-sweep/A-eps0.05-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/A-eps-sweep/A-eps0.05-s0/final_reader.pt
+A-eps0p05-s1:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/A-eps-sweep/A-eps0.05-s1/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/A-eps-sweep/A-eps0.05-s1/final_reader.pt
+A-eps0p05-s2:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/A-eps-sweep/A-eps0.05-s2/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/A-eps-sweep/A-eps0.05-s2/final_reader.pt
+A-eps0p25-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/A-eps-sweep/A-eps0.25-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/A-eps-sweep/A-eps0.25-s0/final_reader.pt
+A-eps0p25-s1:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/A-eps-sweep/A-eps0.25-s1/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/A-eps-sweep/A-eps0.25-s1/final_reader.pt
+A-eps0p25-s2:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/A-eps-sweep/A-eps0.25-s2/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/A-eps-sweep/A-eps0.25-s2/final_reader.pt
+A-eps1p0-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/A-eps-sweep/A-eps1.0-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/A-eps-sweep/A-eps1.0-s0/final_reader.pt
+A-eps1p0-s1:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/A-eps-sweep/A-eps1.0-s1/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/A-eps-sweep/A-eps1.0-s1/final_reader.pt
+A-eps1p0-s2:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/A-eps-sweep/A-eps1.0-s2/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/A-eps-sweep/A-eps1.0-s2/final_reader.pt
+B-cat-lbeh0p25-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/B-cat-frontier/B-cat-lbeh0.25-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/B-cat-frontier/B-cat-lbeh0.25-s0/final_reader.pt
+B-cat-lbeh0p25-s1:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/B-cat-frontier/B-cat-lbeh0.25-s1/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/B-cat-frontier/B-cat-lbeh0.25-s1/final_reader.pt
+B-cat-lbeh0p25-s2:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/B-cat-frontier/B-cat-lbeh0.25-s2/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/B-cat-frontier/B-cat-lbeh0.25-s2/final_reader.pt
+B-cat-lbeh0p5-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/B-cat-frontier/B-cat-lbeh0.5-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/B-cat-frontier/B-cat-lbeh0.5-s0/final_reader.pt
+B-cat-lbeh0p5-s1:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/B-cat-frontier/B-cat-lbeh0.5-s1/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/B-cat-frontier/B-cat-lbeh0.5-s1/final_reader.pt
+B-cat-lbeh0p5-s2:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/B-cat-frontier/B-cat-lbeh0.5-s2/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/B-cat-frontier/B-cat-lbeh0.5-s2/final_reader.pt
+B-cat-lbeh1p0-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/B-cat-frontier/B-cat-lbeh1.0-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/B-cat-frontier/B-cat-lbeh1.0-s0/final_reader.pt
+B-cat-lbeh1p0-s1:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/B-cat-frontier/B-cat-lbeh1.0-s1/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/B-cat-frontier/B-cat-lbeh1.0-s1/final_reader.pt
+B-cat-lbeh1p0-s2:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/B-cat-frontier/B-cat-lbeh1.0-s2/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/B-cat-frontier/B-cat-lbeh1.0-s2/final_reader.pt
+C-lrep0p0-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/C-lrep-frontier/C-lrep0.0-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/C-lrep-frontier/C-lrep0.0-s0/final_reader.pt
+C-lrep0p0-s1:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/C-lrep-frontier/C-lrep0.0-s1/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/C-lrep-frontier/C-lrep0.0-s1/final_reader.pt
+C-lrep0p0-s2:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/C-lrep-frontier/C-lrep0.0-s2/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/C-lrep-frontier/C-lrep0.0-s2/final_reader.pt
+C-lrep0p25-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/C-lrep-frontier/C-lrep0.25-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/C-lrep-frontier/C-lrep0.25-s0/final_reader.pt
+C-lrep0p25-s1:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/C-lrep-frontier/C-lrep0.25-s1/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/C-lrep-frontier/C-lrep0.25-s1/final_reader.pt
+C-lrep0p25-s2:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/C-lrep-frontier/C-lrep0.25-s2/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/C-lrep-frontier/C-lrep0.25-s2/final_reader.pt
+C-lrep0p5-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/C-lrep-frontier/C-lrep0.5-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/C-lrep-frontier/C-lrep0.5-s0/final_reader.pt
+C-lrep0p5-s1:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/C-lrep-frontier/C-lrep0.5-s1/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/C-lrep-frontier/C-lrep0.5-s1/final_reader.pt
+C-lrep0p5-s2:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/C-lrep-frontier/C-lrep0.5-s2/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/C-lrep-frontier/C-lrep0.5-s2/final_reader.pt
+D1-ultrachat-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/D1-leash-source/D1-ultrachat-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/D1-leash-source/D1-ultrachat-s0/final_reader.pt
+D1-ultrachat-s1:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/D1-leash-source/D1-ultrachat-s1/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/D1-leash-source/D1-ultrachat-s1/final_reader.pt
+D1-ultrachat-s2:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/D1-leash-source/D1-ultrachat-s2/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/D1-leash-source/D1-ultrachat-s2/final_reader.pt
+D2-lkl2p0-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/D2-leash-strength/D2-lkl2.0-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/D2-leash-strength/D2-lkl2.0-s0/final_reader.pt
+D2-lkl2p0-s1:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/D2-leash-strength/D2-lkl2.0-s1/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/D2-leash-strength/D2-lkl2.0-s1/final_reader.pt
+D2-lkl2p0-s2:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/D2-leash-strength/D2-lkl2.0-s2/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/D2-leash-strength/D2-lkl2.0-s2/final_reader.pt
+D2-lkl4p0-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/D2-leash-strength/D2-lkl4.0-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/D2-leash-strength/D2-lkl4.0-s0/final_reader.pt
+D2-lkl4p0-s1:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/D2-leash-strength/D2-lkl4.0-s1/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/D2-leash-strength/D2-lkl4.0-s1/final_reader.pt
+D2-lkl4p0-s2:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/D2-leash-strength/D2-lkl4.0-s2/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/D2-leash-strength/D2-lkl4.0-s2/final_reader.pt
+E-nd1-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/E-adaptive/E-nd1-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/E-adaptive/E-nd1-s0/final_reader.pt
+E-nd1-s1:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/E-adaptive/E-nd1-s1/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/E-adaptive/E-nd1-s1/final_reader.pt
+E-nd1-s2:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/E-adaptive/E-nd1-s2/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/E-adaptive/E-nd1-s2/final_reader.pt
+E-nd3-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/E-adaptive/E-nd3-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/E-adaptive/E-nd3-s0/final_reader.pt
+E-nd3-s1:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/E-adaptive/E-nd3-s1/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/E-adaptive/E-nd3-s1/final_reader.pt
+E-nd3-s2:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/E-adaptive/E-nd3-s2/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/E-adaptive/E-nd3-s2/final_reader.pt
+E-nd6-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/E-adaptive/E-nd6-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/E-adaptive/E-nd6-s0/final_reader.pt
+E-nd6-s1:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/E-adaptive/E-nd6-s1/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/E-adaptive/E-nd6-s1/final_reader.pt
+E-nd6-s2:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/E-adaptive/E-nd6-s2/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/E-adaptive/E-nd6-s2/final_reader.pt
+F-cold-warm0-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/F-probe-init/F-cold-warm0-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/F-probe-init/F-cold-warm0-s0/final_reader.pt
+F-cold-warm0-s1:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/F-probe-init/F-cold-warm0-s1/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/F-probe-init/F-cold-warm0-s1/final_reader.pt
+F-cold-warm0-s2:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/F-probe-init/F-cold-warm0-s2/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/F-probe-init/F-cold-warm0-s2/final_reader.pt
+F-cold-warm100-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/F-probe-init/F-cold-warm100-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/F-probe-init/F-cold-warm100-s0/final_reader.pt
+F-cold-warm100-s1:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/F-probe-init/F-cold-warm100-s1/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/F-probe-init/F-cold-warm100-s1/final_reader.pt
+F-cold-warm100-s2:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/F-probe-init/F-cold-warm100-s2/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/F-probe-init/F-cold-warm100-s2/final_reader.pt
+G-delta1-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/G-delta/G-delta1-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/G-delta/G-delta1-s0/final_reader.pt
+G-delta1-s1:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/G-delta/G-delta1-s1/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/G-delta/G-delta1-s1/final_reader.pt
+G-delta1-s2:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/G-delta/G-delta1-s2/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/G-delta/G-delta1-s2/final_reader.pt
+# <<< generated coop checkpoints <<<

@@ -32,6 +32,8 @@ run_pretrain_probe.py:
   name_key: name
 run_calibrate_probe.py:
   config_name: calibrate_probe
+run_utility_eval.py:
+  config_name: utility_eval
 run_gate_diagnostics.py:
   config_name: gate_diagnostics
 run_generate_benign_targets.py:

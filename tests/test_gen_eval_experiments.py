@@ -34,7 +34,8 @@ def test_writes_one_file_per_eval_and_block(repo):
     main([str(p) for p in paths], repo=repo)
     names = sorted(p.name for p in (repo / "experiments").iterdir())
     assert names == ["eval-calib-A-eps-sweep.yaml", "eval-calib-G-delta.yaml", "eval-overrefusal-A-eps-sweep.yaml",
-                     "eval-overrefusal-G-delta.yaml", "eval-overrefusal-reference.yaml"]
+                     "eval-overrefusal-G-delta.yaml", "eval-overrefusal-reference.yaml", "eval-utility-A-eps-sweep.yaml",
+                     "eval-utility-G-delta.yaml", "eval-utility-reference.yaml"]
     calib = load_experiment(repo / "experiments" / "eval-calib-A-eps-sweep.yaml")
     runs = expand(calib)
     assert [r.name for r in runs] == ["calib-A-eps0.0-s1", "calib-A-eps0.05-s0"]
@@ -45,7 +46,9 @@ def test_writes_one_file_per_eval_and_block(repo):
 
 @pytest.mark.parametrize("config_name,file", [("calibrate_probe", "eval-calib-A-eps-sweep.yaml"),
                                                ("overrefusal", "eval-overrefusal-A-eps-sweep.yaml"),
-                                               ("overrefusal", "eval-overrefusal-reference.yaml")])
+                                               ("overrefusal", "eval-overrefusal-reference.yaml"),
+                                               ("utility_eval", "eval-utility-A-eps-sweep.yaml"),
+                                               ("utility_eval", "eval-utility-reference.yaml")])
 def test_overrides_compose_against_real_configs(repo, monkeypatch, config_name, file):
     monkeypatch.setenv("PWD", "/proj")
     main([str(_checkpoint(repo, "A-eps-sweep", "A-eps0.05-s0"))], repo=repo)
@@ -55,6 +58,11 @@ def test_overrides_compose_against_real_configs(repo, monkeypatch, config_name, 
     ckpt = "/proj/checkpoints_coop/A-eps-sweep/A-eps0.05-s0"
     if config_name == "calibrate_probe":
         assert (cfg.adapter_path, cfg.checkpoint_path) == (ckpt + "/final_adapter", ckpt + "/final_reader.pt")
+    elif file == "eval-utility-A-eps-sweep.yaml":
+        assert cfg.adapter_path == ckpt + "/final_adapter"
+        assert cfg.out == "/proj/outputs/eval/utility/A-eps-sweep/A-eps0.05-s0"
+    elif file == "eval-utility-reference.yaml":
+        assert cfg.adapter_path is None and cfg.out == "/proj/outputs/eval/utility/reference/base"
     elif file == "eval-overrefusal-reference.yaml":
         assert dict(cfg.checkpoints) == {"base": "base"} and cfg.out == "/proj/outputs/eval/overrefusal/reference/base"
     else:

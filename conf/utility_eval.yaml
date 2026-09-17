@@ -1,0 +1,26 @@
+defaults:
+  - models: models
+  - paths
+  - _self_
+
+# General-capability eval with Meta's Llama-3.1 recipe, via lm-evaluation-harness's llama3 tasks
+# (generation-based, chat template + few-shot as multiturn). Reported 8B-Instruct numbers to
+# reproduce on the base model: MMLU 5-shot 69.4, ARC-C 0-shot 83.4, GSM8K 8-shot CoT 84.5,
+# MMLU-Pro 5-shot CoT 48.3. lm_eval runs in its own venv (vLLM), not the pixi env.
+model: meta-llama/Meta-Llama-3.1-8B-Instruct
+adapter_path: null        # LoRA adapter dir (coop/CAT checkpoint); null = un-adapted base model
+out: ${root_dir}/outputs/eval/utility/reference/base
+
+lm_eval_venv: ${oc.env:MYPROJECT}/venvs/lm_eval
+tasks: [mmlu_llama, arc_challenge_llama, gsm8k_llama]   # add mmlu_pro_llama for the expensive CoT one
+apply_chat_template: true
+fewshot_as_multiturn: true
+log_samples: true         # per-sample prompts + generations, kept for the later probe-on-generations pipeline eval
+limit: null               # per-task cap for smoke tests only; never set for reported numbers
+batch_size: auto
+
+vllm:
+  dtype: bfloat16
+  gpu_memory_utilization: 0.85
+  max_model_len: 8192     # GSM8K 8-shot multiturn + 1024 generated tokens fits comfortably
+  max_lora_rank: 16       # coop LoRA uses r=8

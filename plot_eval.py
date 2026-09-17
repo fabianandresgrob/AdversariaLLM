@@ -144,8 +144,8 @@ def plot_sweep(df: pd.DataFrame, block: str, path: Path) -> bool:
                     elinewidth=1, markeredgecolor=SURFACE, markeredgewidth=1.5)
         if col in base and not base.empty and pd.notna(base[col].iloc[0]):
             ax.axhline(base[col].iloc[0], color=TEXT_SECONDARY, linestyle="--", linewidth=1)
-            ax.annotate("base", (len(order) - 1, base[col].iloc[0]), xytext=(0, 3), textcoords="offset points",
-                        fontsize=7, color=TEXT_SECONDARY, ha="right")
+            ax.annotate("base", (0, base[col].iloc[0]), xycoords=("axes fraction", "data"), xytext=(2, 3),
+                        textcoords="offset points", fontsize=7, color=TEXT_SECONDARY, ha="left")
         ax.set_xticks(list(xs), [_fmt(k) for k in order])
         ax.set_xlabel(knob, fontsize=8, color=TEXT_SECONDARY)
         ax.set_title(label, fontsize=9, color=TEXT, loc="left")

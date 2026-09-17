@@ -37,5 +37,9 @@ def test_adapter_is_loaded_as_lora(monkeypatch):
 def test_env_drops_pythonpath_keeps_offline_flags(monkeypatch):
     monkeypatch.setenv("PYTHONPATH", "/p/me/jsc-jobs")
     monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+    monkeypatch.setenv("MYPROJECT", "/p/me")
+    monkeypatch.delenv("VLLM_USE_FLASHINFER_SAMPLER", raising=False)
+    monkeypatch.delenv("VLLM_CACHE_ROOT", raising=False)
     env = lm_eval_env()
     assert "PYTHONPATH" not in env and env["HF_HUB_OFFLINE"] == "1"
+    assert env["VLLM_USE_FLASHINFER_SAMPLER"] == "0" and env["VLLM_CACHE_ROOT"] == "/p/me/.cache/vllm"

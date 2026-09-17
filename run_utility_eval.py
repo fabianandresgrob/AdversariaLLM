@@ -53,10 +53,17 @@ def build_command(cfg: DictConfig) -> list[str]:
 
 def lm_eval_env() -> dict[str, str]:
     """Environment for the venv's lm_eval: keep HF/W&B offline flags and CUDA binding, drop the
-    pixi env's Python path so the venv's own packages are used."""
+    pixi env's Python path so the venv's own packages are used.
+
+    VLLM_USE_FLASHINFER_SAMPLER=0: FlashInfer's sampler JIT-compiles a kernel at warmup, which needs
+    nvcc (absent on compute nodes); the llama3 tasks decode greedily, so the torch sampler is equivalent.
+    VLLM_CACHE_ROOT: torch.compile artifacts go to $MYPROJECT instead of the small $HOME quota."""
     env = dict(os.environ)
     env.pop("PYTHONPATH", None)
     env.pop("PYTHONHOME", None)
+    env.setdefault("VLLM_USE_FLASHINFER_SAMPLER", "0")
+    if "MYPROJECT" in env:
+        env.setdefault("VLLM_CACHE_ROOT", os.path.join(env["MYPROJECT"], ".cache", "vllm"))
     return env
 
 

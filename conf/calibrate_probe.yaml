@@ -16,5 +16,7 @@ checkpoint_path: ???     # coop <tag>_reader.pt (the probe)
 layer: -1
 batch_size: 16
 calibration_benign: alpaca   # PINNED easy-benign set (matches coop_train.calibration_benign)
+calibration_window: val      # split window: val = training-time point (threshold_<p>pct.json);
+                             # calib = large held-out window (threshold_<p>pct_calib.json)
 val_seed: 0                  # matches data.val_seed
 fpr: 0.01

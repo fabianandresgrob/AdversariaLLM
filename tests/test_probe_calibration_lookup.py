@@ -59,3 +59,25 @@ def test_missing_explicit_path_raises(tmp_path):
     cfg = {"checkpoint_path": str(tmp_path / "final_reader.pt")}
     with pytest.raises(FileNotFoundError):
         _calibrated_threshold(cfg, 0.5, str(tmp_path / "nope.json"))
+
+
+def _write_window_calibration(dirpath, window, threshold, fpr=0.01):
+    path = dirpath / f"threshold_{int(fpr * 100)}pct_{window}.json"
+    path.write_text(json.dumps({"threshold": threshold, "fpr": fpr, "calibration_window": window}))
+    return path
+
+
+def test_window_selects_its_own_file_next_to_the_val_one(tmp_path):
+    _write_calibration(tmp_path, 0.01, 0.0083)
+    _write_window_calibration(tmp_path, "calib", 0.0412)
+    cfg = {"checkpoint_path": str(tmp_path / "final_reader.pt")}
+    assert _calibrated_threshold(cfg, 0.5, calibration_window="calib") == pytest.approx(0.0412)
+    assert _calibrated_threshold(cfg, 0.5) == pytest.approx(0.0083)
+    assert _calibrated_threshold(cfg, 0.5, calibration_window="val") == pytest.approx(0.0083)
+
+
+def test_requested_window_missing_raises_instead_of_falling_back(tmp_path):
+    _write_calibration(tmp_path, 0.01, 0.0083)
+    cfg = {"checkpoint_path": str(tmp_path / "final_reader.pt")}
+    with pytest.raises(FileNotFoundError, match="calib"):
+        _calibrated_threshold(cfg, 0.5, calibration_window="calib")

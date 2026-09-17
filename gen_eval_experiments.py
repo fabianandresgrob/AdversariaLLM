@@ -1,7 +1,7 @@
 """Write jsc-jobs experiment files that evaluate every finished coop checkpoint, one file per
 (eval type, block), following the eval layout:
 
-    checkpoints_coop/<block>/<run>/threshold_1pct.json        calibration (next to the probe, where
+    checkpoints_coop/<block>/<run>/threshold_1pct_calib.json  calibration on alpaca[700:2700] (next to the probe, where
                                                                defense=coop_probe looks for it)
     outputs/eval/overrefusal/<block>/<run>/                    over-refusal (string match + judge)
     outputs/eval/overrefusal/reference/base/                   same eval on the un-adapted base model
@@ -33,8 +33,9 @@ CALIB = {
     "overrides": {
         "adapter_path": CKPT + "/final_adapter",
         "checkpoint_path": CKPT + "/final_reader.pt",
+        "calibration_window": "calib",
     },
-    "artifacts": ["checkpoints_coop/{+block}/{+run}/threshold_1pct.json"],
+    "artifacts": ["checkpoints_coop/{+block}/{+run}/threshold_1pct_calib.json"],
 }
 OVERREFUSAL = {
     "entrypoint": "run_overrefusal_eval.py",

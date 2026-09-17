@@ -6,8 +6,9 @@ overrides:
   +block: A-eps-sweep
   adapter_path: ${root_dir}/checkpoints_coop/${block}/${run}/final_adapter
   checkpoint_path: ${root_dir}/checkpoints_coop/${block}/${run}/final_reader.pt
+  calibration_window: calib
 artifacts:
-- checkpoints_coop/{+block}/{+run}/threshold_1pct.json
+- checkpoints_coop/{+block}/{+run}/threshold_1pct_calib.json
 sweep:
   +run:
   - A-eps0.0-s0

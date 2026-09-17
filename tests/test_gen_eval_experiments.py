@@ -38,7 +38,7 @@ def test_writes_one_file_per_eval_and_block(repo):
     calib = load_experiment(repo / "experiments" / "eval-calib-A-eps-sweep.yaml")
     runs = expand(calib)
     assert [r.name for r in runs] == ["calib-A-eps0.0-s1", "calib-A-eps0.05-s0"]
-    assert runs[0].artifacts == ("checkpoints_coop/A-eps-sweep/A-eps0.0-s1/threshold_1pct.json",)
+    assert runs[0].artifacts == ("checkpoints_coop/A-eps-sweep/A-eps0.0-s1/threshold_1pct_calib.json",)
     assert [r.name for r in expand(load_experiment(repo / "experiments" / "eval-calib-G-delta.yaml"))] == [
         "calib-G-delta1-s0"]
 

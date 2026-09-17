@@ -37,7 +37,7 @@ def main(cfg: DictConfig) -> None:
         }
     )
 
-    window = cfg.splits[cfg.calibration_benign].val
+    window = cfg.splits[cfg.calibration_benign][cfg.calibration_window]
     prompts, _ = load_dataset_prompts(cfg.datasets, cfg.calibration_benign, window=window, seed=cfg.val_seed)
     scores = monitor.score(prompts, [""] * len(prompts), target_model=model, target_tokenizer=tokenizer)
     tau = threshold_at_fpr(scores, fpr=float(cfg.fpr))
@@ -47,13 +47,22 @@ def main(cfg: DictConfig) -> None:
         "fpr": float(cfg.fpr),
         "n_benign": len(scores),
         "calibration_benign": cfg.calibration_benign,
+        "calibration_window": cfg.calibration_window,
+        "window": list(window),
         "checkpoint_path": cfg.checkpoint_path,
         "adapter_path": cfg.adapter_path,
     }
-    out_path = os.path.join(os.path.dirname(cfg.checkpoint_path), f"threshold_{int(float(cfg.fpr) * 100)}pct.json")
+    # val keeps the historical name; other windows get a suffix so both operating points can coexist
+    suffix = "" if cfg.calibration_window == "val" else f"_{cfg.calibration_window}"
+    out_path = os.path.join(
+        os.path.dirname(cfg.checkpoint_path), f"threshold_{int(float(cfg.fpr) * 100)}pct{suffix}.json"
+    )
     with open(out_path, "w") as fh:
         json.dump(out, fh, indent=2)
-    log.info(f"1%-FPR threshold tau={tau:.6f} on {len(scores)} benign ({cfg.calibration_benign}); wrote {out_path}")
+    log.info(
+        f"{float(cfg.fpr):.0%}-FPR threshold tau={tau:.6f} on {len(scores)} benign "
+        f"({cfg.calibration_benign} {cfg.calibration_window} {list(window)}); wrote {out_path}"
+    )
 
 
 if __name__ == "__main__":

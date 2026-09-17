@@ -15,14 +15,15 @@ from .monitors import build_monitor
 log = logging.getLogger(__name__)
 
 
-def _calibrated_threshold(monitor_cfg, fallback, calibration_path=None):
+def _calibrated_threshold(monitor_cfg, fallback, calibration_path=None, calibration_window=None):
     """Prefer the calibrated operating point written next to the checkpoint by
     run_calibrate_probe.py; the config value is only a fallback.
 
     run_calibrate_probe.py names its output for the FPR it calibrated at
     (threshold_1pct.json, threshold_5pct.json, ...), so match the whole family
-    rather than assuming the fpr=0.01 default. An explicit calibration_path in
-    the defense config wins over the search."""
+    rather than assuming the fpr=0.01 default. calibration_window selects a non-val window's
+    files (threshold_*pct_<window>.json) and, being an explicit request, raises when none exist
+    instead of falling back. An explicit calibration_path in the defense config wins over the search."""
     if calibration_path:
         path = str(calibration_path)
         if not os.path.exists(path):
@@ -31,8 +32,11 @@ def _calibrated_threshold(monitor_cfg, fallback, calibration_path=None):
         ckpt = (monitor_cfg or {}).get("checkpoint_path")
         if not ckpt:
             return fallback
-        pattern = os.path.join(os.path.dirname(str(ckpt)), "threshold_*pct.json")
+        suffix = f"_{calibration_window}" if calibration_window and calibration_window != "val" else ""
+        pattern = os.path.join(os.path.dirname(str(ckpt)), f"threshold_*pct{suffix}.json")
         found = sorted(glob.glob(pattern))
+        if not found and suffix:
+            raise FileNotFoundError(f"no calibration matching {pattern} (calibration_window={calibration_window})")
         if not found:
             log.warning(f"no calibration matching {pattern}; using threshold={fallback} (NOT a calibrated point)")
             return fallback
@@ -79,7 +83,9 @@ class MonitorDefense(TargetSystem):
             model=model,
             tokenizer=tokenizer,
             monitor=monitor,
-            threshold=_calibrated_threshold(monitor_cfg, float(cfg.get("threshold", 0.5)), calibration_path),
+            threshold=_calibrated_threshold(
+                monitor_cfg, float(cfg.get("threshold", 0.5)), calibration_path, cfg.get("calibration_window")
+            ),
             refusal_text=cfg["refusal_text"],
             default_generate_kwargs=default_generate_kwargs,
         )

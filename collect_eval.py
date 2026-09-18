@@ -3,12 +3,14 @@
     pixi run --frozen python collect_eval.py            # writes outputs/eval/summary/
     pixi run --frozen python collect_eval.py --no-plots
 
-One row per checkpoint (checkpoints_coop/<block>/<run>/) plus reference rows (outputs/eval/*/reference/*):
-  config     run_config.json: epsilon, delta, lambda_*, seed, probe_init, kl_source, use_detector, ...
-  thresholds threshold_1pct.json (val window) / threshold_1pct_calib.json (2000 held-out alpaca)
+One row per checkpoint (checkpoints_coop/ and checkpoints_cat/<block>/<run>/) plus reference rows
+(outputs/eval/*/reference/*):
+  config     coop: run_config.json (epsilon, delta, lambda_*, seed, probe_init, kl_source, ...);
+             cat: the overrides recorded in the jsc-jobs run.json (lambda_away, model_objective, ...)
+  thresholds threshold_1pct.json (val window) / threshold_1pct_calib.json (2000 held-out alpaca) -- coop only
   overrefusal outputs/eval/overrefusal/<block>/<run>/overrefusal.json (string match + gemma judge)
   utility    outputs/eval/utility/<block>/<run>/utility.json (lm_eval llama3 tasks, in percent)
-  training   last "[step N] detector/..." metrics line of the jsc-jobs training log ($JOBS_ROOT)
+  training   last "[step N] detector/..." metrics line of the jsc-jobs training log ($JOBS_ROOT) -- coop only
 
 Outputs (outputs/eval/summary/): all_runs.csv/.json, by_config.csv (mean/std over seeds), missing.txt,
 plots/tradeoff.png (utility vs over-refusal per block) and plots/sweep_<block>.png (metrics vs swept knob).
@@ -39,7 +41,10 @@ CONFIG_KEYS = {
     "n_detector_steps": ("training", "n_detector_steps"),
     "rep_warmup_steps": ("training", "rep_warmup_steps"),
     "n_steps": ("training", "n_steps"),
+    "lambda_away": ("lambda_away",),          # CAT only
+    "model_objective": ("model_objective",),  # CAT only
 }
+CHECKPOINT_ROOTS = {"coop": "checkpoints_coop", "cat": "checkpoints_cat"}
 TRAIN_METRICS = {
     "detector/recall@1fpr": "train_recall_1fpr",
     "detector/fpr_xstest": "train_fpr_xstest",
@@ -58,11 +63,17 @@ UTILITY_TASKS = {
     "gsm8k_pct": ("gsm8k_llama", "exact_match,strict_match"),
     "gsm8k_flexible_pct": ("gsm8k_llama", "exact_match,flexible_extract"),
 }
-EVAL_COLUMNS = {
-    "thresholds": ["tau_calib"],
-    "overrefusal": ["xstest_refusal_string"],
-    "utility": ["mmlu_pct"],
-    "training": ["train_recall_1fpr"],
+EVAL_COLUMNS = {  # per kind: which evals a checkpoint of that kind is expected to have
+    "coop": {
+        "thresholds": ["tau_calib"],
+        "overrefusal": ["xstest_refusal_string"],
+        "utility": ["mmlu_pct"],
+        "training": ["train_recall_1fpr"],
+    },
+    "cat": {  # no probe: no thresholds, and the training log has no detector metrics
+        "overrefusal": ["xstest_refusal_string"],
+        "utility": ["mmlu_pct"],
+    },
 }
 _STEP_LINE = re.compile(r"\[step (\d+)\] (detector/\S+=.*)$")
 
@@ -140,21 +151,48 @@ def training_columns(log_path: Path) -> dict:
     return out
 
 
+def nest(flat: dict) -> dict:
+    """{'training.n_steps': 1000} -> {'training': {'n_steps': 1000}}, so CONFIG_KEYS can read
+    the dotted hydra overrides recorded in run.json the same way it reads run_config.json."""
+    out: dict = {}
+    for key, value in flat.items():
+        parts = str(key).split(".")
+        node = out
+        for part in parts[:-1]:
+            node = node.setdefault(part, {})
+        node[parts[-1]] = value
+    return out
+
+
+def jobs_index(jobs_root: Path | None) -> dict[str, Path]:
+    """run name -> its latest attempt dir. Looked up by run name because the jsc-jobs experiment
+    name and the checkpoint block don't always match (coop-I-full vs I-ablation, cat-J-ce vs J-cat)."""
+    if jobs_root is None:
+        return {}
+    return {latest.parent.name: latest for latest in sorted(jobs_root.glob("*/*/latest"))}
+
+
 def collect(repo: Path, jobs_root: Path | None) -> pd.DataFrame:
     rows = []
-    for run_config_path in sorted((repo / "checkpoints_coop").glob("*/*/run_config.json")):
-        ckpt = run_config_path.parent
-        if not (ckpt / "final_adapter").is_dir():
-            continue
-        block, run = ckpt.parent.name, ckpt.name
-        row = {"block": block, "run": run, "kind": "coop"}
-        row.update(config_columns(json.loads(run_config_path.read_text())))
-        row.update(threshold_columns(ckpt))
-        row.update(overrefusal_columns(repo / "outputs/eval/overrefusal" / block / run / "overrefusal.json"))
-        row.update(utility_columns(repo / "outputs/eval/utility" / block / run / "utility.json"))
-        if jobs_root is not None:
-            row.update(training_columns(jobs_root / f"coop-{block}" / run / "latest" / "stdout.log"))
-        rows.append(row)
+    jobs = jobs_index(jobs_root)
+    for kind, root in CHECKPOINT_ROOTS.items():
+        for ckpt in sorted((repo / root).glob("*/*")):
+            if not (ckpt / "final_adapter").is_dir():
+                continue
+            block, run = ckpt.parent.name, ckpt.name
+            job_dir = jobs.get(run)
+            run_config = _read_json(ckpt / "run_config.json")
+            if run_config is None and job_dir is not None:  # CAT writes no run_config.json
+                run_config = nest((_read_json(job_dir / "run.json") or {}).get("overrides", {}))
+            row = {"block": block, "run": run, "kind": kind}
+            row.update(config_columns(run_config or {}))
+            if kind == "coop":
+                row.update(threshold_columns(ckpt))
+            row.update(overrefusal_columns(repo / "outputs/eval/overrefusal" / block / run / "overrefusal.json"))
+            row.update(utility_columns(repo / "outputs/eval/utility" / block / run / "utility.json"))
+            if job_dir is not None:
+                row.update(training_columns(job_dir / "stdout.log"))
+            rows.append(row)
     references = {p.name for kind in ("overrefusal", "utility") for p in (repo / "outputs/eval" / kind / "reference").glob("*")}
     for name in sorted(references):
         row = {"block": "reference", "run": name, "kind": "reference"}
@@ -166,8 +204,8 @@ def collect(repo: Path, jobs_root: Path | None) -> pd.DataFrame:
 
 def missing_report(df: pd.DataFrame) -> list[str]:
     lines = []
-    for _, row in df[df["kind"] == "coop"].iterrows():
-        for evaluation, cols in EVAL_COLUMNS.items():
+    for _, row in df[df["kind"].isin(EVAL_COLUMNS)].iterrows():
+        for evaluation, cols in EVAL_COLUMNS[row["kind"]].items():
             if any(c not in df.columns or pd.isna(row.get(c)) for c in cols):
                 lines.append(f"{row['block']}/{row['run']}: no {evaluation}")
     return lines
@@ -179,12 +217,12 @@ def swept_knobs(block_df: pd.DataFrame) -> list[str]:
 
 
 def by_config(df: pd.DataFrame) -> pd.DataFrame:
-    coop = df[df["kind"] == "coop"]
-    config_cols = [c for c in CONFIG_KEYS if c != "seed" and c in coop]
-    metric_cols = [c for c in coop.columns if c not in config_cols + ["block", "run", "kind", "seed"]
-                   and pd.api.types.is_numeric_dtype(coop[c])]
+    trained = df[df["kind"].isin(CHECKPOINT_ROOTS)]
+    config_cols = [c for c in CONFIG_KEYS if c != "seed" and c in trained]
+    metric_cols = [c for c in trained.columns if c not in config_cols + ["block", "run", "kind", "seed"]
+                   and pd.api.types.is_numeric_dtype(trained[c])]
     keys = ["block"] + config_cols
-    grouped = coop.assign(**{c: coop[c].astype(str) for c in config_cols}).groupby(keys, sort=True)
+    grouped = trained.assign(**{c: trained[c].astype(str) for c in config_cols}).groupby(keys, sort=True)
     agg = grouped[metric_cols].agg(["mean", "std"])
     agg.columns = [f"{m}_{stat}" for m, stat in agg.columns]
     agg.insert(0, "n_seeds", grouped.size())
@@ -210,8 +248,9 @@ def main(argv=None, repo: Path = REPO) -> int:
         from plot_eval import plot_all
 
         plot_all(df, out / "plots")
-    n_coop = int((df["kind"] == "coop").sum()) if len(df) else 0
-    print(f"{n_coop} checkpoints, {len(df) - n_coop} reference rows, {len(missing)} missing evals -> {out}")
+    counts = df["kind"].value_counts().to_dict() if len(df) else {}
+    kinds = ", ".join(f"{counts.get(k, 0)} {k}" for k in list(CHECKPOINT_ROOTS) + ["reference"])
+    print(f"{kinds} rows, {len(missing)} missing evals -> {out}")
     return 0
 
 

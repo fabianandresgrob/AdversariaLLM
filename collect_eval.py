@@ -11,6 +11,8 @@ One row per checkpoint (checkpoints_coop/ and checkpoints_cat/<block>/<run>/) pl
   overrefusal outputs/eval/overrefusal/<block>/<run>/overrefusal.json (string match + gemma judge)
   utility    outputs/eval/utility/<block>/<run>/utility.json (lm_eval llama3 tasks, in percent)
   training   last "[step N] detector/..." metrics line of the jsc-jobs training log ($JOBS_ROOT) -- coop only
+  cross-attack outputs/eval/cross_attack/<block>/<run>/seed*/cross_attack_eval.json, averaged over attack
+             seeds: comply/asr/recall per attack condition (model_only, detaware_c*) -- where tier K ran
 
 Outputs (outputs/eval/summary/): all_runs.csv/.json, by_config.csv (mean/std over seeds), missing.txt,
 plots/tradeoff.png (utility vs over-refusal per block) and plots/sweep_<block>.png (metrics vs swept knob).
@@ -129,6 +131,33 @@ def utility_columns(path: Path) -> dict:
     return out
 
 
+def cross_attack_columns(run_dir: Path) -> dict:
+    """Tier K: mean over attack seeds of the per-condition numbers in seed*/cross_attack_eval.json.
+
+    comply = the model answered the harmful request; asr = the whole pipeline failed (the probe did not
+    catch it), so for a checkpoint without a probe (CAT) comply IS the asr. Conditions are the model-only
+    attack and the detector-aware attack at each budget coefficient."""
+    files = sorted(run_dir.glob("seed*/cross_attack_eval.json"))
+    per_condition: dict[str, dict[str, list[float]]] = {}
+    for path in files:
+        data = _read_json(path) or {}
+        for spec in data.values():  # one entry per evaluated checkpoint; single-checkpoint mode has one
+            for condition, metrics in spec.items():
+                bucket = per_condition.setdefault(condition, {})
+                for metric in ("comply", "asr", "recall"):
+                    if metrics.get(metric) is not None:
+                        bucket.setdefault(metric, []).append(float(metrics[metric]))
+    out: dict = {}
+    for condition, metrics in per_condition.items():
+        for metric, values in metrics.items():
+            out[f"xattack_{metric}_{condition}"] = round(sum(values) / len(values), 4)
+    if out:
+        out["xattack_seeds"] = len(files)
+        asrs = [v for k, v in out.items() if k.startswith("xattack_asr_")]
+        out["xattack_asr_worst"] = max(asrs) if asrs else None
+    return out
+
+
 def training_columns(log_path: Path) -> dict:
     """Last validation metrics line ("[step N] detector/recall@1fpr=... ...") of the training log."""
     if not log_path.is_file():
@@ -190,6 +219,7 @@ def collect(repo: Path, jobs_root: Path | None) -> pd.DataFrame:
                 row.update(threshold_columns(ckpt))
             row.update(overrefusal_columns(repo / "outputs/eval/overrefusal" / block / run / "overrefusal.json"))
             row.update(utility_columns(repo / "outputs/eval/utility" / block / run / "utility.json"))
+            row.update(cross_attack_columns(repo / "outputs/eval/cross_attack" / block / run))
             if job_dir is not None:
                 row.update(training_columns(job_dir / "stdout.log"))
             rows.append(row)

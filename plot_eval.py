@@ -156,12 +156,55 @@ def plot_sweep(df: pd.DataFrame, block: str, path: Path) -> bool:
     return True
 
 
+def plot_robustness(df: pd.DataFrame, path: Path) -> bool:
+    """The headline trade-off: pipeline ASR under the worst attack condition vs xs_test over-refusal.
+    One point per config (mean over seeds). Coop and CAT are told apart by marker shape and a direct
+    label, never by colour alone; the base model's refusal rate is a dashed reference."""
+    if "xattack_asr_worst" not in df:
+        return False
+    refusal = _refusal_col(df)
+    attacked = df[df["xattack_asr_worst"].notna() & df[refusal].notna() & df["kind"].isin(CHECKPOINT_ROOTS)]
+    if attacked.empty:
+        return False
+    fig, ax = plt.subplots(figsize=(6.4, 4.4), facecolor=SURFACE)
+    _style(ax)
+    base = df[(df["kind"] == "reference") & (df["run"] == "base")]
+    if not base.empty and pd.notna(base[refusal].iloc[0]):
+        ax.axvline(base[refusal].iloc[0], color=TEXT_SECONDARY, linestyle="--", linewidth=1)
+        ax.annotate("base refusal", (base[refusal].iloc[0], 1), xycoords=("data", "axes fraction"),
+                    xytext=(4, -10), textcoords="offset points", fontsize=7, color=TEXT_SECONDARY)
+    for kind, marker, label in (("coop", "o", "coop (model + probe)"), ("cat", "^", "CAT (model only)")):
+        rows = attacked[attacked["kind"] == kind]
+        if rows.empty:
+            continue
+        key = rows["run"].str.replace(r"-s\d+$", "", regex=True)
+        stats = rows.groupby(key)[[refusal, "xattack_asr_worst"]].mean()
+        ax.scatter(stats[refusal], stats["xattack_asr_worst"], marker=marker, s=48, color=SERIES,
+                   edgecolor=SURFACE, linewidth=1.5, label=label)
+        for name, row in stats.iterrows():
+            ax.annotate(name, (row[refusal], row["xattack_asr_worst"]), xytext=(6, 4),
+                        textcoords="offset points", fontsize=7, color=TEXT)
+    ax.set_xlabel("xs_test over-refusal" + (" (judge)" if refusal == REFUSAL else ""), fontsize=8,
+                  color=TEXT_SECONDARY)
+    ax.set_ylabel("pipeline ASR, worst attack condition", fontsize=8, color=TEXT_SECONDARY)
+    ax.set_title("Robustness vs over-refusal (lower-left is better)", fontsize=10, color=TEXT, loc="left")
+    legend = ax.legend(frameon=False, fontsize=8, loc="upper right")
+    for text in legend.get_texts():
+        text.set_color(TEXT_SECONDARY)
+    fig.tight_layout()
+    fig.savefig(path, dpi=200, facecolor=SURFACE)
+    plt.close(fig)
+    return True
+
+
 def plot_all(df: pd.DataFrame, out: Path) -> list[Path]:
     out.mkdir(parents=True, exist_ok=True)
     written = []
     if len(df):
         plot_tradeoff(df, out / "tradeoff.png")
         written.append(out / "tradeoff.png")
+        if plot_robustness(df, out / "robustness.png"):
+            written.append(out / "robustness.png")
         for block in sorted(df.loc[df["kind"].isin(CHECKPOINT_ROOTS), "block"].unique()):
             if plot_sweep(df, block, out / f"sweep_{block}.png"):
                 written.append(out / f"sweep_{block}.png")

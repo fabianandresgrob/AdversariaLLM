@@ -1,0 +1,20 @@
+# J-leash450 (round 2): the controlled leash comparison. Identical to cat-J-legacy (ul, lambda_away 1.0,
+# 450 steps, batch 8) except the KL leash: magpie truncated to 1024 tokens instead of untruncated ultrachat.
+# One variable, so the gap in xs_test over-refusal between the two is attributable to the leash alone.
+entrypoint: run_train.py
+name: J-leash450-ul-s{seed}
+time_per_run: "04:00:00"
+overrides:
+  model_objective: ul
+  lambda_away: 1.0
+  training.n_steps: 450
+  data.kl_source: magpie
+  data.kl_max_length: 1024
+  data.harmful_batch_size: 8
+  data.utility_batch_size: 8
+  update_mode: lora
+  output.checkpoint_path: ${root_dir}/checkpoints_cat/J-leash450
+sweep:
+  seed: [0, 1, 2]
+artifacts:
+  - checkpoints_cat/J-leash450/{name}/final_adapter

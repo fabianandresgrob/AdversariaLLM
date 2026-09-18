@@ -1,0 +1,22 @@
+# L2 (round 2): cold start at the FULL detector budget -- matched to E-nd6 (eps=0.05, detector-aware,
+# ndet=6, alpaca benign) in every respect except probe_init=random, so the gap is probe pretraining alone.
+entrypoint: run_coop_train.py
+name: L2-cold-nd6-s{seed}
+time_per_run: "07:00:00"
+overrides:
+  attack.enabled: true
+  training.n_steps: 1000
+  training.val_every: 25
+  data.kl_source: magpie
+  data.kl_max_length: 1024
+  epsilon: 0.05
+  attack.use_detector: true
+  probe_init: random
+  training.n_detector_steps: 6
+  training.rep_warmup_steps: 0
+  output.checkpoint_path: ${root_dir}/checkpoints_coop/L2-cold-nd6
+sweep:
+  seed: [0, 1, 2]
+artifacts:
+  - checkpoints_coop/L2-cold-nd6/{name}/final_adapter
+  - checkpoints_coop/L2-cold-nd6/{name}/final_reader.pt

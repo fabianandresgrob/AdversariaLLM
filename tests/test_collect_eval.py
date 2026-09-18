@@ -71,6 +71,10 @@ def tree(tmp_path):
         for seed in (0, 1):
             _checkpoint(repo, jobs, "A-eps-sweep", f"A-eps{eps}-s{seed}", eps, seed)
     _checkpoint(repo, jobs, "G-delta", "G-delta1-s0", 0.05, 0, evals=False)
+    for seed, asr in enumerate((0.0, 0.125)):
+        _write(repo / "outputs/eval/cross_attack/A-eps-sweep/A-eps0.05-s0" / f"seed{seed}" / "cross_attack_eval.json",
+               {"model": {"model_only": {"comply": 0.75, "asr": 0.0, "recall": 1.0},
+                          "detaware_c0.75": {"comply": 0.25, "asr": asr, "recall": 0.9}}})
     for away in (0.5, 1.0):
         _cat_checkpoint(repo, jobs, "J-cat", f"J-ce-away{away}-s0", away, 0)
     _write(repo / "outputs/eval/utility/reference/base/utility.json", {"results": {
@@ -108,7 +112,7 @@ def test_plots_are_written_for_swept_blocks_only(tree):
     repo, jobs = tree
     main(["--jobs-root", str(jobs)], repo=repo)
     plots = sorted(p.name for p in (repo / "outputs/eval/summary/plots").iterdir())
-    assert plots == ["sweep_A-eps-sweep.png", "sweep_J-cat.png", "tradeoff.png"]
+    assert plots == ["robustness.png", "sweep_A-eps-sweep.png", "sweep_J-cat.png", "tradeoff.png"]
 
 
 def test_cat_checkpoints_get_rows_with_config_from_the_job_overrides(tree):
@@ -124,3 +128,16 @@ def test_cat_checkpoints_get_rows_with_config_from_the_job_overrides(tree):
     # no probe -> thresholds and detector metrics are not reported as missing
     missing = (repo / "outputs/eval/summary/missing.txt").read_text()
     assert "J-ce-away1.0-s0" not in missing
+
+
+def test_cross_attack_results_are_averaged_over_attack_seeds(tree):
+    repo, jobs = tree
+    assert main(["--jobs-root", str(jobs)], repo=repo) == 0
+    df = pd.read_csv(repo / "outputs/eval/summary/all_runs.csv")
+    row = df[df.run == "A-eps0.05-s0"].iloc[0]
+    assert row.xattack_seeds == 2
+    assert (row["xattack_comply_model_only"], row["xattack_asr_model_only"]) == (0.75, 0.0)
+    assert row["xattack_asr_detaware_c0.75"] == pytest.approx(0.0625)  # mean of 0.0 and 0.125
+    assert row.xattack_asr_worst == pytest.approx(0.0625)  # worst condition, not the model-only one
+    assert pd.isna(df[df.run == "A-eps0.05-s1"].iloc[0].xattack_asr_worst)  # no cross-attack run -> empty
+    assert (repo / "outputs/eval/summary/plots/robustness.png").is_file()

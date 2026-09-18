@@ -1,0 +1,19 @@
+# Leash isolation, arm A (round 2): ultrachat leash. Identical to cat-J-leash450b4 except data.kl_source,
+# so the pair is a single-variable comparison. Batch 4 (not the legacy 8, which OOMs on a 93 GB H100
+# whatever the leash) and 450 steps, ul objective, lambda_away 1.0.
+entrypoint: run_train.py
+name: J-ultra450-ul-s{seed}
+time_per_run: "04:00:00"
+overrides:
+  model_objective: ul
+  lambda_away: 1.0
+  training.n_steps: 450
+  data.kl_source: ultrachat
+  data.harmful_batch_size: 4
+  data.utility_batch_size: 4
+  update_mode: lora
+  output.checkpoint_path: ${root_dir}/checkpoints_cat/J-ultra450
+sweep:
+  seed: [0, 1, 2]
+artifacts:
+  - checkpoints_cat/J-ultra450/{name}/final_adapter

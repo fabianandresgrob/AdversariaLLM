@@ -1,0 +1,18 @@
+# Robustness of the CAT baselines under the SAME continuous attack coop trains against. No probe exists for
+# these checkpoints, so only the model-only condition is meaningful and comply == ASR (undefended pipeline);
+# the reader stays random and its detector columns are ignored.
+entrypoint: run_cross_attack_eval.py
+name: xattack-{+run}-a{seed}
+time_per_run: "02:00:00"
+overrides:
+  +block: J-cat
+  adapter_path: ${root_dir}/checkpoints_cat/${block}/${run}/final_adapter
+  eval_use_detector: [false]
+  out: ${root_dir}/outputs/eval/cross_attack/${block}/${run}/seed${seed}
+sweep:
+  +run: [J-ce-away0.25-s0, J-ce-away0.5-s0, J-ce-away1.0-s0, J-ul-away1.0-s0,
+         J-ce-away0.25-s1, J-ce-away0.5-s1, J-ce-away1.0-s1, J-ul-away1.0-s1,
+         J-ce-away0.25-s2, J-ce-away0.5-s2, J-ce-away1.0-s2, J-ul-away1.0-s2]
+  seed: [0]
+artifacts:
+  - outputs/eval/cross_attack/{+block}/{+run}/seed{seed}/cross_attack_eval.json

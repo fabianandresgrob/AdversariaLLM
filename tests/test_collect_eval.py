@@ -22,6 +22,24 @@ def _write(path, data):
     path.write_text(json.dumps(data) if not isinstance(data, str) else data)
 
 
+CAT_LOG = "[2026-09-17 19:43:24][adversariallm.training.loop][INFO] - [step 999] away=-0.0001 toward=1.5 kl=0.07\n"
+
+
+def _cat_checkpoint(repo, jobs, block, run, away, seed):
+    (repo / "checkpoints_cat" / block / run / "final_adapter").mkdir(parents=True)
+    _write(jobs / "cat-J-ce" / run / "latest" / "run.json",
+           {"exp": "cat-J-ce", "run": run,
+            "overrides": {"lambda_away": away, "model_objective": "ce", "seed": seed,
+                          "training.n_steps": 1000, "data.kl_source": "magpie"}})
+    _write(jobs / "cat-J-ce" / run / "latest" / "stdout.log", CAT_LOG)
+    _write(repo / "outputs/eval/overrefusal" / block / run / "overrefusal.json",
+           {"results": {"model": {"xs_test": 0.1}}})
+    _write(repo / "outputs/eval/utility" / block / run / "utility.json", {"results": {
+        "mmlu_llama": {"exact_match,strict_match": 0.66},
+        "arc_challenge_llama": {"exact_match,strict_match": 0.80},
+        "gsm8k_llama": {"exact_match,strict_match": 0.75}}})
+
+
 def _checkpoint(repo, jobs, block, run, eps, seed, evals=True):
     ckpt = repo / "checkpoints_coop" / block / run
     (ckpt / "final_adapter").mkdir(parents=True)
@@ -53,6 +71,8 @@ def tree(tmp_path):
         for seed in (0, 1):
             _checkpoint(repo, jobs, "A-eps-sweep", f"A-eps{eps}-s{seed}", eps, seed)
     _checkpoint(repo, jobs, "G-delta", "G-delta1-s0", 0.05, 0, evals=False)
+    for away in (0.5, 1.0):
+        _cat_checkpoint(repo, jobs, "J-cat", f"J-ce-away{away}-s0", away, 0)
     _write(repo / "outputs/eval/utility/reference/base/utility.json", {"results": {
         "mmlu_llama": {"exact_match,strict_match": 0.69}, "arc_challenge_llama": {"exact_match,strict_match": 0.83},
         "gsm8k_llama": {"exact_match,strict_match": 0.85, "exact_match,flexible_extract": 0.86}}})
@@ -88,4 +108,19 @@ def test_plots_are_written_for_swept_blocks_only(tree):
     repo, jobs = tree
     main(["--jobs-root", str(jobs)], repo=repo)
     plots = sorted(p.name for p in (repo / "outputs/eval/summary/plots").iterdir())
-    assert plots == ["sweep_A-eps-sweep.png", "tradeoff.png"]
+    assert plots == ["sweep_A-eps-sweep.png", "sweep_J-cat.png", "tradeoff.png"]
+
+
+def test_cat_checkpoints_get_rows_with_config_from_the_job_overrides(tree):
+    repo, jobs = tree
+    assert main(["--jobs-root", str(jobs)], repo=repo) == 0
+    df = pd.read_csv(repo / "outputs/eval/summary/all_runs.csv")
+    cat = df[df.kind == "cat"]
+    assert len(cat) == 2 and set(cat.block) == {"J-cat"}
+    row = cat[cat.run == "J-ce-away1.0-s0"].iloc[0]
+    assert (row.lambda_away, row.model_objective, row.seed, row.kl_source) == (1.0, "ce", 0, "magpie")
+    assert (row.mmlu_pct, row.utility_mean_pct) == (66.0, pytest.approx(73.67, abs=0.01))
+    assert pd.isna(row.tau_calib) and pd.isna(row.train_recall_1fpr)
+    # no probe -> thresholds and detector metrics are not reported as missing
+    missing = (repo / "outputs/eval/summary/missing.txt").read_text()
+    assert "J-ce-away1.0-s0" not in missing

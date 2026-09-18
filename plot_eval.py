@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.ticker import MaxNLocator  # noqa: E402
 import pandas as pd  # noqa: E402
 
-from collect_eval import swept_knobs  # noqa: E402
+from collect_eval import CHECKPOINT_ROOTS, swept_knobs  # noqa: E402
 
 SERIES = "#2a78d6"        # categorical slot 1 (validated: lightness, chroma, contrast on #fcfcfb)
 SURFACE = "#fcfcfb"
@@ -73,7 +73,7 @@ def _knob_order(values):
 
 
 def plot_tradeoff(df: pd.DataFrame, path: Path) -> None:
-    coop = df[df["kind"] == "coop"]
+    coop = df[df["kind"].isin(CHECKPOINT_ROOTS)]
     blocks = sorted(coop["block"].unique())
     if not blocks:
         return
@@ -123,7 +123,7 @@ def plot_tradeoff(df: pd.DataFrame, path: Path) -> None:
 
 
 def plot_sweep(df: pd.DataFrame, block: str, path: Path) -> bool:
-    coop = df[(df["kind"] == "coop") & (df["block"] == block)]
+    coop = df[df["kind"].isin(CHECKPOINT_ROOTS) & (df["block"] == block)]
     knobs = swept_knobs(coop)
     if not knobs:
         return False
@@ -162,7 +162,7 @@ def plot_all(df: pd.DataFrame, out: Path) -> list[Path]:
     if len(df):
         plot_tradeoff(df, out / "tradeoff.png")
         written.append(out / "tradeoff.png")
-        for block in sorted(df.loc[df["kind"] == "coop", "block"].unique()):
+        for block in sorted(df.loc[df["kind"].isin(CHECKPOINT_ROOTS), "block"].unique()):
             if plot_sweep(df, block, out / f"sweep_{block}.png"):
                 written.append(out / f"sweep_{block}.png")
     return written

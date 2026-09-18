@@ -23,6 +23,7 @@ DEFENSE_COMPATIBLE_ATTACKS = frozenset(
         "bon",
         "crescendo",
         "direct",
+        "iho",
         "inpainting",
         "jailbreak_r1",
         "pair",

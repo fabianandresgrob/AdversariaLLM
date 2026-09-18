@@ -1,0 +1,20 @@
+# J-legacy (round 2): CAT as it was run BEFORE the coop grid s leash was adopted -- the cat_ul_450 setting
+# (ul objective, ultrachat leash at utility_fraction 0.01, no kl_max_length, 1000 steps, batch 8), i.e. every
+# conf/train.yaml default except the name. Reconfirms the ~0.7 xs_test over-refusal that cat-J-ul does NOT
+# show, isolating the magpie/1024-token leash as the reason the matched CAT baseline stays benign.
+entrypoint: run_train.py
+name: J-legacy1000-ul-s{seed}
+time_per_run: "04:00:00"
+overrides:
+  model_objective: ul
+  lambda_away: 1.0
+  training.n_steps: 1000
+  data.kl_source: ultrachat
+  data.harmful_batch_size: 8
+  data.utility_batch_size: 8
+  update_mode: lora
+  output.checkpoint_path: ${root_dir}/checkpoints_cat/J-legacy1000
+sweep:
+  seed: [0, 1, 2]
+artifacts:
+  - checkpoints_cat/J-legacy1000/{name}/final_adapter

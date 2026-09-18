@@ -445,6 +445,39 @@ meta-llama-3.1-8b-instruct-cooptmpl:
   dtype: bfloat16
   chat_template: llama-3-instruct-cooptrain
   trust_remote_code: True
+# Alias for the un-adapted base model: jsc-jobs run names may not contain '/', so sweeps use this name.
+base-llama31-8b:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+
+# CAT baselines: adapter only, no probe (hand-written -- gen_coop_models.py only registers coop checkpoints).
+J-ul-away1p0-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_cat/J-cat/J-ul-away1.0-s0/final_adapter
+J-ce-away1p0-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_cat/J-cat/J-ce-away1.0-s0/final_adapter
+
 # >>> generated coop checkpoints (gen_coop_models.py) >>>
 A-eps0p0-s0:
   id: meta-llama/Meta-Llama-3.1-8B-Instruct
@@ -1073,4 +1106,301 @@ G-delta1-s2:
   trust_remote_code: true
   adapter_path: ${root_dir}/checkpoints_coop/G-delta/G-delta1-s2/final_adapter
   reader_path: ${root_dir}/checkpoints_coop/G-delta/G-delta1-s2/final_reader.pt
+H-eps0p0-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/H-eps-adaptive/H-eps0.0-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/H-eps-adaptive/H-eps0.0-s0/final_reader.pt
+H-eps0p0-s1:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/H-eps-adaptive/H-eps0.0-s1/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/H-eps-adaptive/H-eps0.0-s1/final_reader.pt
+H-eps0p0-s2:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/H-eps-adaptive/H-eps0.0-s2/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/H-eps-adaptive/H-eps0.0-s2/final_reader.pt
+H-eps0p25-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/H-eps-adaptive/H-eps0.25-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/H-eps-adaptive/H-eps0.25-s0/final_reader.pt
+H-eps0p25-s1:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/H-eps-adaptive/H-eps0.25-s1/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/H-eps-adaptive/H-eps0.25-s1/final_reader.pt
+H-eps0p25-s2:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/H-eps-adaptive/H-eps0.25-s2/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/H-eps-adaptive/H-eps0.25-s2/final_reader.pt
+H-eps1p0-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/H-eps-adaptive/H-eps1.0-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/H-eps-adaptive/H-eps1.0-s0/final_reader.pt
+H-eps1p0-s1:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/H-eps-adaptive/H-eps1.0-s1/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/H-eps-adaptive/H-eps1.0-s1/final_reader.pt
+H-eps1p0-s2:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/H-eps-adaptive/H-eps1.0-s2/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/H-eps-adaptive/H-eps1.0-s2/final_reader.pt
+I-benign1-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/I-ablation/I-benign1-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/I-ablation/I-benign1-s0/final_reader.pt
+I-benign1-s1:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/I-ablation/I-benign1-s1/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/I-ablation/I-benign1-s1/final_reader.pt
+I-benign1-s2:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/I-ablation/I-benign1-s2/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/I-ablation/I-benign1-s2/final_reader.pt
+I-full-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/I-ablation/I-full-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/I-ablation/I-full-s0/final_reader.pt
+I-full-s1:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/I-ablation/I-full-s1/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/I-ablation/I-full-s1/final_reader.pt
+I-full-s2:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/I-ablation/I-full-s2/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/I-ablation/I-full-s2/final_reader.pt
+I-lkl1-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/I-ablation/I-lkl1-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/I-ablation/I-lkl1-s0/final_reader.pt
+I-lkl1-s1:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/I-ablation/I-lkl1-s1/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/I-ablation/I-lkl1-s1/final_reader.pt
+I-lkl1-s2:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/I-ablation/I-lkl1-s2/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/I-ablation/I-lkl1-s2/final_reader.pt
+I-lrep0-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/I-ablation/I-lrep0-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/I-ablation/I-lrep0-s0/final_reader.pt
+I-lrep0-s1:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/I-ablation/I-lrep0-s1/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/I-ablation/I-lrep0-s1/final_reader.pt
+I-lrep0-s2:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/I-ablation/I-lrep0-s2/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/I-ablation/I-lrep0-s2/final_reader.pt
+I-nd1-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/I-ablation/I-nd1-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/I-ablation/I-nd1-s0/final_reader.pt
+I-nd1-s1:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/I-ablation/I-nd1-s1/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/I-ablation/I-nd1-s1/final_reader.pt
+I-nd1-s2:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/I-ablation/I-nd1-s2/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/I-ablation/I-nd1-s2/final_reader.pt
+L-cold-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/L-cold-adaptive/L-cold-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/L-cold-adaptive/L-cold-s0/final_reader.pt
+L-cold-s1:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/L-cold-adaptive/L-cold-s1/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/L-cold-adaptive/L-cold-s1/final_reader.pt
+L-cold-s2:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/L-cold-adaptive/L-cold-s2/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/L-cold-adaptive/L-cold-s2/final_reader.pt
 # <<< generated coop checkpoints <<<

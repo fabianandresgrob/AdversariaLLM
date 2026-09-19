@@ -6,6 +6,7 @@ overrides:
   attack: pair
   dataset: jbb_behaviors
   datasets.jbb_behaviors.idx: list(range(78,91))
+  attacks.pair.attack_model.max_attempts: 30
 sweep:
   model:
   - base-llama31-8b

@@ -38,7 +38,9 @@ def collect_run_paths(suffixes: list[str]|str, classifier: str, filter_by: dict|
     """
 
     if not isinstance(suffixes, (list, ListConfig)):
-        suffixes = [str(suffixes)]
+        suffixes = [suffixes]
+    # str(): a CLI override such as suffixes=[0,1] arrives as ints, and endswith() takes only strings
+    suffixes = [str(suffix) for suffix in suffixes]
     delete_orphaned_runs()
     db = get_mongodb_connection()
     collection = db.runs

@@ -35,6 +35,9 @@ MODELS = [  # models.yaml entry names; see the round-2 selection
 ]
 BEHAVIORS = 100
 TIME_PER_RUN = {"gcg": "06:00:00", "inpainting": "03:00:00", "pair": "06:00:00"}
+# PAIR aborts a whole run when its attacker returns unparseable JSON max_attempts times in a row; the
+# default 10 loses roughly one run in eight. Retrying more costs seconds and changes no attack semantics.
+EXTRA_OVERRIDES = {"pair": {"attacks.pair.attack_model.max_attempts": 30}}
 
 
 def shard_bounds(n_behaviors: int, shards: int) -> list[tuple[int, int]]:
@@ -48,6 +51,7 @@ def experiment(attack: str, models: list[str], start: int, stop: int, defense: s
         "dataset": "jbb_behaviors",
         "datasets.jbb_behaviors.idx": f"list(range({start},{stop}))",
     }
+    overrides.update(EXTRA_OVERRIDES.get(attack, {}))
     if defense:
         overrides["defense"] = defense
     return {

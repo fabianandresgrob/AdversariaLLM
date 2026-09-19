@@ -1,0 +1,14 @@
+# Inpainting against the full pipeline. Inpainting is a pure transfer attack -- 1024 precomputed
+# adversarial user prompts per behavior from the diffusion-inpainting CSV, no optimization -- so it
+# is run directly at the defended target system, exactly like PAIR. (GCG needs the replay detour
+# instead: its suffix must be optimised against the raw model, not through the probe.)
+entrypoint: run_attacks.py
+name: inpaint-def-{model}
+time_per_run: "04:00:00"
+overrides:
+  attack: inpainting
+  dataset: jbb_behaviors
+  defense: coop_probe
+sweep:
+  model: [A-eps0p05-s0, E-nd6-s0, I-full-s0, I-lrep0-s0, L-cold-s0]
+artifacts: []

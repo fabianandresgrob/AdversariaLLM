@@ -34,7 +34,7 @@ MODELS = [  # models.yaml entry names; see the round-2 selection
     "J-ce-away1p0-s0",  # CAT baseline (ce)
 ]
 BEHAVIORS = 100
-TIME_PER_RUN = {"gcg": "06:00:00", "inpainting": "03:00:00", "pair": "06:00:00"}
+TIME_PER_RUN = {"gcg": "06:00:00", "inpainting": "03:00:00", "pair": "06:00:00", "direct": "01:00:00"}
 # PAIR aborts a whole run when its attacker returns unparseable JSON max_attempts times in a row; the
 # default 10 loses roughly one run in eight. Retrying more costs seconds and changes no attack semantics.
 EXTRA_OVERRIDES = {"pair": {"attacks.pair.attack_model.max_attempts": 30}}

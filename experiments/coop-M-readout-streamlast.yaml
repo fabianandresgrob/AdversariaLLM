@@ -16,7 +16,7 @@ overrides:
   training.n_detector_steps: 6
   training.rep_warmup_steps: 0
   reader.readout: stream_last
-  reader.readout_k: 8
+  reader.readout_k: 24
   output.checkpoint_path: ${root_dir}/checkpoints_coop/M-streamlast
 sweep:
   seed: [0]

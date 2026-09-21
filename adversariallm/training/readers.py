@@ -12,9 +12,11 @@ any response position scores prompt *and* response. `readout` picks between them
     prompt_last     last prompt token (default; the original v1 behaviour)
     stream_last     last real token of the sequence — prompt + the whole response
     response_mean   mean over the first `readout_k` response tokens — prompt + the
-                    opening of the response, the mode whose offset from the response
-                    start matches between teacher-forced training targets (~10-25
-                    tokens) and long sampled generations at eval
+                    opening of the response. Training targets run 15-34 tokens, so this
+                    window covers the whole target; note that it therefore cannot learn
+                    what harmful content looks like deep in a long generation (in PAIR
+                    outputs the instructions start at a median of 74 tokens) — that case
+                    is what stream_last covers
 
 Every mode derives its positions from target_ids/attention_mask, so all of them are
 invariant to right padding and to variable prompt/response lengths.
@@ -35,7 +37,9 @@ BENIGN_COL = 1
 
 READOUT_MODES = ("prompt_last", "stream_last", "response_mean")
 DEFAULT_READOUT = "prompt_last"
-DEFAULT_READOUT_K = 8
+# p90 of the adv_training target lengths (median 18, max 34), so the window covers the whole
+# teacher-forced target for ~90% of rows instead of truncating it mid-target.
+DEFAULT_READOUT_K = 24
 
 
 def readout_index(target_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:

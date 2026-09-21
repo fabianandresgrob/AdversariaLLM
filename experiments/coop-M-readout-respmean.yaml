@@ -16,7 +16,7 @@ overrides:
   training.n_detector_steps: 6
   training.rep_warmup_steps: 0
   reader.readout: response_mean
-  reader.readout_k: 8
+  reader.readout_k: 24
   output.checkpoint_path: ${root_dir}/checkpoints_coop/M-respmean
 sweep:
   seed: [0]

@@ -110,11 +110,8 @@ class PAIRAttack(Attack):
 
         target_lm = TargetLM(target.model, target.tokenizer, self.config.target_model, target=target)
         attack_lm = AttackLM(attack_model, attack_tokenizer, self.config.attack_model)
-        if self.config.judge_model.id is None:
-            judge_lm = JudgeLM(target.model, target.tokenizer, prompt=conversation[0]["content"])
-        else:
-            judge_model, judge_tokenizer = load_model_and_tokenizer(self.config.judge_model)
-            judge_lm = JudgeLM(judge_model, judge_tokenizer, prompt=conversation[0]["content"])
+        judge_model, judge_tokenizer = select_judge(self.config, target, attack_model, attack_tokenizer)
+        judge_lm = JudgeLM(judge_model, judge_tokenizer, prompt=conversation[0]["content"])
         t0 = time.time()
 
         # Initialize conversations
@@ -488,6 +485,25 @@ class JudgeLM:
         # Extract scores
         scores = [self.process_output(output) for output in outputs_list]
         return scores, flops
+
+
+def select_judge(config, target, attack_model, attack_tokenizer):
+    """Which weights score the target's responses, and whether they cost a second model.
+
+    judge_model.id is
+      None            -> the target judges itself: cheap, but then the judge differs per attacked
+                         model, so the attacker's feedback is not comparable across models, and a
+                         safety-trained target may refuse to rate at all;
+      the attacker id -> reuse the attacker's already-loaded weights (a second vicuna-13b would be
+                         ~26GB) together with its tokenizer, which is where load_model_and_tokenizer
+                         put the chat template -- judge_model has no chat_template of its own;
+      anything else   -> a separately loaded judge.
+    """
+    if config.judge_model.id is None:
+        return target.model, target.tokenizer
+    if config.judge_model.id == config.attack_model.id:
+        return attack_model, attack_tokenizer
+    return load_model_and_tokenizer(config.judge_model)
 
 
 def process_target_response(target_response, score, prompt):

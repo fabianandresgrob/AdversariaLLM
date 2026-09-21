@@ -88,11 +88,19 @@ class GCGConfig:
 
 def load_detector(checkpoint_path: str, model: PreTrainedModel):
     """Load a coop probe (a <tag>_reader.pt pair checkpoint, or a bare probe state_dict)."""
-    from ..training.readers import LinearProbe
+    from ..training.readers import DEFAULT_READOUT, DEFAULT_READOUT_K, LinearProbe
 
     ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
-    state = ckpt["reader"] if isinstance(ckpt, dict) and "reader" in ckpt else ckpt
-    probe = LinearProbe(state["linear.weight"].shape[1])  # (2, input_dim)
+    is_pair = isinstance(ckpt, dict) and "reader" in ckpt
+    state = ckpt["reader"] if is_pair else ckpt
+    # Read the probe where it was trained, so the attacker evades the detector the defense
+    # actually runs -- a probe read at another position is a different detector.
+    trained = ((ckpt.get("cfg") or {}).get("reader") or {}) if is_pair else {}
+    probe = LinearProbe(  # (2, input_dim)
+        state["linear.weight"].shape[1],
+        readout=trained.get("readout") or DEFAULT_READOUT,
+        readout_k=trained.get("readout_k") or DEFAULT_READOUT_K,
+    )
     probe.load_state_dict(state)
     return probe.to(next(model.parameters()).device).eval()
 
@@ -136,8 +144,10 @@ class LayerCapture:
 
 
 def detector_readout_masks(batch: int, prompt_len: int, target_ids: Tensor, device) -> tuple[Tensor, Tensor]:
-    """(target_ids, attention_mask) shaped so readers.readout_index lands on the last prompt
-    token of GCG's [pre][attack][post][target] layout — i.e. prompt_len - 1.
+    """(target_ids, attention_mask) describing GCG's [pre][attack][post][target] layout: the
+    target region is marked nonzero, so every readers readout mode lands correctly — prompt_last
+    on prompt_len - 1, stream_last on the final target token, response_mean over the target's
+    first readout_k tokens.
 
     Built rather than index-computed so the probe is read through the exact same function used
     in coop training and by LinearProbeMonitor at eval; the two cannot drift apart. Works for

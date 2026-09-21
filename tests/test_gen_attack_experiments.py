@@ -33,3 +33,27 @@ def test_main_writes_the_files(tmp_path):
     assert written == ["attack-inpainting-shard0.yaml", "attack-inpainting-shard1.yaml"]
     spec = yaml.safe_load((tmp_path / "experiments" / "attack-inpainting-shard0.yaml").read_text())
     assert spec["time_per_run"] == "03:00:00" and spec["overrides"]["attack"] == "inpainting"
+
+
+def test_inpainting_gets_the_agreed_128_generation_budget():
+    spec = build(["inpainting"], ["E-nd6-s0"], shards=1, n_behaviors=20, defense="coop_probe")[
+        "attack-inpainting-coop_probe-shard0.yaml"]
+    assert spec["overrides"]["attacks.inpainting.num_samples_per_behavior"] == 128
+
+
+def test_detector_aware_gcg_adds_the_evasion_objective_and_its_own_file_name():
+    files = build(["gcg"], ["M-respmean-s0"], shards=1, n_behaviors=20, defense="coop_probe",
+                  detector_aware=True)
+    assert list(files) == ["attack-gcg-coop_probe-adaptive-shard0.yaml"]
+    overrides = files["attack-gcg-coop_probe-adaptive-shard0.yaml"]["overrides"]
+    # resolved per swept model out of models.yaml, so one file covers the whole sweep
+    assert overrides["attacks.gcg.detector_checkpoint"] == "${models.${model}.reader_path}"
+    assert overrides["attacks.gcg.detector_loss_coeff"] == 0.5
+
+
+def test_detector_aware_leaves_other_attacks_alone():
+    # inpainting and pair have nothing to be aware of -- they never see the probe's gradients
+    files = build(["inpainting"], ["E-nd6-s0"], shards=1, n_behaviors=20, defense="coop_probe",
+                  detector_aware=True)
+    assert list(files) == ["attack-inpainting-coop_probe-shard0.yaml"]
+    assert "attacks.gcg.detector_checkpoint" not in files["attack-inpainting-coop_probe-shard0.yaml"]["overrides"]

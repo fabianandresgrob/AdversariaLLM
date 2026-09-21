@@ -13,6 +13,11 @@ tracked by the file DB the run_attacks.py profile already configures.
 Defaults attack the eight-model selection from round 2. `--defense coop_probe` runs the attack
 against the full pipeline instead of the raw model; GCG is meant to be run undefended and then
 replayed (attack=replay, source=<the GCG results dir>), which is a separate, cheap submission.
+
+`--detector-aware` instead makes GCG adaptive: it adds the probe's evasion loss to the attack
+objective, so the suffix is optimised to elicit the target AND to read benign at the probe --
+the strongest attack we can run against the pipeline. Pair it with --defense coop_probe, and
+drop models with no probe (the base model) from --models.
 """
 
 import argparse
@@ -34,10 +39,23 @@ MODELS = [  # models.yaml entry names; see the round-2 selection
     "J-ce-away1p0-s0",  # CAT baseline (ce)
 ]
 BEHAVIORS = 100
+# Per-behavior generation budget for the attacks that sample rather than optimise. 1024 inpainting
+# variants is far past the point where the budget curve flattens; 128 is the agreed protocol and
+# cuts the run 8x. PAIR's own budget is 30 streams x 3 steps = 90 queries, already under it.
+INPAINTING_SAMPLES = 128
 TIME_PER_RUN = {"gcg": "06:00:00", "inpainting": "03:00:00", "pair": "06:00:00", "direct": "01:00:00"}
 # PAIR aborts a whole run when its attacker returns unparseable JSON max_attempts times in a row; the
 # default 10 loses roughly one run in eight. Retrying more costs seconds and changes no attack semantics.
-EXTRA_OVERRIDES = {"pair": {"attacks.pair.attack_model.max_attempts": 30}}
+EXTRA_OVERRIDES = {
+    "pair": {"attacks.pair.attack_model.max_attempts": 30},
+    "inpainting": {"attacks.inpainting.num_samples_per_behavior": INPAINTING_SAMPLES},
+}
+# Detector-aware GCG. The probe path is resolved per swept model out of models.yaml -- the same
+# interpolation conf/defenses/defenses.yaml uses -- so one file covers every model in the sweep.
+DETECTOR_AWARE_OVERRIDES = {
+    "attacks.gcg.detector_checkpoint": "${models.${model}.reader_path}",
+    "attacks.gcg.detector_loss_coeff": 0.5,
+}
 
 
 def shard_bounds(n_behaviors: int, shards: int) -> list[tuple[int, int]]:
@@ -45,13 +63,18 @@ def shard_bounds(n_behaviors: int, shards: int) -> list[tuple[int, int]]:
     return [(start, min(start + step, n_behaviors)) for start in range(0, n_behaviors, step)]
 
 
-def experiment(attack: str, models: list[str], start: int, stop: int, defense: str | None) -> dict:
+def experiment(attack: str, models: list[str], start: int, stop: int, defense: str | None,
+               detector_aware: bool = False) -> dict:
     overrides = {
         "attack": attack,
         "dataset": "jbb_behaviors",
         "datasets.jbb_behaviors.idx": f"list(range({start},{stop}))",
     }
     overrides.update(EXTRA_OVERRIDES.get(attack, {}))
+    if detector_aware:
+        if attack != "gcg":
+            raise ValueError(f"--detector-aware applies to gcg only, not {attack!r}")
+        overrides.update(DETECTOR_AWARE_OVERRIDES)
     if defense:
         overrides["defense"] = defense
     return {
@@ -64,12 +87,15 @@ def experiment(attack: str, models: list[str], start: int, stop: int, defense: s
 
 
 def build(attacks: list[str], models: list[str], shards: int, n_behaviors: int,
-          defense: str | None) -> dict[str, dict]:
+          defense: str | None, detector_aware: bool = False) -> dict[str, dict]:
     files = {}
     for attack in attacks:
         for index, (start, stop) in enumerate(shard_bounds(n_behaviors, shards)):
+            aware = detector_aware and attack == "gcg"
             suffix = f"-{defense}" if defense else ""
-            files[f"attack-{attack}{suffix}-shard{index}.yaml"] = experiment(attack, models, start, stop, defense)
+            suffix += "-adaptive" if aware else ""
+            files[f"attack-{attack}{suffix}-shard{index}.yaml"] = experiment(
+                attack, models, start, stop, defense, aware)
     return files
 
 
@@ -80,10 +106,13 @@ def main(argv=None, repo: Path = REPO) -> int:
     parser.add_argument("--shards", type=int, default=4, help="split the behavior set into this many runs")
     parser.add_argument("--behaviors", type=int, default=BEHAVIORS, help="how many behaviors to attack")
     parser.add_argument("--defense", default=None, help="run against a defense (e.g. coop_probe) instead of the raw model")
+    parser.add_argument("--detector-aware", action="store_true",
+                        help="gcg only: add the probe's evasion loss to the attack objective")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
 
-    files = build(args.attacks, args.models, args.shards, args.behaviors, args.defense)
+    files = build(args.attacks, args.models, args.shards, args.behaviors, args.defense,
+                  args.detector_aware)
     out_dir = repo / "experiments"
     for name, spec in files.items():
         if args.dry_run:

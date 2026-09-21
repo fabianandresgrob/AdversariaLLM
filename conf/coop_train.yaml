@@ -21,6 +21,8 @@ chat_template_id: meta-llama/Llama-3.1-8B-Instruct
 reader:
   type: linear        # linear | (mlp/gemma later)
   layer: -1           # target-model hidden layer the probe reads
+  readout: prompt_last  # prompt_last | stream_last | response_mean (what the probe may attend over)
+  readout_k: 8          # response_mean only: how many response tokens the window covers
 # "random" or a pretrained probe.pt from run_pretrain_probe (fixes the OOD-benign collapse).
 probe_init: ${root_dir}/checkpoints_probe/probe_v3/probe.pt
 

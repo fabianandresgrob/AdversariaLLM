@@ -51,14 +51,22 @@ def _load_checkpoint(cfg, name, spec):
     hidden_dim = model.get_input_embeddings().weight.shape[-1]
 
     reader_cfg = OmegaConf.to_container(cfg.reader, resolve=True)
-    reader = build_reader(reader_cfg, hidden_dim).to(device)
     reader_path = spec.get("reader") or (_reader_path(adapter) if adapter else None)
-    train_cfg = None
+    ckpt = None
     if reader_path and os.path.exists(reader_path):
         ckpt = torch.load(reader_path, map_location=device)
+    # A probe scored at a position it never trained on is a different detector, so the readout
+    # recorded in the checkpoint wins over the conf default.
+    trained = ((ckpt.get("cfg") or {}).get("reader") or {}) if ckpt else {}
+    for key in ("readout", "readout_k"):
+        if trained.get(key) is not None:
+            reader_cfg[key] = trained[key]
+    reader = build_reader(reader_cfg, hidden_dim).to(device)
+    train_cfg = None
+    if ckpt is not None:
         reader.load_state_dict(ckpt["reader"])
         train_cfg = ckpt.get("cfg")
-        log.info(f"[{name}] loaded reader from {reader_path}")
+        log.info(f"[{name}] loaded reader from {reader_path} (readout={reader_cfg.get('readout')})")
     else:
         log.warning(f"[{name}] no reader checkpoint at {reader_path!r}; using an untrained reader")
     return model, tok, reader, train_cfg

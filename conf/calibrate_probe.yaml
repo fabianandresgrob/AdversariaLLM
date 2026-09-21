@@ -15,6 +15,9 @@ adapter_path: ???        # coop <tag>_adapter (LoRA on the target model)
 checkpoint_path: ???     # coop <tag>_reader.pt (the probe)
 layer: -1
 batch_size: 16
+# Response readouts only: how much of the benign answer to generate before scoring. 256 matches
+# the generation budget the attacks give the target, so the calibration and eval distributions agree.
+max_new_tokens: 256
 calibration_benign: alpaca   # PINNED easy-benign set (matches coop_train.calibration_benign)
 calibration_window: val      # split window: val = training-time point (threshold_<p>pct.json);
                              # calib = large held-out window (threshold_<p>pct_calib.json)

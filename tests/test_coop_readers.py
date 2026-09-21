@@ -185,3 +185,19 @@ def test_monitor_defaults_to_prompt_last_for_a_checkpoint_without_a_saved_readou
     monitor = LinearProbeMonitor(checkpoint_path=str(path), target_model_id="x")
     monitor._ensure_head(torch.nn.Linear(D, D))
     assert monitor._probe.readout_mode == "prompt_last"
+
+
+def test_monitor_reports_whether_its_readout_needs_a_response(tmp_path):
+    # run_calibrate_probe.py branches on this: an empty-response calibration of a response readout
+    # would fix the threshold at a position the probe never trained on and never sees at eval.
+    from adversariallm.defenses.monitors.linear_probe import LinearProbeMonitor
+
+    D, target = 8, torch.nn.Linear(8, 8)
+    modes = {}
+    for mode in ("prompt_last", "stream_last", "response_mean"):
+        path = tmp_path / f"{mode}_reader.pt"
+        torch.save({"reader": LinearProbe(D, readout=mode).state_dict(),
+                    "cfg": {"reader": {"type": "linear", "readout": mode}}, "step": 1}, path)
+        monitor = LinearProbeMonitor(checkpoint_path=str(path), target_model_id="x")
+        modes[mode] = monitor.reads_response(target)
+    assert modes == {"prompt_last": False, "stream_last": True, "response_mean": True}

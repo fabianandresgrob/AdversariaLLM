@@ -60,5 +60,15 @@ class LinearProbeMonitor(ActivationMonitor):
         probe.to(next(target_model.parameters()).device).eval()
         self._probe = probe
 
+    def reads_response(self, target_model) -> bool:
+        """Does this probe's score depend on the response text?
+
+        False for a prompt-only readout, where score(prompt, "") is the real operating point.
+        True for the response readouts, where anything that scores with an empty response (e.g.
+        threshold calibration) must generate one first or it measures a position the probe never
+        trained on."""
+        self._ensure_head(target_model)
+        return self._probe.readout_mode != "prompt_last"
+
     def _head_logits(self, hidden, target_ids, attention_mask) -> torch.Tensor:
         return self._probe.logits(hidden, target_ids, attention_mask)

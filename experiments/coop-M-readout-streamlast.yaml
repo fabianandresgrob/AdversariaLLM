@@ -1,0 +1,25 @@
+# M (round 3): does letting the probe read the RESPONSE catch the fluent attacks (inpainting, PAIR)
+# that the prompt-only readout misses? Identical to L2-cold-nd6 in every respect except
+# reader.readout=stream_last -- cold start, since the pretrained probe.pt was fit at prompt_last.
+entrypoint: run_coop_train.py
+name: M-streamlast-s{seed}
+time_per_run: "07:00:00"
+overrides:
+  attack.enabled: true
+  training.n_steps: 1000
+  training.val_every: 25
+  data.kl_source: magpie
+  data.kl_max_length: 1024
+  epsilon: 0.05
+  attack.use_detector: true
+  probe_init: random
+  training.n_detector_steps: 6
+  training.rep_warmup_steps: 0
+  reader.readout: stream_last
+  reader.readout_k: 8
+  output.checkpoint_path: ${root_dir}/checkpoints_coop/M-streamlast
+sweep:
+  seed: [0]
+artifacts:
+  - checkpoints_coop/M-streamlast/{name}/final_adapter
+  - checkpoints_coop/M-streamlast/{name}/final_reader.pt

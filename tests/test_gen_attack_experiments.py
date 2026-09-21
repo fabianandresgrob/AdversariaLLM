@@ -57,3 +57,12 @@ def test_detector_aware_leaves_other_attacks_alone():
                   detector_aware=True)
     assert list(files) == ["attack-inpainting-coop_probe-shard0.yaml"]
     assert "attacks.gcg.detector_checkpoint" not in files["attack-inpainting-coop_probe-shard0.yaml"]["overrides"]
+
+
+def test_pair_judges_with_the_attacker_not_the_target():
+    spec = build(["pair"], ["E-nd6-s0"], shards=1, n_behaviors=20, defense="coop_probe")[
+        "attack-pair-coop_probe-shard0.yaml"]
+    # null would mean the target judges itself -- a different judge per arm
+    assert spec["overrides"]["attacks.pair.judge_model.id"] == "lmsys/vicuna-13b-v1.5"
+    assert spec["overrides"]["attacks.pair.judge_model.id"] == spec["overrides"].get(
+        "attacks.pair.judge_model.tokenizer_id")

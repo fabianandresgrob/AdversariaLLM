@@ -47,7 +47,17 @@ TIME_PER_RUN = {"gcg": "06:00:00", "inpainting": "03:00:00", "pair": "06:00:00",
 # PAIR aborts a whole run when its attacker returns unparseable JSON max_attempts times in a row; the
 # default 10 loses roughly one run in eight. Retrying more costs seconds and changes no attack semantics.
 EXTRA_OVERRIDES = {
-    "pair": {"attacks.pair.attack_model.max_attempts": 30},
+    "pair": {
+        "attacks.pair.attack_model.max_attempts": 30,
+        # Judge with the attacker rather than the default (judge_model.id=null => the target judges
+        # itself). Self-judging makes the attacker's feedback incomparable across arms -- measured on
+        # the 100-behavior runs, the share of responses rated >=8 ranged from 2.3% (base) to 64.9%
+        # (J-ce) -- and a safety-trained target sometimes refuses to rate at all. vicuna is already
+        # loaded as the attacker and is not safety-tuned, so this costs no extra VRAM (see
+        # pair.select_judge) and no extra refusals.
+        "attacks.pair.judge_model.id": "lmsys/vicuna-13b-v1.5",
+        "attacks.pair.judge_model.tokenizer_id": "lmsys/vicuna-13b-v1.5",
+    },
     "inpainting": {"attacks.inpainting.num_samples_per_behavior": INPAINTING_SAMPLES},
 }
 # Detector-aware GCG. The probe path is resolved per swept model out of models.yaml -- the same

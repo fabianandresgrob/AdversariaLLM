@@ -25,6 +25,21 @@ log = logging.getLogger(__name__)
 
 
 @torch.no_grad()
+def check_pretrain_readout(container: dict) -> str:
+    """The readout this pretrainer is being asked for, or raise if it cannot fit it.
+
+    _features reads prompt-only batches, so only prompt_last can be fit here. Refusing up front
+    beats spending the feature extraction and returning a probe whose recorded readout does not
+    match how its weights were fit. A config without a readout key means prompt_last."""
+    readout = (container.get("reader") or {}).get("readout") or "prompt_last"
+    if readout != "prompt_last":
+        raise NotImplementedError(
+            f"run_pretrain_probe fits on prompt-only batches and supports readout='prompt_last' only, "
+            f"got {readout!r}: there are no responses here to read. Cold-start that run instead."
+        )
+    return readout
+
+
 def _features(model, tokenizer, template_id, prompts, layer, device, batch_size=16):
     """Readout features (unit-normed, fp32) at the generation onset for each prompt."""
     feats = []
@@ -48,6 +63,8 @@ def run_pretrain_probe(cfg):
     from ..io_utils import load_model_and_tokenizer
 
     container = OmegaConf.to_container(cfg, resolve=True)
+
+    check_pretrain_readout(container)
     model_params = cfg.models[cfg.model]
     template_id = cfg.chat_template_id
     model, tokenizer = load_model_and_tokenizer(model_params)

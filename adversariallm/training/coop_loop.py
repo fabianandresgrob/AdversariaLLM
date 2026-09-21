@@ -53,6 +53,24 @@ def _assert_grad(params, flag, who):
     assert all(p.requires_grad == flag for p in params), f"frozen-set violation: {who} requires_grad != {flag}"
 
 
+def load_probe_init(reader, probe_init: str, device) -> str:
+    """Warm-start `reader` from a run_pretrain_probe checkpoint; returns its readout.
+
+    That pretrainer fits on prompt-only batches, so a probe.pt is always a prompt_last probe (one
+    written before the readout modes records none, which means the same thing). Warm-starting a
+    response readout from it would begin from weights fit at a different position -- the parameter
+    shapes match in every mode, so nothing downstream would catch it."""
+    ckpt = torch.load(probe_init, map_location=device)
+    pretrained_readout = ((ckpt.get("cfg") or {}).get("reader") or {}).get("readout") or "prompt_last"
+    if pretrained_readout != reader.readout_mode:
+        raise ValueError(
+            f"probe_init={probe_init} was fit with readout={pretrained_readout!r}, but this run uses "
+            f"readout={reader.readout_mode!r}. Use probe_init=random, or pretrain at the same readout."
+        )
+    reader.load_state_dict(ckpt["state"])
+    return pretrained_readout
+
+
 def _hidden_and_logits(model, layer, *, inputs_embeds=None, input_ids=None, attention_mask=None):
     out = model(
         inputs_embeds=inputs_embeds, input_ids=input_ids, attention_mask=attention_mask, output_hidden_states=True
@@ -391,8 +409,8 @@ def run_coop_training(cfg):
     reader = build_reader(container.get("reader"), hidden_dim).to(device)
     probe_init = container.get("probe_init") or "random"
     if probe_init != "random":
-        reader.load_state_dict(torch.load(probe_init, map_location=device)["state"])
-        log.info(f"loaded pretrained probe from {probe_init}")
+        log.info(f"loaded pretrained probe from {probe_init} "
+                 f"(readout={load_probe_init(reader, probe_init, device)})")
     reader_params = list(reader.parameters())
 
     # data

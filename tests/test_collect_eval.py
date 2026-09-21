@@ -112,7 +112,8 @@ def test_plots_are_written_for_swept_blocks_only(tree):
     repo, jobs = tree
     main(["--jobs-root", str(jobs)], repo=repo)
     plots = sorted(p.name for p in (repo / "outputs/eval/summary/plots").iterdir())
-    assert plots == ["robustness.png", "sweep_A-eps-sweep.png", "sweep_J-cat.png", "tradeoff.png"]
+    assert plots == ["leash.png", "robustness.png", "sweep_A-eps-sweep.png", "sweep_J-cat.png",
+                     "tradeoff.png", "utility.png"]
 
 
 def test_cat_checkpoints_get_rows_with_config_from_the_job_overrides(tree):

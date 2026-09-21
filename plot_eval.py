@@ -1,5 +1,7 @@
 """Static figures for collect_eval.py (small multiples, one hue per panel, base model as gray reference).
 
+utility.png    utility (MMLU/ARC-C/GSM8K mean) per config, coop and CAT, against the base model
+leash.png      the CAT leash isolation: same objective, steps and batch, only the KL leash differs
 tradeoff.png   one panel per block: mean utility (MMLU/ARC-C/GSM8K) vs xs_test over-refusal, one point per
                config (mean over seeds, std error bars), direct-labeled with the swept knob value.
 sweep_<b>.png  one row per block with a swept knob: MMLU, ARC-C, GSM8K, xs_test refusal, train recall@1%FPR
@@ -18,6 +20,7 @@ import pandas as pd  # noqa: E402
 from collect_eval import CHECKPOINT_ROOTS, swept_knobs  # noqa: E402
 
 SERIES = "#2a78d6"        # categorical slot 1 (validated: lightness, chroma, contrast on #fcfcfb)
+SERIES_2 = "#e08a1e"      # categorical slot 2 (same validator run; under 3:1 -> always value-labelled)
 SURFACE = "#fcfcfb"
 TEXT = "#0b0b0b"
 TEXT_SECONDARY = "#52514e"
@@ -197,14 +200,93 @@ def plot_robustness(df: pd.DataFrame, path: Path) -> bool:
     return True
 
 
+def _config_table(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    """One row per config (seeds averaged), labelled '<block>/<run without -sN>'."""
+    trained = df[df["kind"].isin(CHECKPOINT_ROOTS)]
+    key = trained["block"] + "/" + trained["run"].str.replace(r"-s\d+$", "", regex=True)
+    present = [c for c in columns if c in trained]
+    stats = trained.groupby([key, trained["kind"]])[present].agg(["mean", "std"])
+    stats.index = stats.index.set_names(["config", "kind"])
+    return stats.reset_index()
+
+
+def plot_utility(df: pd.DataFrame, path: Path) -> bool:
+    """Utility per config against the base model, sorted, so a collapsed run (utility ~0) is obvious
+    instead of hidden in a table."""
+    stats = _config_table(df, ["utility_mean_pct"])
+    stats = stats[stats[("utility_mean_pct", "mean")].notna()].sort_values(("utility_mean_pct", "mean"))
+    if stats.empty:
+        return False
+    base = df[(df["kind"] == "reference") & (df["run"] == "base")]
+    fig, ax = plt.subplots(figsize=(7.2, 0.26 * len(stats) + 1.8), facecolor=SURFACE)
+    _style(ax)
+    ax.grid(True, axis="x", color=GRID, linewidth=0.8)
+    colors = [SERIES if kind == "coop" else SERIES_2 for kind in stats["kind"]]
+    ax.barh(range(len(stats)), stats[("utility_mean_pct", "mean")], color=colors,
+            xerr=stats[("utility_mean_pct", "std")].fillna(0),
+            error_kw={"elinewidth": 1, "ecolor": TEXT_SECONDARY}, edgecolor=SURFACE, linewidth=1)
+    for i, value in enumerate(stats[("utility_mean_pct", "mean")]):
+        ax.annotate(f"{value:.1f}", (value, i), xytext=(3, 0), textcoords="offset points",
+                    fontsize=6, color=TEXT, va="center")
+    ax.set_yticks(range(len(stats)), stats["config"], fontsize=6)
+    if not base.empty and pd.notna(base["utility_mean_pct"].iloc[0]):
+        ax.axvline(base["utility_mean_pct"].iloc[0], color=TEXT_SECONDARY, linestyle="--", linewidth=1)
+        ax.annotate("base", (base["utility_mean_pct"].iloc[0], 1), xycoords=("data", "axes fraction"),
+                    xytext=(3, -9), textcoords="offset points", fontsize=7, color=TEXT_SECONDARY)
+    ax.set_xlabel("mean utility: MMLU / ARC-C / GSM8K (%)", fontsize=8, color=TEXT_SECONDARY)
+    handles = [plt.Rectangle((0, 0), 1, 1, color=SERIES), plt.Rectangle((0, 0), 1, 1, color=SERIES_2)]
+    legend = ax.legend(handles, ["coop", "CAT"], frameon=False, fontsize=8, loc="lower right")
+    for text in legend.get_texts():
+        text.set_color(TEXT_SECONDARY)
+    ax.set_title("Utility per config (mean ± std over seeds)", fontsize=10, color=TEXT, loc="left")
+    fig.tight_layout()
+    fig.savefig(path, dpi=200, facecolor=SURFACE)
+    plt.close(fig)
+    return True
+
+
+def plot_leash(df: pd.DataFrame, path: Path, blocks=("J-ultra450", "J-leash450", "J-legacy", "J-cat")) -> bool:
+    """CAT leash isolation: J-ultra450 (ultrachat) and J-leash450b4 (magpie/1024) share objective, steps
+    and batch size, so the gap between them is the leash alone; J-legacy and J-cat bracket the pair."""
+    rows = df[df["block"].isin(blocks)]
+    if rows.empty:
+        return False
+    refusal = _refusal_col(df)
+    stats = _config_table(rows, ["utility_mean_pct", refusal]).sort_values(("utility_mean_pct", "mean"))
+    fig, axes = plt.subplots(1, 2, figsize=(9.5, 0.4 * len(stats) + 2.0), facecolor=SURFACE, sharey=True)
+    for ax, col, label, color in ((axes[0], "utility_mean_pct", "mean utility (%)", SERIES),
+                                  (axes[1], refusal, "xs_test over-refusal", SERIES_2)):
+        _style(ax)
+        ax.grid(True, axis="x", color=GRID, linewidth=0.8)
+        values = stats[(col, "mean")]
+        ax.barh(range(len(stats)), values.fillna(0), xerr=stats[(col, "std")].fillna(0),
+                error_kw={"elinewidth": 1, "ecolor": TEXT_SECONDARY}, color=color,
+                edgecolor=SURFACE, linewidth=1)
+        for i, value in enumerate(values):
+            if pd.notna(value):
+                text = f"{value:.2f}" if col == refusal else f"{value:.1f}"
+                ax.annotate(text, (value, i), xytext=(3, 0), textcoords="offset points",
+                            fontsize=6, color=TEXT, va="center")
+        ax.set_xlabel(label, fontsize=8, color=TEXT_SECONDARY)
+    axes[0].set_yticks(range(len(stats)), stats["config"], fontsize=7)
+    fig.suptitle("CAT: the KL leash decides whether the model survives training", fontsize=10, color=TEXT,
+                 x=0.01, ha="left")
+    fig.tight_layout()
+    fig.savefig(path, dpi=200, facecolor=SURFACE)
+    plt.close(fig)
+    return True
+
+
 def plot_all(df: pd.DataFrame, out: Path) -> list[Path]:
     out.mkdir(parents=True, exist_ok=True)
     written = []
     if len(df):
         plot_tradeoff(df, out / "tradeoff.png")
         written.append(out / "tradeoff.png")
-        if plot_robustness(df, out / "robustness.png"):
-            written.append(out / "robustness.png")
+        for name, fn in (("utility.png", plot_utility), ("leash.png", plot_leash),
+                         ("robustness.png", plot_robustness)):
+            if fn(df, out / name):
+                written.append(out / name)
         for block in sorted(df.loc[df["kind"].isin(CHECKPOINT_ROOTS), "block"].unique()):
             if plot_sweep(df, block, out / f"sweep_{block}.png"):
                 written.append(out / f"sweep_{block}.png")

@@ -1,8 +1,9 @@
 """Figures for collect_attacks.py.
 
-asr_by_attack.png  one panel per attack: behavior-level ASR over the 100 JBB behaviors by model,
-                   undefended vs defended bars, so the probe's contribution is the gap between a
-                   model's two bars.
+asr_by_attack.png  one panel per attack family: behavior-level ASR over the 100 JBB behaviors by
+                   model, undefended vs defended bars, so the probe's contribution is a model's gap.
+                   GCG's defended bar comes from its replay run (the suffix is optimised against the
+                   raw model, then transferred); inpainting and PAIR hit the defended pipelinedirectly.
 budget_curve.png   ASR against query budget (1 / 10 / 100 / any) per model, one panel per attack -- how
                    many tries an attacker needs, which a single ASR number hides.
 """
@@ -44,7 +45,7 @@ def _legend(ax, labels):
 
 
 def plot_by_attack(df: pd.DataFrame, path: Path) -> bool:
-    attacks = sorted(df["attack"].unique())
+    attacks = sorted(df["family"].unique())
     if not attacks:
         return False
     models = sorted(df["model"].unique())
@@ -52,7 +53,7 @@ def plot_by_attack(df: pd.DataFrame, path: Path) -> bool:
                              facecolor=SURFACE, squeeze=False)
     for ax, attack in zip(axes[:, 0], attacks):
         _style(ax)
-        rows = df[df["attack"] == attack].set_index(["model", "defense"])
+        rows = df[df["family"] == attack].set_index(["model", "defense"])
         width, drawn = 0.38, []
         for offset, defense, color, label in ((-width / 2, "none", UNDEFENDED, "model only"),
                                               (width / 2, "coop_probe", DEFENDED, "model + probe")):
@@ -81,14 +82,14 @@ def plot_by_attack(df: pd.DataFrame, path: Path) -> bool:
 
 def plot_budget_curve(df: pd.DataFrame, path: Path) -> bool:
     undefended = df[df["defense"] == "none"]
-    attacks = sorted(undefended["attack"].unique())
+    attacks = sorted(undefended["family"].unique())
     if not attacks:
         return False
     fig, axes = plt.subplots(1, len(attacks), figsize=(3.4 * len(attacks), 3.2), facecolor=SURFACE, squeeze=False)
     for ax, attack in zip(axes[0], attacks):
         _style(ax)
         ax.grid(True, axis="both", color=GRID, linewidth=0.8)
-        rows = undefended[undefended["attack"] == attack]
+        rows = undefended[undefended["family"] == attack]
         for _, row in rows.iterrows():
             values = [row[col] for col, _ in BUDGET_COLUMNS if col in row]
             ax.plot(range(len(values)), values, marker="o", ms=5, linewidth=1.6, color=UNDEFENDED, alpha=0.75)

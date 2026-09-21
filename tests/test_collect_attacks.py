@@ -46,6 +46,14 @@ def test_per_sample_and_budget_metrics(tmp_path):
     assert row.asr_behavior == 0.5  # 1 of 2 behaviors jailbroken at any budget
 
 
+def test_replay_shares_the_panel_of_the_attack_it_replays(tmp_path):
+    _write_run(tmp_path, "gcg", "none", "E-nd6-s0", [[0.9]])
+    _write_run(tmp_path, "replay", "coop_probe", "E-nd6-s0", [[0.01]])
+    df = collect(tmp_path).set_index("attack")
+    assert df.loc["gcg", "family"] == "gcg" and df.loc["replay", "family"] == "gcg"
+    assert collect(tmp_path, replay_source="pair").set_index("attack").loc["replay", "family"] == "pair"
+
+
 def test_defended_and_undefended_are_separate_rows(tmp_path):
     _write_run(tmp_path, "gcg", "none", "E-nd6-s0", [[0.9]])
     _write_run(tmp_path, "gcg", "coop_probe", "E-nd6-s0", [[0.01]])

@@ -10,15 +10,15 @@ import pandas as pd  # noqa: E402
 from collect_attacks import collect, main, parse_dir_name, run_scores  # noqa: E402
 
 
-def _write_run(repo, attack, defense, model, behaviors, scored=True):
-    path = repo / "outputs" / f"{attack}__{defense}__{model}" / "2026-09-19" / "10-00-00" / "0" / "run.json"
+def _write_run(repo, attack, defense, model, behaviors, scored=True, config=None, date="2026-09-19"):
+    path = repo / "outputs" / f"{attack}__{defense}__{model}" / date / "10-00-00" / "0" / "run.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     runs = []
     for scores in behaviors:
         steps = [{"model_completions": ["x"],
                   "scores": {"strong_reject": {"p_harmful": [s]}} if scored else {}} for s in scores]
         runs.append({"original_prompt": [{"role": "user", "content": "b"}], "steps": steps})
-    path.write_text(json.dumps({"config": {}, "runs": runs}))
+    path.write_text(json.dumps({"config": config or {}, "runs": runs}))
 
 
 def test_parse_dir_name():
@@ -85,3 +85,45 @@ def test_asr_at_128_reads_a_larger_run_at_the_agreed_budget(tmp_path):
     assert row.asr_at_100 == 0.0        # neither behavior has fallen by 100 tries
     assert row.asr_at_128 == 0.5        # behavior 1 has, behavior 2 has not
     assert row.asr_behavior == 1.0      # both fall eventually, at the full 1024 budget
+
+
+def _pair_cfg(judge):
+    return {"attack_params": {"judge_model": {"id": judge}, "num_streams": 30, "num_steps": 3}}
+
+
+def test_two_judging_protocols_in_one_results_dir_become_two_rows(tmp_path):
+    """outputs/pair__none__<model>/ is named for (attack, defense, model) only, so a re-run with a
+    different judge lands in the same directory. Averaging a self-judged run with an
+    externally-judged one would silently report a number that describes neither."""
+    _write_run(tmp_path, "pair", "none", "E-nd6-s0", [[0.9], [0.9]],
+               config=_pair_cfg(None), date="2026-09-19")          # target judged itself
+    _write_run(tmp_path, "pair", "none", "E-nd6-s0", [[0.0]],
+               config=_pair_cfg("lmsys/vicuna-13b-v1.5"), date="2026-09-22")
+    df = collect(tmp_path).set_index("protocol")
+    assert len(df) == 2, "the two protocols were merged into one cell"
+    assert df.loc["judge_model=self,num_streams=30,num_steps=3", "asr_behavior"] == 1.0
+    assert df.loc["judge_model=vicuna-13b-v1.5,num_streams=30,num_steps=3", "asr_behavior"] == 0.0
+
+
+def test_inpainting_budgets_and_gcg_coefficients_separate_cells(tmp_path):
+    _write_run(tmp_path, "inpainting", "none", "M-respmean-s0", [[0.9]],
+               config={"attack_params": {"num_samples_per_behavior": 1024}}, date="2026-09-19")
+    _write_run(tmp_path, "inpainting", "none", "M-respmean-s0", [[0.0]],
+               config={"attack_params": {"num_samples_per_behavior": 128}}, date="2026-09-22")
+    protocols = set(collect(tmp_path)["protocol"])
+    assert protocols == {"num_samples_per_behavior=1024", "num_samples_per_behavior=128"}
+
+
+def test_an_attack_without_protocol_parameters_is_labelled_default(tmp_path):
+    _write_run(tmp_path, "direct", "none", "M-respmean-s0", [[0.1]])
+    assert collect(tmp_path).iloc[0]["protocol"] == "default"
+
+
+def test_filters_restrict_the_table(tmp_path):
+    _write_run(tmp_path, "gcg", "none", "M-respmean-s0", [[0.9]])
+    _write_run(tmp_path, "gcg", "none", "E-nd6-s0", [[0.9]])
+    _write_run(tmp_path, "pair", "coop_probe", "M-respmean-s0", [[0.9]], config=_pair_cfg(None))
+    assert set(collect(tmp_path, models=["M-respmean-s0"])["model"]) == {"M-respmean-s0"}
+    assert set(collect(tmp_path, attacks=["gcg"])["attack"]) == {"gcg"}
+    assert set(collect(tmp_path, defenses=["coop_probe"])["defense"]) == {"coop_probe"}
+    assert collect(tmp_path, models=["nobody"]).empty

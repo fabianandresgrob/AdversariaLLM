@@ -23,9 +23,10 @@ def test_one_file_per_shard_sweeping_models():
 
 
 def test_defense_goes_into_the_overrides_and_the_file_name():
-    files = build(["gcg"], ["E-nd6-s0"], shards=1, n_behaviors=4, defense="coop_probe")
-    assert list(files) == ["attack-gcg-coop_probe-b0-4.yaml"]
-    assert files["attack-gcg-coop_probe-b0-4.yaml"]["overrides"]["defense"] == "coop_probe"
+    # pair, not gcg: an optimisation attack cannot run against a runtime defense
+    files = build(["pair"], ["E-nd6-s0"], shards=1, n_behaviors=4, defense="coop_probe")
+    assert list(files) == ["attack-pair-coop_probe-b0-4.yaml"]
+    assert files["attack-pair-coop_probe-b0-4.yaml"]["overrides"]["defense"] == "coop_probe"
 
 
 def test_main_writes_the_files(tmp_path):
@@ -44,10 +45,10 @@ def test_inpainting_gets_the_agreed_128_generation_budget():
 
 
 def test_detector_aware_gcg_adds_the_evasion_objective_and_its_own_file_name():
-    files = build(["gcg"], ["M-respmean-s0"], shards=1, n_behaviors=20, defense="coop_probe",
+    files = build(["gcg"], ["M-respmean-s0"], shards=1, n_behaviors=20, defense=None,
                   detector_aware=True)
-    assert list(files) == ["attack-gcg-coop_probe-adaptive-b0-20.yaml"]
-    overrides = files["attack-gcg-coop_probe-adaptive-b0-20.yaml"]["overrides"]
+    assert list(files) == ["attack-gcg-adaptive-b0-20.yaml"]
+    overrides = files["attack-gcg-adaptive-b0-20.yaml"]["overrides"]
     # resolved per swept model out of models.yaml, so one file covers the whole sweep
     # quoted: hydra's override grammar rejects a bare nested interpolation
     assert overrides["attacks.gcg.detector_checkpoint"] == "'${models.${model}.reader_path}'"
@@ -57,7 +58,7 @@ def test_detector_aware_gcg_adds_the_evasion_objective_and_its_own_file_name():
 def test_detector_aware_leaves_other_attacks_alone():
     # inpainting and pair have nothing to be aware of -- they never see the probe's gradients
     files = build(["inpainting"], ["E-nd6-s0"], shards=1, n_behaviors=20, defense="coop_probe",
-                  detector_aware=True)
+                  detector_aware=True)  # inpainting is defense-compatible; awareness is a no-op for it
     assert list(files) == ["attack-inpainting-coop_probe-b0-20.yaml"]
     assert "attacks.gcg.detector_checkpoint" not in files["attack-inpainting-coop_probe-b0-20.yaml"]["overrides"]
 
@@ -84,8 +85,8 @@ def test_the_detector_checkpoint_override_is_parseable_by_hydra():
     """A bare nested interpolation fails at startup with "extraneous input '}' expecting <EOF>",
     which is how the first adaptive-GCG batch died."""
     parser = pytest.importorskip("hydra.core.override_parser.overrides_parser").OverridesParser.create()
-    spec = build(["gcg"], ["M-respmean-s0"], shards=1, n_behaviors=20, defense="coop_probe",
-                 detector_aware=True)["attack-gcg-coop_probe-adaptive-b0-20.yaml"]
+    spec = build(["gcg"], ["M-respmean-s0"], shards=1, n_behaviors=20, defense=None,
+                 detector_aware=True)["attack-gcg-adaptive-b0-20.yaml"]
     key = "attacks.gcg.detector_checkpoint"
     parsed = parser.parse_overrides([f"{key}={spec['overrides'][key]}"])[0]
     assert parsed.value() == "${models.${model}.reader_path}"  # quotes consumed, interpolation intact

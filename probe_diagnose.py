@@ -8,11 +8,14 @@ alpaca prompt+answer as benign. At eval it meets something else entirely: a flue
 prompt followed by the model's own long answer. This scores all four combinations so the failure
 can be attributed instead of guessed:
 
-  train_style   behavior        + canonical target     what training looks like -> expect harmful
+  train_style   behavior        + its canonical target what training looks like -> expect harmful
   real_hit      jailbreak prompt + real completion     what eval looks like     -> observed ~0.002
   swap_prompt   behavior        + real completion      isolates the RESPONSE half
   swap_response jailbreak prompt + canonical target    isolates the PROMPT half
   benign        alpaca prompt   + alpaca answer        the negative class       -> expect benign
+
+All five sets cover the SAME behaviors, one hit each, so the columns are comparable: a difference
+between them is the prompt or the response, never a different sample of behaviors.
 
 If train_style scores harmful and real_hit does not, the probe does what it was trained to do and
 the training distribution is the problem. If train_style ALSO scores benign, the probe is broken
@@ -28,19 +31,16 @@ from omegaconf import DictConfig, OmegaConf
 log = logging.getLogger(__name__)
 
 
-def pick_targets(targets: dict, behaviors: list[str], limit: int) -> list[tuple[str, str]]:
-    """(behavior, canonical target) pairs, preferring behaviors that appear in the hits."""
-    out = []
-    for behavior in behaviors:
-        value = targets.get(behavior)
-        if value is None:
-            continue
-        target = value[0] if isinstance(value, (list, tuple)) else value
-        if str(target).strip():
-            out.append((behavior, str(target)))
-        if len(out) >= limit:
-            break
-    return out
+def one_per_behavior(hits: list[dict], limit: int) -> list[dict]:
+    """The first hit of each distinct behavior, up to `limit`.
+
+    Taking the first `limit` hits instead collapses onto a single behavior when one behavior has
+    many successful completions (E-nd6 had 3561 hits over 99 behaviors). A prompt-position probe
+    then returns `limit` identical scores, which reads like a finding and is not one."""
+    by_behavior: dict[str, dict] = {}
+    for hit in hits:
+        by_behavior.setdefault(hit.get("behavior", ""), hit)
+    return list(by_behavior.values())[:limit]
 
 
 def summarize(name: str, scores: list[float], threshold: float) -> str:
@@ -67,17 +67,15 @@ def main(cfg: DictConfig) -> None:
     })
     threshold = float(cfg.get("threshold") or 0.5)
 
-    hits = json.loads(open(cfg.hits).read())[: int(cfg.limit)]
+    hits = one_per_behavior(json.loads(open(cfg.hits).read()), int(cfg.limit))
     behaviors = [h["behavior"] for h in hits]
     prompts_jb = [h["prompt"] for h in hits]
     responses = [h["response_raw"] or h["response"] for h in hits]
-
-    targets = json.load(open(cfg.targets_path))
-    pairs = pick_targets(targets, behaviors, int(cfg.limit))
-    if not pairs:  # the hit behaviors are JBB, the targets file is advbench -- fall back to its own
-        pairs = pick_targets(targets, list(targets), int(cfg.limit))
-    t_behaviors = [b for b, _ in pairs]
-    t_targets = [t for _, t in pairs]
+    # each behavior's OWN canonical target, so every set below covers the same behaviors
+    t_behaviors, t_targets = behaviors, [h.get("target") or "" for h in hits]
+    missing = sum(1 for t in t_targets if not t)
+    if missing:
+        log.warning(f"{missing}/{len(t_targets)} hits carry no canonical target")
 
     alpaca_p, alpaca_r = load_dataset_prompts(cfg.datasets, "alpaca", window=cfg.splits.alpaca.val, seed=0)
     n = int(cfg.limit)
@@ -87,7 +85,7 @@ def main(cfg: DictConfig) -> None:
         "train_style": (t_behaviors, t_targets),
         "real_hit": (prompts_jb, responses),
         "swap_prompt": (behaviors, responses),
-        "swap_response": (prompts_jb[: len(t_targets)], t_targets[: len(prompts_jb)]),
+        "swap_response": (prompts_jb, t_targets),
         "benign": (alpaca_p, alpaca_r),
     }
     log.info(f"probe={entry['reader_path']}  threshold={threshold}")

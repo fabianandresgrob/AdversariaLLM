@@ -28,6 +28,18 @@ def parse_dir_name(name: str) -> tuple[str, str, str] | None:
     return (parts[0], parts[1], parts[2]) if len(parts) == 3 else None
 
 
+def canonical_target(conversation) -> str:
+    """The affirmative target stored with the behavior ("Sure, here is ..."), i.e. the assistant
+    turn of original_prompt. This is the string the coop probe was trained on, so it is the right
+    control to compare a real completion against."""
+    if not isinstance(conversation, list):
+        return ""
+    for message in conversation:
+        if isinstance(message, dict) and message.get("role") == "assistant":
+            return str(message.get("content", ""))
+    return ""
+
+
 def last_user(conversation) -> str:
     """The prompt actually sent: the last user turn of the (possibly rewritten) conversation."""
     if not isinstance(conversation, list):
@@ -74,6 +86,7 @@ def hits(repo: Path, attack=None, defense=None, model=None, classifier="strong_r
                         "probe_score": entry.get("score"),
                         "probe_fired": entry.get("applied"),
                         "behavior": behavior,
+                        "target": canonical_target(run.get("original_prompt")),
                         "prompt": last_user(step.get("model_input")),
                         "response": completions[i] if i < len(completions) else "",
                         # what the model said before the defense replaced it, when they differ

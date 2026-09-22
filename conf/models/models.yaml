@@ -477,7 +477,6 @@ J-ce-away1p0-s0:
   chat_template: llama-3-instruct
   trust_remote_code: true
   adapter_path: ${root_dir}/checkpoints_cat/J-cat/J-ce-away1.0-s0/final_adapter
-
 # >>> generated coop checkpoints (gen_coop_models.py) >>>
 A-eps0p0-s0:
   id: meta-llama/Meta-Llama-3.1-8B-Instruct
@@ -1403,4 +1402,59 @@ L-cold-s2:
   trust_remote_code: true
   adapter_path: ${root_dir}/checkpoints_coop/L-cold-adaptive/L-cold-s2/final_adapter
   reader_path: ${root_dir}/checkpoints_coop/L-cold-adaptive/L-cold-s2/final_reader.pt
+L2-cold-nd6-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/L2-cold-nd6/L2-cold-nd6-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/L2-cold-nd6/L2-cold-nd6-s0/final_reader.pt
+L2-cold-nd6-s1:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/L2-cold-nd6/L2-cold-nd6-s1/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/L2-cold-nd6/L2-cold-nd6-s1/final_reader.pt
+L2-cold-nd6-s2:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/L2-cold-nd6/L2-cold-nd6-s2/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/L2-cold-nd6/L2-cold-nd6-s2/final_reader.pt
+M-respmean-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/M-respmean/M-respmean-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/M-respmean/M-respmean-s0/final_reader.pt
+M-streamlast-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/M-streamlast/M-streamlast-s0/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/M-streamlast/M-streamlast-s0/final_reader.pt
 # <<< generated coop checkpoints <<<

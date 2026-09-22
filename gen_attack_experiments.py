@@ -15,9 +15,15 @@ against the full pipeline instead of the raw model; GCG is meant to be run undef
 replayed (attack=replay, source=<the GCG results dir>), which is a separate, cheap submission.
 
 `--detector-aware` instead makes GCG adaptive: it adds the probe's evasion loss to the attack
-objective, so the suffix is optimised to elicit the target AND to read benign at the probe --
-the strongest attack we can run against the pipeline. Pair it with --defense coop_probe, and
-drop models with no probe (the base model) from --models.
+objective, so the suffix is optimised to elicit the target AND to read benign at the probe. GCG
+cannot run against a runtime defense (it needs gradients, and the defense only filters the
+output -- see defenses.registry.DEFENSE_COMPATIBLE_ATTACKS), so an adaptive run is TWO stages:
+
+    1. gen_attack_experiments.py --attacks gcg --detector-aware            # defense=none
+    2. replay the resulting prompts with attack=replay defense=coop_probe  # pipeline ASR
+
+Stage 1 is where the attacker uses its knowledge of the probe; stage 2 is where the probe gets
+to act. Drop models with no probe (the base model) from --models.
 """
 
 import argparse
@@ -102,8 +108,24 @@ def experiment(attack: str, models: list[str], start: int, stop: int, defense: s
     }
 
 
+# Attacks that can run against a runtime defense, mirroring
+# adversariallm.defenses.registry.DEFENSE_COMPATIBLE_ATTACKS. Optimisation attacks are absent:
+# they need gradients the defended pipeline does not expose. Checked here so an incompatible
+# combination fails at generation time, not after the jobs have been submitted and started.
+DEFENSE_COMPATIBLE = frozenset({"actor", "ample_gcg", "bon", "crescendo", "direct", "human_jailbreaks",
+                                "inpainting", "jailbreak_r1", "pair", "replay"})
+
+
 def build(attacks: list[str], models: list[str], shards: int, n_behaviors: int,
           defense: str | None, detector_aware: bool = False) -> dict[str, dict]:
+    if defense:
+        bad = sorted(set(attacks) - DEFENSE_COMPATIBLE)
+        if bad:
+            raise ValueError(
+                f"{bad} cannot run against defense={defense!r}: they need gradients the defended "
+                f"pipeline does not expose. Run them with defense=none and replay the result "
+                f"(attack=replay defense={defense})."
+            )
     files = {}
     for attack in attacks:
         for index, (start, stop) in enumerate(shard_bounds(n_behaviors, shards)):

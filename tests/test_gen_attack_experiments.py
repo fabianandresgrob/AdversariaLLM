@@ -89,3 +89,24 @@ def test_the_detector_checkpoint_override_is_parseable_by_hydra():
     key = "attacks.gcg.detector_checkpoint"
     parsed = parser.parse_overrides([f"{key}={spec['overrides'][key]}"])[0]
     assert parsed.value() == "${models.${model}.reader_path}"  # quotes consumed, interpolation intact
+
+
+def test_an_optimisation_attack_against_a_runtime_defense_is_refused_at_generation_time():
+    """gcg+coop_probe submitted fine and then died in every run with 'Attack gcg is incompatible
+    with runtime defenses'. The generator now refuses it before any job is created."""
+    with pytest.raises(ValueError, match="replay"):
+        build(["gcg"], ["M-respmean-s0"], shards=1, n_behaviors=20, defense="coop_probe")
+    with pytest.raises(ValueError):
+        build(["gcg"], ["M-respmean-s0"], shards=1, n_behaviors=20, defense="coop_probe",
+              detector_aware=True)
+    # the black-box attacks are still allowed against the pipeline
+    assert build(["pair", "inpainting", "direct"], ["M-respmean-s0"], shards=1, n_behaviors=20,
+                 defense="coop_probe")
+
+
+def test_detector_aware_gcg_runs_undefended_as_stage_one():
+    files = build(["gcg"], ["M-respmean-s0"], shards=1, n_behaviors=20, defense=None,
+                  detector_aware=True)
+    spec = files["attack-gcg-adaptive-b0-20.yaml"]
+    assert "defense" not in spec["overrides"]
+    assert spec["overrides"]["attacks.gcg.detector_loss_coeff"] == 0.5

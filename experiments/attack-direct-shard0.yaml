@@ -5,8 +5,14 @@ time_per_run: 01:00:00
 overrides:
   attack: direct
   dataset: jbb_behaviors
-  datasets.jbb_behaviors.idx: list(range(0,20))
+  datasets.jbb_behaviors.idx: list(range(0,100))
 sweep:
   model:
-  - M-respmean-s0
-  - M-streamlast-s0
+  - base-llama31-8b
+  - A-eps0p05-s0
+  - E-nd6-s0
+  - I-full-s0
+  - I-lrep0-s0
+  - L-cold-s0
+  - J-ul-away1p0-s0
+  - J-ce-away1p0-s0

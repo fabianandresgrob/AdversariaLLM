@@ -296,7 +296,10 @@ gcg_adaptive:
   grad_smoothing: ${attacks.gcg.grad_smoothing}
   grad_momentum: ${attacks.gcg.grad_momentum}
   # the probe: required here, unlike gcg where these default to off
-  detector_checkpoint: ???      # a coop <tag>_reader.pt; ${models.${model}.reader_path} at run time
+  # The selected model's own probe, exactly as conf/defenses/defenses.yaml resolves it. It lives
+  # here rather than in a CLI override because hydra's override grammar cannot parse a nested
+  # interpolation bare, and quoting it leaves the quotes in the value (the path then fails to open).
+  detector_checkpoint: ${models.${model}.reader_path}
   detector_loss_coeff: 0.5      # loss = (1-c)*elicit_target + c*evade_detector
   detector_layer: ${attacks.gcg.detector_layer}
 gcg_reinforce:

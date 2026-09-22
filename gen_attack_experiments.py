@@ -53,7 +53,6 @@ TIME_PER_RUN = {"gcg": "06:00:00", "gcg_adaptive": "06:00:00", "inpainting": "03
 # PAIR aborts a whole run when its attacker returns unparseable JSON max_attempts times in a row; the
 # default 10 loses roughly one run in eight. Retrying more costs seconds and changes no attack semantics.
 EXTRA_OVERRIDES = {
-    "gcg_adaptive": {"attacks.gcg_adaptive.detector_checkpoint": "'${models.${model}.reader_path}'"},
     "pair": {
         "attacks.pair.attack_model.max_attempts": 30,
         # Judge with the attacker rather than the default (judge_model.id=null => the target judges
@@ -67,10 +66,9 @@ EXTRA_OVERRIDES = {
     },
     "inpainting": {"attacks.inpainting.num_samples_per_behavior": INPAINTING_SAMPLES},
 }
-# gcg_adaptive's probe is resolved per swept model out of models.yaml -- the same interpolation
-# conf/defenses/defenses.yaml uses -- so one file covers every model in the sweep. The quotes are
-# load-bearing: hydra's CLI override grammar cannot parse a NESTED interpolation bare ("extraneous
-# input '}' expecting <EOF>"), but accepts it quoted, and omegaconf resolves it per model.
+# gcg_adaptive needs no probe override: conf/attacks/attacks.yaml resolves the swept model's own
+# reader_path. Passing it on the CLI does not work -- hydra cannot parse a nested interpolation
+# bare, and quoting it leaves the quotes inside the value, so the path fails to open.
 
 
 def shard_bounds(n_behaviors: int, shards: int) -> list[tuple[int, int]]:

@@ -37,4 +37,5 @@ def test_gcg_adaptive_turns_the_probe_terms_on():
     adaptive = _attacks()["gcg_adaptive"]
     assert adaptive["name"] == "gcg_adaptive"
     assert adaptive["detector_loss_coeff"] == 0.5          # gcg defaults this to 0 = probe ignored
-    assert adaptive["detector_checkpoint"] == "???"        # required, not silently None
+    # resolves the selected model's probe; a CLI override cannot express this (nested interpolation)
+    assert adaptive["detector_checkpoint"] == "${models.${model}.reader_path}"

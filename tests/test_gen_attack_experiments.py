@@ -64,16 +64,6 @@ def test_run_names_carry_the_behavior_window_so_protocols_cannot_collide():
     assert (wide["name"], narrow["name"]) == ("pair-{model}-b0-25", "pair-{model}-b0-20")
 
 
-def test_the_detector_checkpoint_override_is_parseable_by_hydra():
-    """A bare nested interpolation fails at startup with "extraneous input '}' expecting <EOF>",
-    which is how the first adaptive-GCG batch died."""
-    parser = pytest.importorskip("hydra.core.override_parser.overrides_parser").OverridesParser.create()
-    spec = build(["gcg_adaptive"], ["M-respmean-s0"], shards=1, n_behaviors=20,
-                 defense=None)["attack-gcg_adaptive-b0-20.yaml"]
-    key = "attacks.gcg_adaptive.detector_checkpoint"
-    parsed = parser.parse_overrides([f"{key}={spec['overrides'][key]}"])[0]
-    assert parsed.value() == "${models.${model}.reader_path}"  # quotes consumed, interpolation intact
-
 
 def test_an_optimisation_attack_against_a_runtime_defense_is_refused_at_generation_time():
     """gcg+coop_probe submitted fine and then died in every run with 'Attack gcg is incompatible
@@ -97,7 +87,9 @@ def test_adaptive_gcg_is_its_own_attack_with_its_own_results_dir():
     adaptive = files["attack-gcg_adaptive-b0-20.yaml"]["overrides"]
     assert vanilla["attack"] == "gcg" and adaptive["attack"] == "gcg_adaptive"
     assert "attacks.gcg.detector_checkpoint" not in vanilla  # vanilla never sees the probe
-    assert adaptive["attacks.gcg_adaptive.detector_checkpoint"]
+    # the probe is NOT a CLI override: conf/attacks/attacks.yaml resolves the swept model's own
+    # reader_path, because a nested interpolation cannot survive hydra's override grammar
+    assert not any(k.startswith("attacks.gcg_adaptive.detector") for k in adaptive)
 
 
 def test_adaptive_gcg_cannot_be_run_against_the_runtime_defense_either():

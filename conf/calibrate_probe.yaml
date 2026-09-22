@@ -23,3 +23,9 @@ calibration_window: val      # split window: val = training-time point (threshol
                              # calib = large held-out window (threshold_<p>pct_calib.json)
 val_seed: 0                  # matches data.val_seed
 fpr: 0.01
+
+# probe_diagnose.py only (ignored by run_calibrate_probe.py)
+hits: hits.json               # inspect_attacks.py --json output
+limit: 40                     # examples per set
+targets_path: ${root_dir}/data/optimizer_targets/extra_targets/adv_training_targets.json
+threshold: null               # probe operating point; null -> 0.5. Pass the calibrated one.

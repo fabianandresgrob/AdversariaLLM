@@ -95,7 +95,10 @@ def protocol(attack: str, config: dict) -> str:
         if dotted == "judge_model.id":
             value = "self" if value is None else str(value).split("/")[-1]
         elif dotted == "source" and value:
-            value = Path(str(value)).parts[-4] if len(Path(str(value)).parts) >= 4 else value
+            # the replayed run's results dir, e.g. ".../outputs/gcg__none__E-nd6-s0/<date>/..." ->
+            # "gcg__none__E-nd6-s0"; positional indexing breaks on absolute paths of any depth
+            value = next((part for part in reversed(Path(str(value)).parts)
+                          if parse_dir_name(part) is not None), Path(str(value)).name)
         parts.append(f"{name}={value}")
     return ",".join(parts) if parts else "default"
 

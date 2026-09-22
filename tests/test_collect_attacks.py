@@ -127,3 +127,11 @@ def test_filters_restrict_the_table(tmp_path):
     assert set(collect(tmp_path, attacks=["gcg"])["attack"]) == {"gcg"}
     assert set(collect(tmp_path, defenses=["coop_probe"])["defense"]) == {"coop_probe"}
     assert collect(tmp_path, models=["nobody"]).empty
+
+
+def test_replay_is_labelled_with_the_run_it_replays(tmp_path):
+    # the source is an absolute path of arbitrary depth; the label is the results dir inside it
+    _write_run(tmp_path, "replay", "coop_probe", "E-nd6-s0", [[0.0]],
+               config={"attack_params": {"source": "/p/project1/x/y/AdversariaLLM/outputs/"
+                                                   "gcg__none__E-nd6-s0/2026-09-19/10-00-00"}})
+    assert collect(tmp_path).iloc[0]["protocol"] == "source=gcg__none__E-nd6-s0"

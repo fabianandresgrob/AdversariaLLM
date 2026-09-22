@@ -44,7 +44,10 @@ def calib(kind: str) -> dict:
     return {
         "entrypoint": "run_calibrate_probe.py",
         "name": "calib-{+run}",
-        "time_per_run": "00:30:00",
+        # A response readout generates the 2000 benign calibration responses before scoring them
+        # (~25 min); a prompt readout only forwards them (~2 min). One ceiling covers both -- it is
+        # a reservation, not a reported cost.
+        "time_per_run": "01:30:00",
         "overrides": {
             "adapter_path": _ckpt(kind) + "/final_adapter",
             "checkpoint_path": _ckpt(kind) + "/final_reader.pt",

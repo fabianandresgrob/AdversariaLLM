@@ -138,6 +138,10 @@ class Attack(Generic[AttRes]):
                 from .gcg import GCGAttack
 
                 return GCGAttack
+            case "gcg_adaptive":
+                from .gcg_adaptive import GCGAdaptiveAttack
+
+                return GCGAdaptiveAttack
             case "gcg_reinforce":
                 from .gcg_reinforce import GCGReinforceAttack
 

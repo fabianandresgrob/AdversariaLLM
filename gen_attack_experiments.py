@@ -14,16 +14,15 @@ Defaults attack the eight-model selection from round 2. `--defense coop_probe` r
 against the full pipeline instead of the raw model; GCG is meant to be run undefended and then
 replayed (attack=replay, source=<the GCG results dir>), which is a separate, cheap submission.
 
-`--detector-aware` instead makes GCG adaptive: it adds the probe's evasion loss to the attack
-objective, so the suffix is optimised to elicit the target AND to read benign at the probe. GCG
-cannot run against a runtime defense (it needs gradients, and the defense only filters the
-output -- see defenses.registry.DEFENSE_COMPATIBLE_ATTACKS), so an adaptive run is TWO stages:
+`gcg_adaptive` is detector-aware GCG: the suffix is optimised to elicit the target AND to read
+benign at the coop probe. Its probe path is filled in per swept model automatically. Neither GCG
+can run against a runtime defense (they need gradients; the defense only filters output -- see
+defenses.registry.DEFENSE_COMPATIBLE_ATTACKS), so the pipeline numbers come from replaying them:
 
-    1. gen_attack_experiments.py --attacks gcg --detector-aware            # defense=none
-    2. replay the resulting prompts with attack=replay defense=coop_probe  # pipeline ASR
+    gcg          defense=none  ->  replay defense=coop_probe    # what the probe catches
+    gcg_adaptive defense=none  ->  replay defense=coop_probe    # what it catches when evaded
 
-Stage 1 is where the attacker uses its knowledge of the probe; stage 2 is where the probe gets
-to act. Drop models with no probe (the base model) from --models.
+Drop models with no probe (the base model) from --models when using gcg_adaptive.
 """
 
 import argparse
@@ -49,10 +48,12 @@ BEHAVIORS = 100
 # variants is far past the point where the budget curve flattens; 128 is the agreed protocol and
 # cuts the run 8x. PAIR's own budget is 30 streams x 3 steps = 90 queries, already under it.
 INPAINTING_SAMPLES = 128
-TIME_PER_RUN = {"gcg": "06:00:00", "inpainting": "03:00:00", "pair": "06:00:00", "direct": "01:00:00"}
+TIME_PER_RUN = {"gcg": "06:00:00", "gcg_adaptive": "06:00:00", "inpainting": "03:00:00",
+                "pair": "06:00:00", "direct": "01:00:00", "replay": "01:00:00"}
 # PAIR aborts a whole run when its attacker returns unparseable JSON max_attempts times in a row; the
 # default 10 loses roughly one run in eight. Retrying more costs seconds and changes no attack semantics.
 EXTRA_OVERRIDES = {
+    "gcg_adaptive": {"attacks.gcg_adaptive.detector_checkpoint": "'${models.${model}.reader_path}'"},
     "pair": {
         "attacks.pair.attack_model.max_attempts": 30,
         # Judge with the attacker rather than the default (judge_model.id=null => the target judges
@@ -66,15 +67,10 @@ EXTRA_OVERRIDES = {
     },
     "inpainting": {"attacks.inpainting.num_samples_per_behavior": INPAINTING_SAMPLES},
 }
-# Detector-aware GCG. The probe path is resolved per swept model out of models.yaml -- the same
-# interpolation conf/defenses/defenses.yaml uses -- so one file covers every model in the sweep.
-# The quotes are load-bearing: hydra's CLI override grammar cannot parse a NESTED interpolation
-# bare ("extraneous input '}' expecting <EOF>"), but accepts it as a quoted string, which omegaconf
-# then resolves per swept model. A single-level ${a.b} would not need them.
-DETECTOR_AWARE_OVERRIDES = {
-    "attacks.gcg.detector_checkpoint": "'${models.${model}.reader_path}'",
-    "attacks.gcg.detector_loss_coeff": 0.5,
-}
+# gcg_adaptive's probe is resolved per swept model out of models.yaml -- the same interpolation
+# conf/defenses/defenses.yaml uses -- so one file covers every model in the sweep. The quotes are
+# load-bearing: hydra's CLI override grammar cannot parse a NESTED interpolation bare ("extraneous
+# input '}' expecting <EOF>"), but accepts it quoted, and omegaconf resolves it per model.
 
 
 def shard_bounds(n_behaviors: int, shards: int) -> list[tuple[int, int]]:
@@ -82,18 +78,13 @@ def shard_bounds(n_behaviors: int, shards: int) -> list[tuple[int, int]]:
     return [(start, min(start + step, n_behaviors)) for start in range(0, n_behaviors, step)]
 
 
-def experiment(attack: str, models: list[str], start: int, stop: int, defense: str | None,
-               detector_aware: bool = False) -> dict:
+def experiment(attack: str, models: list[str], start: int, stop: int, defense: str | None) -> dict:
     overrides = {
         "attack": attack,
         "dataset": "jbb_behaviors",
         "datasets.jbb_behaviors.idx": f"list(range({start},{stop}))",
     }
     overrides.update(EXTRA_OVERRIDES.get(attack, {}))
-    if detector_aware:
-        if attack != "gcg":
-            raise ValueError(f"--detector-aware applies to gcg only, not {attack!r}")
-        overrides.update(DETECTOR_AWARE_OVERRIDES)
     if defense:
         overrides["defense"] = defense
     return {
@@ -117,7 +108,7 @@ DEFENSE_COMPATIBLE = frozenset({"actor", "ample_gcg", "bon", "crescendo", "direc
 
 
 def build(attacks: list[str], models: list[str], shards: int, n_behaviors: int,
-          defense: str | None, detector_aware: bool = False) -> dict[str, dict]:
+          defense: str | None) -> dict[str, dict]:
     if defense:
         bad = sorted(set(attacks) - DEFENSE_COMPATIBLE)
         if bad:
@@ -129,12 +120,10 @@ def build(attacks: list[str], models: list[str], shards: int, n_behaviors: int,
     files = {}
     for attack in attacks:
         for index, (start, stop) in enumerate(shard_bounds(n_behaviors, shards)):
-            aware = detector_aware and attack == "gcg"
             suffix = f"-{defense}" if defense else ""
-            suffix += "-adaptive" if aware else ""
             del index  # the window names the file; a shard index would repeat across protocols
             files[f"attack-{attack}{suffix}-b{start}-{stop}.yaml"] = experiment(
-                attack, models, start, stop, defense, aware)
+                attack, models, start, stop, defense)
     return files
 
 
@@ -145,13 +134,10 @@ def main(argv=None, repo: Path = REPO) -> int:
     parser.add_argument("--shards", type=int, default=4, help="split the behavior set into this many runs")
     parser.add_argument("--behaviors", type=int, default=BEHAVIORS, help="how many behaviors to attack")
     parser.add_argument("--defense", default=None, help="run against a defense (e.g. coop_probe) instead of the raw model")
-    parser.add_argument("--detector-aware", action="store_true",
-                        help="gcg only: add the probe's evasion loss to the attack objective")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
 
-    files = build(args.attacks, args.models, args.shards, args.behaviors, args.defense,
-                  args.detector_aware)
+    files = build(args.attacks, args.models, args.shards, args.behaviors, args.defense)
     out_dir = repo / "experiments"
     for name, spec in files.items():
         if args.dry_run:

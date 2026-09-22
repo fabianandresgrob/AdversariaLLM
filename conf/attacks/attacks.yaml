@@ -265,6 +265,39 @@ gcg_refusal:
   generate_completions: all
   max_new_target_tokens: 64
   grow_target: False
+gcg_adaptive:
+  # Detector-aware GCG (attacks/gcg_adaptive.py). Every search knob is interpolated from `gcg`, so
+  # the only differences are the probe terms below -- the two attacks stay comparable by construction.
+  name: gcg_adaptive
+  type: ${attacks.gcg.type}
+  version: 0.0.1
+  placement: ${attacks.gcg.placement}
+  max_new_tokens: ${attacks.gcg.max_new_tokens}
+  seed: ${attacks.gcg.seed}
+  num_steps: ${attacks.gcg.num_steps}
+  batch_size: ${attacks.gcg.batch_size}
+  optim_str_init: ${attacks.gcg.optim_str_init}
+  search_width: ${attacks.gcg.search_width}
+  topk: ${attacks.gcg.topk}
+  n_replace: ${attacks.gcg.n_replace}
+  buffer_size: ${attacks.gcg.buffer_size}
+  use_mellowmax: ${attacks.gcg.use_mellowmax}
+  use_constrained_gradient: ${attacks.gcg.use_constrained_gradient}
+  mellowmax_alpha: ${attacks.gcg.mellowmax_alpha}
+  early_stop: ${attacks.gcg.early_stop}
+  use_prefix_cache: ${attacks.gcg.use_prefix_cache}
+  allow_non_ascii: ${attacks.gcg.allow_non_ascii}
+  allow_special: ${attacks.gcg.allow_special}
+  filter_ids: ${attacks.gcg.filter_ids}
+  verbosity: ${attacks.gcg.verbosity}
+  token_selection: ${attacks.gcg.token_selection}
+  generate_completions: ${attacks.gcg.generate_completions}
+  max_new_target_tokens: ${attacks.gcg.max_new_target_tokens}
+  grow_target: ${attacks.gcg.grow_target}
+  # the probe: required here, unlike gcg where they default to off
+  detector_checkpoint: ???      # a coop <tag>_reader.pt; ${models.${model}.reader_path} at run time
+  detector_loss_coeff: 0.5      # loss = (1-c)*elicit_target + c*evade_detector
+  detector_layer: -1
 gcg_reinforce:
   name: gcg_reinforce
   type: discrete

@@ -44,23 +44,6 @@ def test_inpainting_gets_the_agreed_128_generation_budget():
     assert spec["overrides"]["attacks.inpainting.num_samples_per_behavior"] == 128
 
 
-def test_detector_aware_gcg_adds_the_evasion_objective_and_its_own_file_name():
-    files = build(["gcg"], ["M-respmean-s0"], shards=1, n_behaviors=20, defense=None,
-                  detector_aware=True)
-    assert list(files) == ["attack-gcg-adaptive-b0-20.yaml"]
-    overrides = files["attack-gcg-adaptive-b0-20.yaml"]["overrides"]
-    # resolved per swept model out of models.yaml, so one file covers the whole sweep
-    # quoted: hydra's override grammar rejects a bare nested interpolation
-    assert overrides["attacks.gcg.detector_checkpoint"] == "'${models.${model}.reader_path}'"
-    assert overrides["attacks.gcg.detector_loss_coeff"] == 0.5
-
-
-def test_detector_aware_leaves_other_attacks_alone():
-    # inpainting and pair have nothing to be aware of -- they never see the probe's gradients
-    files = build(["inpainting"], ["E-nd6-s0"], shards=1, n_behaviors=20, defense="coop_probe",
-                  detector_aware=True)  # inpainting is defense-compatible; awareness is a no-op for it
-    assert list(files) == ["attack-inpainting-coop_probe-b0-20.yaml"]
-    assert "attacks.gcg.detector_checkpoint" not in files["attack-inpainting-coop_probe-b0-20.yaml"]["overrides"]
 
 
 def test_pair_judges_with_the_attacker_not_the_target():
@@ -85,9 +68,9 @@ def test_the_detector_checkpoint_override_is_parseable_by_hydra():
     """A bare nested interpolation fails at startup with "extraneous input '}' expecting <EOF>",
     which is how the first adaptive-GCG batch died."""
     parser = pytest.importorskip("hydra.core.override_parser.overrides_parser").OverridesParser.create()
-    spec = build(["gcg"], ["M-respmean-s0"], shards=1, n_behaviors=20, defense=None,
-                 detector_aware=True)["attack-gcg-adaptive-b0-20.yaml"]
-    key = "attacks.gcg.detector_checkpoint"
+    spec = build(["gcg_adaptive"], ["M-respmean-s0"], shards=1, n_behaviors=20,
+                 defense=None)["attack-gcg_adaptive-b0-20.yaml"]
+    key = "attacks.gcg_adaptive.detector_checkpoint"
     parsed = parser.parse_overrides([f"{key}={spec['overrides'][key]}"])[0]
     assert parsed.value() == "${models.${model}.reader_path}"  # quotes consumed, interpolation intact
 
@@ -98,16 +81,25 @@ def test_an_optimisation_attack_against_a_runtime_defense_is_refused_at_generati
     with pytest.raises(ValueError, match="replay"):
         build(["gcg"], ["M-respmean-s0"], shards=1, n_behaviors=20, defense="coop_probe")
     with pytest.raises(ValueError):
-        build(["gcg"], ["M-respmean-s0"], shards=1, n_behaviors=20, defense="coop_probe",
-              detector_aware=True)
+        build(["gcg_adaptive"], ["M-respmean-s0"], shards=1, n_behaviors=20, defense="coop_probe")
     # the black-box attacks are still allowed against the pipeline
     assert build(["pair", "inpainting", "direct"], ["M-respmean-s0"], shards=1, n_behaviors=20,
                  defense="coop_probe")
 
 
-def test_detector_aware_gcg_runs_undefended_as_stage_one():
-    files = build(["gcg"], ["M-respmean-s0"], shards=1, n_behaviors=20, defense=None,
-                  detector_aware=True)
-    spec = files["attack-gcg-adaptive-b0-20.yaml"]
-    assert "defense" not in spec["overrides"]
-    assert spec["overrides"]["attacks.gcg.detector_loss_coeff"] == 0.5
+
+def test_adaptive_gcg_is_its_own_attack_with_its_own_results_dir():
+    """Run outputs are filed under outputs/<attack>__<defense>__<model>/, so adaptive GCG must be a
+    distinct attack NAME or its results merge into the vanilla gcg cell and the ASRs average."""
+    files = build(["gcg", "gcg_adaptive"], ["M-respmean-s0"], shards=1, n_behaviors=20, defense=None)
+    assert sorted(files) == ["attack-gcg-b0-20.yaml", "attack-gcg_adaptive-b0-20.yaml"]
+    vanilla = files["attack-gcg-b0-20.yaml"]["overrides"]
+    adaptive = files["attack-gcg_adaptive-b0-20.yaml"]["overrides"]
+    assert vanilla["attack"] == "gcg" and adaptive["attack"] == "gcg_adaptive"
+    assert "attacks.gcg.detector_checkpoint" not in vanilla  # vanilla never sees the probe
+    assert adaptive["attacks.gcg_adaptive.detector_checkpoint"]
+
+
+def test_adaptive_gcg_cannot_be_run_against_the_runtime_defense_either():
+    with pytest.raises(ValueError, match="replay"):
+        build(["gcg_adaptive"], ["M-respmean-s0"], shards=1, n_behaviors=20, defense="coop_probe")

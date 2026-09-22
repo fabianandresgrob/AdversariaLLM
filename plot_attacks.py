@@ -23,7 +23,8 @@ SURFACE = "#fcfcfb"
 TEXT = "#0b0b0b"
 TEXT_SECONDARY = "#52514e"
 GRID = "#e6e5e1"
-BUDGET_COLUMNS = [("asr_at_1", "1"), ("asr_at_10", "10"), ("asr_at_100", "100"), ("asr_behavior", "all")]
+BUDGET_COLUMNS = [("asr_at_1", "1"), ("asr_at_10", "10"), ("asr_at_100", "100"),
+                  ("asr_at_128", "128"), ("asr_behavior", "all")]
 
 
 def _style(ax):

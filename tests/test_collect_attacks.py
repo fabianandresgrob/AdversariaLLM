@@ -74,3 +74,14 @@ def test_main_writes_table_and_plots(tmp_path):
     assert (out / "attacks.csv").is_file() and (out / "attacks.json").is_file()
     assert sorted(p.name for p in (out / "plots").iterdir()) == ["asr_by_attack.png", "budget_curve.png"]
     assert len(pd.read_csv(out / "attacks.csv")) == 2
+
+
+def test_asr_at_128_reads_a_larger_run_at_the_agreed_budget(tmp_path):
+    # behavior 1 falls on completion 120 (inside 128), behavior 2 only on 300 (outside)
+    early = [0.0] * 119 + [0.9] + [0.0] * 200
+    late = [0.0] * 299 + [0.9] + [0.0] * 20
+    _write_run(tmp_path, "inpainting", "none", "E-nd6-s0", [early, late])
+    row = collect(tmp_path).iloc[0]
+    assert row.asr_at_100 == 0.0        # neither behavior has fallen by 100 tries
+    assert row.asr_at_128 == 0.5        # behavior 1 has, behavior 2 has not
+    assert row.asr_behavior == 1.0      # both fall eventually, at the full 1024 budget

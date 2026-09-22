@@ -89,7 +89,10 @@ def experiment(attack: str, models: list[str], start: int, stop: int, defense: s
         overrides["defense"] = defense
     return {
         "entrypoint": "run_attacks.py",
-        "name": f"{attack}-{{model}}-b{start}",
+        # The behavior WINDOW, not the shard index: "b0" alone meant 0-24 in the 100-behavior
+        # batch and 0-19 in the 20-behavior one, so the same run name described two protocols and
+        # the second submission was silently skipped as an already-existing run.
+        "name": f"{attack}-{{model}}-b{start}-{stop}",
         "time_per_run": TIME_PER_RUN.get(attack, "06:00:00"),
         "overrides": overrides,
         "sweep": {"model": models},
@@ -104,7 +107,8 @@ def build(attacks: list[str], models: list[str], shards: int, n_behaviors: int,
             aware = detector_aware and attack == "gcg"
             suffix = f"-{defense}" if defense else ""
             suffix += "-adaptive" if aware else ""
-            files[f"attack-{attack}{suffix}-shard{index}.yaml"] = experiment(
+            del index  # the window names the file; a shard index would repeat across protocols
+            files[f"attack-{attack}{suffix}-b{start}-{stop}.yaml"] = experiment(
                 attack, models, start, stop, defense, aware)
     return files
 

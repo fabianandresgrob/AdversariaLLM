@@ -62,8 +62,11 @@ EXTRA_OVERRIDES = {
 }
 # Detector-aware GCG. The probe path is resolved per swept model out of models.yaml -- the same
 # interpolation conf/defenses/defenses.yaml uses -- so one file covers every model in the sweep.
+# The quotes are load-bearing: hydra's CLI override grammar cannot parse a NESTED interpolation
+# bare ("extraneous input '}' expecting <EOF>"), but accepts it as a quoted string, which omegaconf
+# then resolves per swept model. A single-level ${a.b} would not need them.
 DETECTOR_AWARE_OVERRIDES = {
-    "attacks.gcg.detector_checkpoint": "${models.${model}.reader_path}",
+    "attacks.gcg.detector_checkpoint": "'${models.${model}.reader_path}'",
     "attacks.gcg.detector_loss_coeff": 0.5,
 }
 

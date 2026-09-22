@@ -1,3 +1,5 @@
+import pytest
+
 import yaml
 
 from gen_attack_experiments import build, main, shard_bounds
@@ -47,7 +49,8 @@ def test_detector_aware_gcg_adds_the_evasion_objective_and_its_own_file_name():
     assert list(files) == ["attack-gcg-coop_probe-adaptive-b0-20.yaml"]
     overrides = files["attack-gcg-coop_probe-adaptive-b0-20.yaml"]["overrides"]
     # resolved per swept model out of models.yaml, so one file covers the whole sweep
-    assert overrides["attacks.gcg.detector_checkpoint"] == "${models.${model}.reader_path}"
+    # quoted: hydra's override grammar rejects a bare nested interpolation
+    assert overrides["attacks.gcg.detector_checkpoint"] == "'${models.${model}.reader_path}'"
     assert overrides["attacks.gcg.detector_loss_coeff"] == 0.5
 
 
@@ -75,3 +78,14 @@ def test_run_names_carry_the_behavior_window_so_protocols_cannot_collide():
     narrow = build(["pair"], ["E-nd6-s0"], shards=1, n_behaviors=20, defense=None)["attack-pair-b0-20.yaml"]
     assert wide["name"] != narrow["name"]
     assert (wide["name"], narrow["name"]) == ("pair-{model}-b0-25", "pair-{model}-b0-20")
+
+
+def test_the_detector_checkpoint_override_is_parseable_by_hydra():
+    """A bare nested interpolation fails at startup with "extraneous input '}' expecting <EOF>",
+    which is how the first adaptive-GCG batch died."""
+    parser = pytest.importorskip("hydra.core.override_parser.overrides_parser").OverridesParser.create()
+    spec = build(["gcg"], ["M-respmean-s0"], shards=1, n_behaviors=20, defense="coop_probe",
+                 detector_aware=True)["attack-gcg-coop_probe-adaptive-b0-20.yaml"]
+    key = "attacks.gcg.detector_checkpoint"
+    parsed = parser.parse_overrides([f"{key}={spec['overrides'][key]}"])[0]
+    assert parsed.value() == "${models.${model}.reader_path}"  # quotes consumed, interpolation intact

@@ -51,3 +51,27 @@ def test_pretrain_accepts_the_prompt_readout_and_a_config_without_one():
     assert check_pretrain_readout({"reader": {"layer": -1}}) == "prompt_last"
     assert check_pretrain_readout({"reader": {"layer": -1, "readout": "prompt_last"}}) == "prompt_last"
     assert check_pretrain_readout({}) == "prompt_last"
+
+
+def test_detector_aware_gcg_loads_the_probe_at_its_trained_readout(tmp_path):
+    """The attacker must evade the detector the defense actually runs.
+
+    gcg.load_detector built LinearProbe(input_dim) with defaults, which would have optimised
+    suffixes against a response probe read at the prompt position -- a detector nobody deploys.
+    Needs no GPU: load_detector only reads .parameters() for the device."""
+    from adversariallm.attacks.gcg import load_detector
+
+    for mode, k in (("response_mean", 24), ("stream_last", 24), ("prompt_last", 8)):
+        path = tmp_path / f"{mode}_reader.pt"
+        torch.save({"reader": LinearProbe(8, readout=mode, readout_k=k).state_dict(),
+                    "cfg": {"reader": {"type": "linear", "readout": mode, "readout_k": k}}}, path)
+        probe = load_detector(str(path), torch.nn.Linear(8, 8))
+        assert (probe.readout_mode, probe.readout_k) == (mode, k)
+
+
+def test_detector_aware_gcg_defaults_a_bare_probe_to_prompt_last(tmp_path):
+    from adversariallm.attacks.gcg import load_detector
+
+    path = tmp_path / "bare.pt"
+    torch.save(LinearProbe(8).state_dict(), path)  # pre-readout checkpoint: a bare state_dict
+    assert load_detector(str(path), torch.nn.Linear(8, 8)).readout_mode == "prompt_last"

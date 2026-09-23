@@ -40,6 +40,9 @@ train_response_head.py:
 inspect_embedding_attack.py:
   config_name: inspect_embedding_attack
   name_key: name
+build_answer_pool.py:
+  config_name: build_answer_pool
+  name_key: name
 run_utility_eval.py:
   config_name: utility_eval
 run_gate_diagnostics.py:

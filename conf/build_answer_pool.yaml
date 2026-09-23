@@ -1,0 +1,25 @@
+defaults:
+  - models: models
+  - paths
+  - _self_
+
+# build_answer_pool.py: completions for the coop behaviors from an uncensored generator, judged by
+# strong_reject, written to outputs/eval/answer_pool/<name>.{jsonl,md}. data/chat_template_id mirror
+# conf/coop_train.yaml so the behaviors, targets and train/val split are coop's.
+name: null                    # required: output file name
+generator: heretic-llama31-8b # models.yaml entry that writes the completions
+chat_template_id: meta-llama/Llama-3.1-8B-Instruct
+max_new_tokens: 512
+batch_size: 16
+classifier: strong_reject
+threshold: 0.5                # only for the summary in the .md
+limit_behaviors: null         # smoke runs: only the first N behaviors
+max_chars: 3000               # truncation in the .md only; the .jsonl keeps everything
+
+data:
+  dir: ${root_dir}/data
+  behaviors: behavior_datasets/extra_behavior_datasets/adv_training_behaviors.csv
+  targets: optimizer_targets/extra_targets/adv_training_targets.json
+  safe: safe_responses/adv_training_behaviors_safe_responses_longer.csv
+  val_size: 16
+  val_seed: 0

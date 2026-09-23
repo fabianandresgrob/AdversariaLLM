@@ -456,6 +456,18 @@ base-llama31-8b:
   chat_template: llama-3-instruct
   trust_remote_code: true
 
+# Uncensored ("heretic"/abliterated) Llama-3.1-8B-Instruct, third party. Used only as a GENERATOR of
+# harmful completions for the answer-channel pool (build_answer_pool.py) -- never as a target.
+heretic-llama31-8b:
+  id: Vaxispraxis/Llama-3.1-8B-Instruct-heretic
+  tokenizer_id: Vaxispraxis/Llama-3.1-8B-Instruct-heretic
+  short_name: Llama-heretic
+  developer_name: Vaxispraxis
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: false
+
 # CAT baselines: adapter only, no probe (hand-written -- gen_coop_models.py only registers coop checkpoints).
 J-ul-away1p0-s0:
   id: meta-llama/Meta-Llama-3.1-8B-Instruct

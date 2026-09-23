@@ -198,9 +198,8 @@ def main(cfg: DictConfig) -> None:
                 attack.detector_loss_coeff = coeff
             metrics = _coop_validate(
                 model, reader, layer, harmful_batches, calib_batches, xs_batches, xs_prompts,
-                [],  # easy_help_batches: w_mb sanity check not needed for this eval
-                tok, cfg.chat_template_id, int(cfg.benign.max_new_tokens), attack, 1.0,
-                [], cfg.out, 0, use_detector=use_det,
+                [],  # alpaca over-refusal: not needed for this eval
+                tok, int(cfg.benign.max_new_tokens), attack, [], cfg.out, 0, use_detector=use_det,
             )
             _seed_everything(int(cfg.seed))  # same init for the case pass as the metrics pass
             cases = _case_frequencies(model, reader, layer, attack, harmful_batches, use_det)
@@ -208,19 +207,16 @@ def main(cfg: DictConfig) -> None:
                 "native": use_det == native and (coeff is None or coeff == float(cfg.attack.detector_loss_coeff)),
                 "use_detector": use_det,
                 "coeff": coeff,
-                "comply": metrics["model/comply_rate"],
+                "comply": metrics["model/asr_gen"],  # generated continuation, not refused
                 "recall": metrics["detector/recall@1fpr"],
                 "asr": metrics["pipeline/asr"],
                 "saved": metrics["pipeline/detector_saved"],
-                "p_mean": metrics.get("detector/harmful_score_mean", float("nan")),
-                "p_min": metrics.get("detector/harmful_score_min", float("nan")),
                 "margin": metrics.get("detector/harmful_margin_min", float("nan")),
                 "thr": metrics.get("detector/thr_1fpr", float("nan")),
                 "case_A": cases["A"], "case_B": cases["B"], "case_C": cases["C"], "case_D": cases["D"],
             }
-            log.info(f"  comply={metrics['model/comply_rate']:.3f} recall={metrics['detector/recall@1fpr']:.3f} "
+            log.info(f"  comply={metrics['model/asr_gen']:.3f} recall={metrics['detector/recall@1fpr']:.3f} "
                      f"asr={metrics['pipeline/asr']:.3f} saved={metrics['pipeline/detector_saved']:.3f} "
-                     f"p_mean={metrics.get('detector/harmful_score_mean', float('nan')):.3f} "
                      f"margin={metrics.get('detector/harmful_margin_min', float('nan')):+.3f} "
                      f"cases=A{cases['A']:.2f}/B{cases['B']:.2f}/C{cases['C']:.2f}/D{cases['D']:.2f}")
         del model
@@ -228,15 +224,15 @@ def main(cfg: DictConfig) -> None:
 
     lines = ["", "# cross-attack eval (native = the attack condition the checkpoint trained under)",
              "# case_A..D computed on THIS eval's held-out data (not the training log's pipeline/case_*)",
-             "# p_mean/p_min = P(harmful) the probe gives attacked harmful; margin = p_min - thr",
+             "# comply = attacked continuation not refused (model/asr_gen); margin = min P(harmful) - thr",
              "#   (margin near 0 => the attack nearly evaded; large => evasion going nowhere)",
              f"{'checkpoint':28s} {'eval_attack':16s} {'comply':>8s} {'recall':>8s} {'asr':>8s} "
-             f"{'saved':>8s} {'p_mean':>8s} {'p_min':>8s} {'margin':>8s} {'A':>6s} {'B':>6s} {'C':>6s} {'D':>6s}"]
+             f"{'saved':>8s} {'margin':>8s} {'A':>6s} {'B':>6s} {'C':>6s} {'D':>6s}"]
     for name, conds in results.items():
         for tag, m in conds.items():
             lines.append(f"{name:28s} {tag:16s} "
                         f"{m['comply']:8.3f} {m['recall']:8.3f} {m['asr']:8.3f} {m['saved']:8.3f} "
-                        f"{m['p_mean']:8.3f} {m['p_min']:8.3f} {m['margin']:+8.3f} "
+                        f"{m['margin']:+8.3f} "
                         f"{m['case_A']:6.3f} {m['case_B']:6.3f} {m['case_C']:6.3f} {m['case_D']:6.3f}")
     print("\n".join(lines))
 

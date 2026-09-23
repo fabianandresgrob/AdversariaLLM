@@ -50,8 +50,11 @@ CHECKPOINT_ROOTS = {"coop": "checkpoints_coop", "cat": "checkpoints_cat"}
 TRAIN_METRICS = {
     "detector/recall@1fpr": "train_recall_1fpr",
     "detector/fpr_xstest": "train_fpr_xstest",
-    "model/refusal_rate_ood": "train_refusal_rate_ood",
-    "model/comply_rate": "train_comply_rate",
+    "model/refusal_rate_ood": "train_refusal_rate_ood",       # runs before 2026-09-24
+    "model/comply_rate": "train_comply_rate",                 # runs before 2026-09-24 (teacher-forced)
+    "model/refusal_rate_xstest": "train_refusal_rate_xstest",
+    "model/refusal_rate_alpaca": "train_refusal_rate_alpaca",
+    "model/asr_gen": "train_asr_gen",
     "pipeline/asr": "train_pipeline_asr",
     "pipeline/detector_saved": "train_detector_saved",
     "pipeline/case_A": "train_case_A",

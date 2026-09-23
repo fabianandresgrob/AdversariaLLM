@@ -60,12 +60,13 @@ def _encode(tokenizer, text):
     return tokenizer(text, add_special_tokens=False)["input_ids"]
 
 
-def split_adv_stream(dataset, val_size, seed=0):
+def split_adv_stream(dataset, val_size, seed=0, val_targets=1):
     """Split adversarial behaviors into disjoint (train, val) subsets.
 
     Behavior-level (not row-level): a behavior's multiple targets never straddle the
-    split. Seeded, so the held-out behaviors stay fixed across runs. Val keeps one row
-    per behavior (first target) so validation cost is independent of targets/behavior.
+    split. Seeded, so the held-out behaviors stay fixed across runs. Val keeps the first
+    `val_targets` rows (targets) per behavior, so validation cost is independent of how many
+    targets a behavior has; more than one gives the val metrics more than val_size samples.
     """
     behaviors = list(dict.fromkeys(p for p, _, _ in dataset.rows))  # unique, first-appearance order
     if not 0 < val_size < len(behaviors):
@@ -74,11 +75,11 @@ def split_adv_stream(dataset, val_size, seed=0):
     perm = torch.randperm(len(behaviors), generator=g).tolist()
     val_beh = {behaviors[i] for i in perm[:val_size]}
     train_idx = [i for i, r in enumerate(dataset.rows) if r[0] not in val_beh]
-    val_idx, seen = [], set()  # one row per val behavior
+    val_idx, seen = [], {}  # up to val_targets rows per val behavior
     for i, r in enumerate(dataset.rows):
-        if r[0] in val_beh and r[0] not in seen:
+        if r[0] in val_beh and seen.get(r[0], 0) < val_targets:
             val_idx.append(i)
-            seen.add(r[0])
+            seen[r[0]] = seen.get(r[0], 0) + 1
     return Subset(dataset, train_idx), Subset(dataset, val_idx)
 
 
@@ -289,45 +290,4 @@ class BenignStream(Dataset):
 def collate_benign(batch):
     out = pad_collate(batch, ["d_ids", "d_targetids", "d_attn"], pad_id=0)
     out["prompt"] = [b["prompt"] for b in batch]
-    return out
-
-
-class HelpRefusePairStream(Dataset):
-    """Benign prompts paired with a helpful target y_help and a fixed canned refusal. Provides
-    two model forwards per row — help (prompt+y_help) and refuse (prompt+refusal) — which is
-    what the w_M^b benign-gate diagnostic needs. Rows with y_help None carry has_target=0 and
-    use the refusal string as a dummy so collation stays uniform."""
-
-    def __init__(self, rows, tokenizer, model_name, refusal="I can't help with that."):
-        self.rows = [(p, y) for p, y in rows if p]
-        self.tokenizer, self.model_name, self.refusal = tokenizer, model_name, refusal
-
-    def __len__(self):
-        return len(self.rows)
-
-    def __getitem__(self, i):
-        x, y = self.rows[i]
-        has_target = y is not None
-        y_help = y if has_target else self.refusal  # dummy for targetless rows (masked out)
-        g_ids, g_lab, g_tgt, g_attn = build_example_full(x, y_help, self.tokenizer)
-        r_ids, r_lab, _, r_attn = build_example_full(x, self.refusal, self.tokenizer)
-        return {
-            "prompt": x,
-            "y_help_text": y_help,
-            "has_target": torch.tensor(1.0 if has_target else 0.0),
-            "g_ids": g_ids, "g_labels": g_lab, "g_targetids": g_tgt, "g_attn": g_attn,
-            "r_ids": r_ids, "r_labels": r_lab, "r_attn": r_attn,
-        }
-
-
-def collate_help_pair(batch):
-    """Collate HelpRefusePairStream items: ids/targetids/attn padded with 0, labels with -100."""
-    out = pad_collate(
-        batch,
-        ["g_ids", "g_labels", "g_targetids", "g_attn", "r_ids", "r_labels", "r_attn"],
-        pad_id=0,
-    )
-    out["has_target"] = torch.stack([b["has_target"] for b in batch])
-    out["prompt"] = [b["prompt"] for b in batch]
-    out["y_help_text"] = [b["y_help_text"] for b in batch]
     return out

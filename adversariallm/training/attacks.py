@@ -92,6 +92,9 @@ class ContinuousEmbeddingAttack(TrainingAttack):
             use_detector=use_detector,
             perturb_mask=batch["h_perturb_mask"] if self.perturb == "user" else None,
         )
+        # the final iteration's losses (batch means), for logging: does the attack still win?
+        self.last_target_loss = float(result[6][-1]) if result[6] else float("nan")
+        self.last_detector_loss = float(result[7][-1]) if result[7] else float("nan")
         # Return only the perturbed embeddings (index 3).
         perturbed_embeds = result[3]
         return perturbed_embeds

@@ -5,7 +5,7 @@ import json
 import torch
 
 from adversariallm.training.data import (
-    AdvTupleStream, HelpRefusePairStream, build_kl_stream, collate_adv, collate_help_pair,
+    AdvTupleStream, build_kl_stream, collate_adv,
     split_adv_stream, user_token_mask,
 )
 
@@ -29,21 +29,6 @@ class _FakeTok:
             elif m["role"] == "assistant":
                 s += "R" + m["content"] + "E"
         return s + ("R" if add_generation_prompt else "")
-
-
-def test_help_refuse_pair_stream_masks_targetless_rows():
-    rows = [("a", "hi"), ("b", None)]          # one with target, one without
-    ds = HelpRefusePairStream(rows, _FakeTok(), "m", refusal="no")
-    with_target, refused = ds[0], ds[1]
-    assert with_target["has_target"].item() == 1.0
-    assert refused["has_target"].item() == 0.0
-    # targetless row still builds a valid (dummy) help forward from the refusal string
-    assert refused["g_ids"].numel() > 0
-    batch = collate_help_pair([with_target, refused])
-    assert batch["has_target"].tolist() == [1.0, 0.0]
-    assert batch["g_ids"].shape[0] == 2 and batch["r_ids"].shape[0] == 2
-    assert batch["prompt"] == ["a", "b"]
-    assert batch["y_help_text"] == ["hi", "no"]   # target text (dummy=refusal when targetless)
 
 
 def _write_adv_data(tmp_path, targets):
@@ -77,6 +62,15 @@ def test_split_adv_stream_is_behavior_level(tmp_path):
     assert len(val.indices) == 1                          # deduped to one row per val behavior
     assert train_beh.isdisjoint(val_beh)                  # a behavior never straddles the split
     assert train_beh | val_beh == {"promptA", "promptB"}
+
+
+def test_split_adv_stream_keeps_up_to_val_targets_rows_per_val_behavior(tmp_path):
+    ds = _write_adv_data(tmp_path, {"b1": ["A1", "A2"], "b2": ["B1", "B2", "B3"]})
+    _, val = split_adv_stream(ds, val_size=1, seed=0, val_targets=2)
+    rows = [ds.rows[i] for i in val.indices]
+    assert len({r[0] for r in rows}) == 1 and len(rows) == 2   # one behavior, its first two targets
+    _, val_all = split_adv_stream(ds, val_size=1, seed=0, val_targets=10)
+    assert len(val_all.indices) == len([r for r in ds.rows if r[0] == rows[0][0]])  # capped at what exists
 
 
 def test_build_kl_stream_routes_by_source(monkeypatch):

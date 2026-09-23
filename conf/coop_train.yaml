@@ -43,6 +43,9 @@ attack:
   lr: 0.01
   use_detector: false        # Stage C: attack also evades the reader (detector-aware adversary)
   detector_loss_coeff: 0.5   # attacker's evade-detector vs elicit-harmful trade-off (used iff use_detector)
+  # false: the attack's loss skips the end-of-turn token after the target, so it elicits the target
+  # without also optimizing "then stop" (runs before 2026-09-23 used true: stub, then stop)
+  target_eot: false
 
 data:
   dir: ${root_dir}/data

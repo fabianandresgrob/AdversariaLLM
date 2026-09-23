@@ -488,6 +488,7 @@ def run_coop_training(cfg):
             lr=cfg.attack.lr,
             detector_loss_coeff=cfg.attack.detector_loss_coeff,
             detector_layer=layer,
+            target_eot=bool(cfg.attack.get("target_eot", True)),
         )
 
     opt_model = torch.optim.Adam(model_trainable, lr=cfg.training.model_lr)

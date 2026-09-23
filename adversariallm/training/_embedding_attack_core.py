@@ -140,8 +140,12 @@ class EmbeddingSpaceAttack:
 
         self.suffix_tokens = suffix_tokens
         self.loss_fct = torch.nn.CrossEntropyLoss()
+        # target token ids that stay in the sequence but get no loss (e.g. the end-of-turn token,
+        # so the attack elicits the target without also optimizing "then stop")
+        self.loss_exclude_ids = None
 
-    def attack(self, model, input_ids, target_ids, attention_mask, detector, use_detector, global_step=0):
+    def attack(self, model, input_ids, target_ids, attention_mask, detector, use_detector, global_step=0,
+               perturb_mask=None):
         """
         Args:
             -model: target model
@@ -149,6 +153,8 @@ class EmbeddingSpaceAttack:
             -target_ids: target inputs_ids, it has the shape of input_ids but the non-target tokens are set to 0
             -attention_mask: attention mask for the input_ids which is used to not attend to the padding tokens
             -detector: detector model, if None no detector is used
+            -perturb_mask: optional (B, T) bool; restricts the perturbation to these positions (within
+             the prompt). None perturbs every prompt position, template tokens included.
         """
         print(f"\n\n======================= Starting attack - Global Step {global_step} ========================")
         self.use_detector = use_detector
@@ -164,6 +170,8 @@ class EmbeddingSpaceAttack:
 
         # init embeddings of input instruction and target and initialize adversarial perturbation
         adv_perturbation, adv_perturbation_mask = self.init_perturbation(input_ids, target_ids, attention_mask)
+        if perturb_mask is not None:
+            adv_perturbation_mask = adv_perturbation_mask * perturb_mask.to(adv_perturbation_mask.dtype).unsqueeze(-1)
 
         input_embeds = self.get_embeddings(input_ids)
         target_one_hot = self.get_one_hot(target_ids)
@@ -357,6 +365,8 @@ class EmbeddingSpaceAttack:
             We ignore the first token because it is not in the prediction.
         """
         target_mask = target_ids > 0
+        if self.loss_exclude_ids is not None:
+            target_mask = target_mask & ~torch.isin(target_ids, self.loss_exclude_ids.to(target_ids.device))
         if self.init_type == "instruction":
             return target_mask[:, 1:]  # ignore first token (not in predicted)
         elif self.init_type == "suffix":

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+import torch
+
 from ._embedding_attack_core import EmbeddingSpaceAttack
 
 
@@ -25,7 +27,15 @@ class ContinuousEmbeddingAttack(TrainingAttack):
         lr,
         detector_loss_coeff=0.5,
         detector_layer=-1,
+        target_eot=True,
+        optimizer="adam",
+        relative_lr=False,
     ):
+        """target_eot: whether the attack's loss covers the end-of-turn token that closes the target.
+        True (the original objective) optimizes "say the target, then stop", which elicits the stub
+        and nothing after it; False optimizes the target alone, so the answer can continue.
+        optimizer: "adam" or "sign" (signed-gradient steps, as pgd); relative_lr expresses lr as a
+        fraction of the eps ball."""
         # EmbeddingSpaceAttack.__init__ signature (from source):
         #   (embed_weights, response_key, tokenizer, hidden_state_detector_index,
         #    iters=8, opt_config=None, eps=1.0, init_type="instruction",
@@ -40,12 +50,17 @@ class ContinuousEmbeddingAttack(TrainingAttack):
             tokenizer,
             hidden_state_detector_index=detector_layer,
             iters=iters,
-            opt_config={"type": "adam", "lr": lr},
+            opt_config={"type": optimizer, "lr": lr},
             eps=eps,
             init_type="instruction",
             detector_loss_coeff=detector_loss_coeff,
+            relative_lr=relative_lr,
             wandb_run=None,
         )
+        if not target_eot:
+            stop = {tokenizer.eos_token_id, tokenizer.convert_tokens_to_ids("<|eot_id|>")}
+            stop = sorted(t for t in stop if isinstance(t, int) and t >= 0 and t != tokenizer.unk_token_id)
+            self._attack.loss_exclude_ids = torch.tensor(stop, dtype=torch.long)
 
     @property
     def detector_loss_coeff(self):
@@ -69,6 +84,7 @@ class ContinuousEmbeddingAttack(TrainingAttack):
             attention_mask=batch["h_attn"],
             detector=detector,
             use_detector=use_detector,
+            perturb_mask=batch.get("h_perturb_mask"),
         )
         # Return only the perturbed embeddings (index 3).
         perturbed_embeds = result[3]

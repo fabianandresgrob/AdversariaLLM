@@ -12,14 +12,16 @@ coop_train.yaml's iters/eps/lr, detector-aware when the model has a probe -- and
   projected      the perturbed prompt snapped back to the nearest vocabulary token at every position,
                  how many positions changed, and the answer generated from that text
 
-The coop target ends in the end-of-turn token (render_full terminates the assistant turn), so
-coop's attack optimizes "say the stub, then stop" and the attacked answer is just the target.
-drop_eot_from_target (default) removes that token from the attack's loss, so the model continues
-past the target and gen_attacked shows the answer the attack actually unlocks.
+The coop target ends in the end-of-turn token (render_full terminates the assistant turn); with
+attack.target_eot=true the attack optimizes "say the stub, then stop" and the answer is just the
+target. false (default here and in coop_train.yaml) leaves that token out of the loss, so the
+answer continues past the target. perturb picks what the attack may move: every prompt position
+(all, coop's original), the user message only (user), or a pgd-style placeholder suffix appended
+to it (suffix). attack.optimizer=sign with relative_lr=true and lr=0.001 is pgd's update rule.
 
 eps bounds each token's perturbation by eps x the mean embedding norm (per token, L2) -- as far as
 a typical embedding is long -- so the projection shows whether the attacked prompt is still text.
-Every non-target position is perturbed, chat-template tokens included, as in training.
+With perturb=all every non-target position is perturbed, chat-template tokens included, as in coop.
 
 Writes outputs/eval/embedding_attack/<name>.md (to read) and .json (everything, untruncated).
 """
@@ -89,7 +91,8 @@ def main(cfg: DictConfig) -> None:
 
     from adversariallm.io_utils import load_model_and_tokenizer
     from adversariallm.training.attacks import ContinuousEmbeddingAttack
-    from adversariallm.training.data import AdvTupleStream, collate_adv, render_prompt, split_adv_stream
+    from adversariallm.training.data import (AdvTupleStream, build_example_full, pad_collate, render_prompt,
+                                             split_adv_stream)
     from adversariallm.training.readers import load_reader
 
     torch.manual_seed(int(cfg.seed))
@@ -104,50 +107,59 @@ def main(cfg: DictConfig) -> None:
     detector = load_reader(entry["reader_path"]).to(device) if use_detector else None
     attack = ContinuousEmbeddingAttack(weight, None, tokenizer, iters=int(cfg.attack.iters), eps=float(cfg.attack.eps),
                                        lr=float(cfg.attack.lr), detector_loss_coeff=float(cfg.attack.detector_loss_coeff),
-                                       detector_layer=int(cfg.layer))
+                                       detector_layer=int(cfg.layer), target_eot=bool(cfg.attack.target_eot),
+                                       optimizer=str(cfg.attack.optimizer), relative_lr=bool(cfg.attack.relative_lr))
     core = attack._attack
+    if cfg.perturb not in ("all", "user", "suffix"):
+        raise ValueError(f"perturb must be all | user | suffix, got {cfg.perturb!r}")
+    suffix = str(cfg.suffix) if cfg.perturb == "suffix" else ""
 
-    stop_ids = torch.tensor(sorted({t for t in (tokenizer.eos_token_id, tokenizer.convert_tokens_to_ids("<|eot_id|>"))
-                                    if isinstance(t, int) and t >= 0}), device=device)
     ds = AdvTupleStream(cfg.data.dir, cfg.data.behaviors, cfg.data.targets, cfg.data.safe, tokenizer, cfg.chat_template_id)
     train_ds, _ = split_adv_stream(ds, val_size=int(cfg.data.val_size), seed=int(cfg.data.val_seed))
-    rows_by_behavior: dict[str, list] = {}
-    for i in range(len(train_ds)):
-        item = train_ds[i]
-        rows_by_behavior.setdefault(item["prompt"], []).append(item)
-    behaviors = list(rows_by_behavior)[: int(cfg.n_behaviors)]
+    targets_by_behavior: dict[str, list[str]] = {}
+    for i in train_ds.indices:
+        x, y_h, _ = ds.rows[i]
+        targets_by_behavior.setdefault(x, []).append(y_h)
+    behaviors = list(targets_by_behavior)[: int(cfg.n_behaviors)]
+    keys = ("h_ids", "h_labels", "h_targetids", "h_attn")
 
     records = []
     for b_i, behavior in enumerate(behaviors):
-        items = rows_by_behavior[behavior]
-        batch = {k: (v.to(device) if torch.is_tensor(v) else v) for k, v in collate_adv(items).items()}
-        if cfg.drop_eot_from_target:
-            batch["h_targetids"] = batch["h_targetids"].masked_fill(torch.isin(batch["h_targetids"], stop_ids), 0)
+        prompt_text = behavior + suffix
+        items = [dict(zip(keys, build_example_full(prompt_text, y, tokenizer))) for y in targets_by_behavior[behavior]]
+        batch = {k: v.to(device) for k, v in pad_collate(items, list(keys), pad_id=0).items()}
         prompt_len = int((batch["h_targetids"][0] != 0).float().argmax())  # same prompt for every target
-        clean_ids = batch["h_ids"][:1, :prompt_len]
+
+        # where the user message (and the suffix inside it) sits in the rendered prompt
+        rendered = render_prompt(tokenizer, prompt_text)
+        head = rendered[: rendered.find(prompt_text)]
+        user_start = len(tokenizer(head, add_special_tokens=False)["input_ids"])
+        user_end = user_start + len(tokenizer(prompt_text, add_special_tokens=False)["input_ids"])
+        span_start = user_start + (len(tokenizer(behavior, add_special_tokens=False)["input_ids"]) if suffix else 0)
+        perturb_mask = None
+        if cfg.perturb != "all":
+            perturb_mask = torch.zeros_like(batch["h_attn"], dtype=torch.bool)
+            perturb_mask[:, span_start:user_end] = True
+
+        clean_ids = torch.tensor([tokenizer(render_prompt(tokenizer, behavior), add_special_tokens=False)["input_ids"]],
+                                 device=device)
         gen_clean = generate(model, tokenizer, int(cfg.max_new_tokens), input_ids=clean_ids)[0]
 
         result = core.attack(model, batch["h_ids"], batch["h_targetids"], batch["h_attn"],
-                             detector=detector, use_detector=use_detector)
-        input_embeds, delta, _, perturbed = result[0], result[1], result[2], result[3]
-        losses = result[6]
+                             detector=detector, use_detector=use_detector, perturb_mask=perturb_mask)
+        delta, perturbed, losses = result[1], result[3], result[6]
         adv_prompt = perturbed[:, :prompt_len].to(weight.dtype)
         gen_attacked = generate(model, tokenizer, int(cfg.max_new_tokens), inputs_embeds=adv_prompt)
 
-        # where the user message sits inside the rendered prompt, to count changes there separately
-        rendered = render_prompt(tokenizer, behavior)
-        head = rendered[: rendered.find(behavior)]
-        user_start = len(tokenizer(head, add_special_tokens=False)["input_ids"])
-        user_end = user_start + len(tokenizer(behavior, add_special_tokens=False)["input_ids"])
-
         delta_norm = delta[:, :prompt_len].float().norm(dim=-1)  # (B, P)
+        if perturb_mask is not None:
+            delta_norm = delta_norm[:, span_start:user_end]
         proj_ids = torch.stack([nearest_tokens(adv_prompt[r], weight) for r in range(adv_prompt.size(0))])
         gen_projected = generate(model, tokenizer, int(cfg.max_new_tokens), input_ids=proj_ids)
-        changed = proj_ids != clean_ids
+        changed = proj_ids != batch["h_ids"][:1, :prompt_len]
         for r in range(len(items)):
             records.append({
-                "behavior": behavior, "target_index": r, "target": tokenizer.decode(
-                    [t for t in batch["h_targetids"][r].tolist() if t != 0], skip_special_tokens=True),
+                "behavior": behavior, "target_index": r, "target": targets_by_behavior[behavior][r],
                 "loss_start": float(losses[0]), "loss_end": float(losses[-1]),
                 "delta_over_eps_mean": float(delta_norm[r].mean() / core.eps),
                 "n_prompt_tokens": prompt_len, "n_changed": int(changed[r].sum()),
@@ -164,7 +176,8 @@ def main(cfg: DictConfig) -> None:
     name = cfg.name or str(cfg.model).replace("/", "_")
     (out / f"{name}.json").write_text(json.dumps(records, indent=2))
     header = (f"# Embedding attack on {cfg.model}\n\niters={cfg.attack.iters} eps={cfg.attack.eps} "
-              f"lr={cfg.attack.lr} detector-aware={use_detector} drop_eot_from_target={cfg.drop_eot_from_target} "
+              f"lr={cfg.attack.lr} optimizer={cfg.attack.optimizer} detector-aware={use_detector} "
+              f"target_eot={cfg.attack.target_eot} perturb={cfg.perturb} "
               f"| {len(behaviors)} behaviors x "
               f"{len(records) // max(len(behaviors), 1)} targets | greedy, {cfg.max_new_tokens} new tokens")
     (out / f"{name}.md").write_text(render(records, header, int(cfg.max_chars)))

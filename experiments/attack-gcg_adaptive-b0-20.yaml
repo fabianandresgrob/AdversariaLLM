@@ -6,7 +6,6 @@ overrides:
   attack: gcg_adaptive
   dataset: jbb_behaviors
   datasets.jbb_behaviors.idx: list(range(0,20))
-  attacks.gcg_adaptive.detector_checkpoint: '''${models.${model}.reader_path}'''
 sweep:
   model:
   - M-respmean-s0

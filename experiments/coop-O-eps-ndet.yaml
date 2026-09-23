@@ -1,0 +1,28 @@
+# O: the N recipe (user-message attack, no end-of-turn in the attack loss, warm probe) with a
+# smaller attack radius and more detector steps. N (eps=1.0) collapsed into refusing everything and
+# never recovered; the eps sweep (outputs/eval/embedding_attack/embattack4-*) shows eps 0.1-0.25
+# still jailbreaks base Llama as often, with fewer loops, and without the attack trivially winning.
+# 2x2: attack.eps x training.n_detector_steps. Watch refusal_rate_xstest/_alpaca (E/L2 also spike
+# early and recover by ~step 200; N did not), recall@1fpr / thr_1fpr, and attack_loss per step.
+entrypoint: run_coop_train.py
+name: O-eps{attack.eps}-nd{training.n_detector_steps}-s{seed}
+time_per_run: "08:00:00"
+overrides:
+  attack.enabled: true
+  attack.perturb: user
+  attack.target_eot: false
+  attack.use_detector: true
+  training.n_steps: 1000
+  training.val_every: 25
+  training.rep_warmup_steps: 0
+  data.kl_source: magpie
+  data.kl_max_length: 1024
+  epsilon: 0.05
+  output.checkpoint_path: ${root_dir}/checkpoints_coop/O-eps-ndet
+sweep:
+  attack.eps: [0.1, 0.25]
+  training.n_detector_steps: [6, 20]
+  seed: [0]
+artifacts:
+  - checkpoints_coop/O-eps-ndet/{name}/final_adapter
+  - checkpoints_coop/O-eps-ndet/{name}/final_reader.pt

@@ -1,0 +1,16 @@
+# Embedding-attack (pgd) completions on HarmBench for training the DualProbe response channel
+# (train_response_head.py train_attacks=[pgd]). One greedy completion per pgd step, judged by
+# strong_reject; read the hits with inspect_attacks.py --attack pgd --model E-nd6-s0.
+entrypoint: run_attacks.py
+time_per_run: 02:00:00
+overrides:
+  attack: pgd
+  model: E-nd6-s0
+  dataset: adv_behaviors
+  attacks.pgd.log_embeddings: false
+sweep:
+  datasets.adv_behaviors.idx:
+  - list(range(0,20))
+  - list(range(20,40))
+  - list(range(40,60))
+  - list(range(60,80))

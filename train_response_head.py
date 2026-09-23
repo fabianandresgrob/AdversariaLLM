@@ -234,6 +234,8 @@ def main(cfg: DictConfig) -> None:
     from adversariallm.training.readers import DualProbe, load_reader
     from run_calibrate_probe import generate_responses
 
+    if not cfg.name:
+        raise ValueError("name=... is required (it names the checkpoint dir)")
     random.seed(int(cfg.seed))
     torch.manual_seed(int(cfg.seed))
     repo = Path(cfg.root_dir)

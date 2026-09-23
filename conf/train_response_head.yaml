@@ -8,7 +8,7 @@ defaults:
 # Offline response channel for a DualProbe (train_response_head.py). The model and its co-trained
 # prompt_last probe stay frozen; only the response head trains, on the model's own judged attack
 # completions (outputs/<attack>__<defense>__<model>/...).
-name: ???
+name: null                     # required; jobs injects the run name
 model: E-nd6-s0                # models.yaml entry: adapter + prompt_last reader_path
 out_dir: ${root_dir}/checkpoints_probe/RH/${name}
 seed: 0

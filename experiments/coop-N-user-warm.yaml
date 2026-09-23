@@ -1,0 +1,26 @@
+# N (warm): E-nd6's recipe with the new training attack -- the embedding attack moves only the user
+# message (attack.perturb=user) and its loss skips the end-of-turn token (attack.target_eot=false).
+# The old attack perturbed the chat template too, which pushed the model into loops and noise
+# instead of real harmful answers (outputs/eval/embedding_attack/embattack3-*). Warm probe, as E-nd6.
+entrypoint: run_coop_train.py
+name: N-user-warm-s{seed}
+time_per_run: "08:00:00"
+overrides:
+  attack.enabled: true
+  attack.perturb: user
+  attack.target_eot: false
+  attack.use_detector: true
+  training.n_steps: 1000
+  training.val_every: 25
+  training.n_detector_steps: 6
+  training.rep_warmup_steps: 0
+  data.kl_source: magpie
+  data.kl_max_length: 1024
+  epsilon: 0.05
+  # probe_init: coop_train.yaml default (checkpoints_probe/probe_v3/probe.pt), as E-nd6
+  output.checkpoint_path: ${root_dir}/checkpoints_coop/N-user-warm
+sweep:
+  seed: [0, 1]
+artifacts:
+  - checkpoints_coop/N-user-warm/{name}/final_adapter
+  - checkpoints_coop/N-user-warm/{name}/final_reader.pt

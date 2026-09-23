@@ -1,0 +1,31 @@
+defaults:
+  - models: models
+  - paths
+  - _self_
+
+# inspect_embedding_attack.py: coop's training attack on a few training behaviors, with long
+# generations, written to outputs/eval/embedding_attack/<name>.md. attack/data/chat_template_id
+# mirror conf/coop_train.yaml -- keep them in sync.
+name: null                    # output file name; null -> the model name
+model: meta-llama/Meta-Llama-3.1-8B-Instruct
+chat_template_id: meta-llama/Llama-3.1-8B-Instruct
+seed: 0
+layer: -1
+n_behaviors: 10               # from the coop training split; every target of each (12 per behavior)
+max_new_tokens: 512
+max_chars: 3000               # truncation in the .md only; the .json keeps everything
+use_detector: null            # null -> detector-aware iff the model has a probe (as E-* were trained)
+
+attack:
+  iters: 100
+  eps: 1.0
+  lr: 0.01
+  detector_loss_coeff: 0.5
+
+data:
+  dir: ${root_dir}/data
+  behaviors: behavior_datasets/extra_behavior_datasets/adv_training_behaviors.csv
+  targets: optimizer_targets/extra_targets/adv_training_targets.json
+  safe: safe_responses/adv_training_behaviors_safe_responses_longer.csv
+  val_size: 16
+  val_seed: 0

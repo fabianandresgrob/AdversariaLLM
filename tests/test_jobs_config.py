@@ -14,7 +14,7 @@ EXPECTED_ENTRYPOINTS = {
     "run_coop_train.py", "run_train.py", "run_attacks.py", "run_judges.py", "run_sampling.py",
     "run_cross_attack_eval.py", "run_overrefusal_eval.py", "run_pretrain_probe.py", "run_calibrate_probe.py",
     "run_gate_diagnostics.py", "run_generate_benign_targets.py", "run_utility_eval.py",
-    "probe_diagnose.py", "train_response_head.py",
+    "probe_diagnose.py", "train_response_head.py", "inspect_embedding_attack.py",
 }
 _MISSING = object()
 

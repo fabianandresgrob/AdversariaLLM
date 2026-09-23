@@ -1,7 +1,5 @@
 import json
 
-import math
-
 import torch
 
 from train_response_head import collect_examples, evaluate, fold_threshold, split_examples, threshold_at
@@ -46,7 +44,7 @@ def test_a_run_without_a_single_dataset_index_is_skipped(tmp_path):
 
 def _ex(idx, attack, label, n, dataset="jbb_behaviors", behavior=None):
     return [{"dataset": dataset, "idx": idx, "attack": attack, "label": label, "order": k,
-             "behavior": behavior or f"behavior number {idx} about topic {idx * 7}"} for k in range(n)]
+             "behavior": behavior or f"b{idx}"} for k in range(n)]
 
 
 def test_split_is_behavior_disjoint_capped_and_keeps_every_test_hit():
@@ -102,7 +100,8 @@ def test_fold_threshold_moves_the_decision_point_to_one_half():
     x = torch.randn(64, 4)
     margin = lambda: (linear(x)[:, 0] - linear(x)[:, 1]).detach()  # noqa: E731
     p_before = torch.sigmoid(margin())
-    tau = float(p_before.median())
+    ordered = p_before.sort().values
+    tau = float(ordered[31] + ordered[32]) / 2   # between two samples, so no float tie decides
     fold_threshold(linear, tau)
     assert torch.equal(torch.sigmoid(margin()) > 0.5, p_before > tau)
-    assert math.isclose(float(torch.sigmoid(margin()).median()), 0.5, abs_tol=1e-4)
+    assert (torch.sigmoid(margin()) > 0.5).sum() == 32

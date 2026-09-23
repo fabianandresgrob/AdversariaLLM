@@ -41,7 +41,8 @@ class _Tok:
 
 
 class _TinyLM(torch.nn.Module):
-    """inputs_embeds -> logits over a 10-token vocab, with the HF output fields the attack reads."""
+    """inputs_embeds -> logits over a 10-token vocab, with the HF output fields the attack reads.
+    A causal running mean mixes positions, so earlier tokens influence later predictions."""
 
     def __init__(self, dim=6, vocab=10):
         super().__init__()
@@ -49,7 +50,9 @@ class _TinyLM(torch.nn.Module):
 
     def forward(self, inputs_embeds, attention_mask=None, output_hidden_states=False):
         from types import SimpleNamespace
-        return SimpleNamespace(logits=self.head(inputs_embeds), hidden_states=(inputs_embeds,))
+        steps = torch.arange(1, inputs_embeds.size(1) + 1, device=inputs_embeds.device).view(1, -1, 1)
+        mixed = inputs_embeds.cumsum(dim=1) / steps
+        return SimpleNamespace(logits=self.head(mixed), hidden_states=(mixed,))
 
 
 def _attack(**kwargs):

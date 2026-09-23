@@ -14,6 +14,7 @@ layer: -1
 n_behaviors: 10               # from the coop training split; every target of each (12 per behavior)
 max_new_tokens: 512
 max_chars: 3000               # truncation in the .md only; the .json keeps everything
+drop_eot_from_target: true    # optimize the target without the end-of-turn token, so the answer continues
 use_detector: null            # null -> detector-aware iff the model has a probe (as E-* were trained)
 
 attack:

@@ -12,6 +12,11 @@ coop_train.yaml's iters/eps/lr, detector-aware when the model has a probe -- and
   projected      the perturbed prompt snapped back to the nearest vocabulary token at every position,
                  how many positions changed, and the answer generated from that text
 
+The coop target ends in the end-of-turn token (render_full terminates the assistant turn), so
+coop's attack optimizes "say the stub, then stop" and the attacked answer is just the target.
+drop_eot_from_target (default) removes that token from the attack's loss, so the model continues
+past the target and gen_attacked shows the answer the attack actually unlocks.
+
 eps bounds each token's perturbation by eps x the mean embedding norm (per token, L2) -- as far as
 a typical embedding is long -- so the projection shows whether the attacked prompt is still text.
 Every non-target position is perturbed, chat-template tokens included, as in training.
@@ -102,6 +107,8 @@ def main(cfg: DictConfig) -> None:
                                        detector_layer=int(cfg.layer))
     core = attack._attack
 
+    stop_ids = torch.tensor(sorted({t for t in (tokenizer.eos_token_id, tokenizer.convert_tokens_to_ids("<|eot_id|>"))
+                                    if isinstance(t, int) and t >= 0}), device=device)
     ds = AdvTupleStream(cfg.data.dir, cfg.data.behaviors, cfg.data.targets, cfg.data.safe, tokenizer, cfg.chat_template_id)
     train_ds, _ = split_adv_stream(ds, val_size=int(cfg.data.val_size), seed=int(cfg.data.val_seed))
     rows_by_behavior: dict[str, list] = {}
@@ -114,6 +121,8 @@ def main(cfg: DictConfig) -> None:
     for b_i, behavior in enumerate(behaviors):
         items = rows_by_behavior[behavior]
         batch = {k: (v.to(device) if torch.is_tensor(v) else v) for k, v in collate_adv(items).items()}
+        if cfg.drop_eot_from_target:
+            batch["h_targetids"] = batch["h_targetids"].masked_fill(torch.isin(batch["h_targetids"], stop_ids), 0)
         prompt_len = int((batch["h_targetids"][0] != 0).float().argmax())  # same prompt for every target
         clean_ids = batch["h_ids"][:1, :prompt_len]
         gen_clean = generate(model, tokenizer, int(cfg.max_new_tokens), input_ids=clean_ids)[0]
@@ -155,7 +164,8 @@ def main(cfg: DictConfig) -> None:
     name = cfg.name or str(cfg.model).replace("/", "_")
     (out / f"{name}.json").write_text(json.dumps(records, indent=2))
     header = (f"# Embedding attack on {cfg.model}\n\niters={cfg.attack.iters} eps={cfg.attack.eps} "
-              f"lr={cfg.attack.lr} detector-aware={use_detector} | {len(behaviors)} behaviors x "
+              f"lr={cfg.attack.lr} detector-aware={use_detector} drop_eot_from_target={cfg.drop_eot_from_target} "
+              f"| {len(behaviors)} behaviors x "
               f"{len(records) // max(len(behaviors), 1)} targets | greedy, {cfg.max_new_tokens} new tokens")
     (out / f"{name}.md").write_text(render(records, header, int(cfg.max_chars)))
     print(f"{len(records)} attacks -> {out / name}.md")

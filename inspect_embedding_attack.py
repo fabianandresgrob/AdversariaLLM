@@ -92,7 +92,7 @@ def main(cfg: DictConfig) -> None:
     from adversariallm.io_utils import load_model_and_tokenizer
     from adversariallm.training.attacks import ContinuousEmbeddingAttack
     from adversariallm.training.data import (AdvTupleStream, build_example_full, pad_collate, render_prompt,
-                                             split_adv_stream)
+                                             split_adv_stream, user_token_mask)
     from adversariallm.training.readers import load_reader
 
     torch.manual_seed(int(cfg.seed))
@@ -130,16 +130,12 @@ def main(cfg: DictConfig) -> None:
         batch = {k: v.to(device) for k, v in pad_collate(items, list(keys), pad_id=0).items()}
         prompt_len = int((batch["h_targetids"][0] != 0).float().argmax())  # same prompt for every target
 
-        # where the user message (and the suffix inside it) sits in the rendered prompt
-        rendered = render_prompt(tokenizer, prompt_text)
-        head = rendered[: rendered.find(prompt_text)]
-        user_start = len(tokenizer(head, add_special_tokens=False)["input_ids"])
-        user_end = user_start + len(tokenizer(prompt_text, add_special_tokens=False)["input_ids"])
-        span_start = user_start + (len(tokenizer(behavior, add_special_tokens=False)["input_ids"]) if suffix else 0)
-        perturb_mask = None
-        if cfg.perturb != "all":
-            perturb_mask = torch.zeros_like(batch["h_attn"], dtype=torch.bool)
-            perturb_mask[:, span_start:user_end] = True
+        # the user message in the rendered prompt; perturb=suffix narrows to the appended suffix
+        length = batch["h_ids"].size(1)
+        user = user_token_mask(tokenizer, prompt_text, length).to(device)
+        span = (len(behavior), len(prompt_text)) if suffix else None
+        perturb_mask = None if cfg.perturb == "all" else \
+            user_token_mask(tokenizer, prompt_text, length, span).to(device).expand_as(batch["h_attn"])
 
         clean_ids = torch.tensor([tokenizer(render_prompt(tokenizer, behavior), add_special_tokens=False)["input_ids"]],
                                  device=device)
@@ -153,7 +149,7 @@ def main(cfg: DictConfig) -> None:
 
         delta_norm = delta[:, :prompt_len].float().norm(dim=-1)  # (B, P)
         if perturb_mask is not None:
-            delta_norm = delta_norm[:, span_start:user_end]
+            delta_norm = delta_norm[:, perturb_mask[0, :prompt_len]]
         proj_ids = torch.stack([nearest_tokens(adv_prompt[r], weight) for r in range(adv_prompt.size(0))])
         gen_projected = generate(model, tokenizer, int(cfg.max_new_tokens), input_ids=proj_ids)
         changed = proj_ids != batch["h_ids"][:1, :prompt_len]
@@ -163,7 +159,7 @@ def main(cfg: DictConfig) -> None:
                 "loss_start": float(losses[0]), "loss_end": float(losses[-1]),
                 "delta_over_eps_mean": float(delta_norm[r].mean() / core.eps),
                 "n_prompt_tokens": prompt_len, "n_changed": int(changed[r].sum()),
-                "n_user_tokens": user_end - user_start, "n_changed_user": int(changed[r, user_start:user_end].sum()),
+                "n_user_tokens": int(user.sum()), "n_changed_user": int(changed[r][user[:prompt_len]].sum()),
                 "gen_clean": gen_clean, "gen_attacked": gen_attacked[r],
                 "projected_prompt": tokenizer.decode(proj_ids[r], skip_special_tokens=False),
                 "gen_projected": gen_projected[r],

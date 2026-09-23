@@ -30,12 +30,18 @@ class ContinuousEmbeddingAttack(TrainingAttack):
         target_eot=True,
         optimizer="adam",
         relative_lr=False,
+        perturb="all",
     ):
         """target_eot: whether the attack's loss covers the end-of-turn token that closes the target.
         True (the original objective) optimizes "say the target, then stop", which elicits the stub
         and nothing after it; False optimizes the target alone, so the answer can continue.
         optimizer: "adam" or "sign" (signed-gradient steps, as pgd); relative_lr expresses lr as a
-        fraction of the eps ball."""
+        fraction of the eps ball. perturb: "all" (every prompt position, chat template included --
+        the original attack, which pushes the model off-manifold into loops and noise) or "user"
+        (only the user message, batch["h_perturb_mask"]; the answers it elicits stay coherent)."""
+        if perturb not in ("all", "user"):
+            raise ValueError(f"perturb must be 'all' or 'user', got {perturb!r}")
+        self.perturb = perturb
         # EmbeddingSpaceAttack.__init__ signature (from source):
         #   (embed_weights, response_key, tokenizer, hidden_state_detector_index,
         #    iters=8, opt_config=None, eps=1.0, init_type="instruction",
@@ -84,7 +90,7 @@ class ContinuousEmbeddingAttack(TrainingAttack):
             attention_mask=batch["h_attn"],
             detector=detector,
             use_detector=use_detector,
-            perturb_mask=batch.get("h_perturb_mask"),
+            perturb_mask=batch["h_perturb_mask"] if self.perturb == "user" else None,
         )
         # Return only the perturbed embeddings (index 3).
         perturbed_embeds = result[3]

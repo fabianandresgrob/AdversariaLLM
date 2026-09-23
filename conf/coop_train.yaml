@@ -46,6 +46,9 @@ attack:
   # false: the attack's loss skips the end-of-turn token after the target, so it elicits the target
   # without also optimizing "then stop" (runs before 2026-09-23 used true: stub, then stop)
   target_eot: false
+  # user: perturb only the user message (answers stay coherent and genuinely harmful); all: every
+  # prompt position incl. the chat template (runs before 2026-09-23; elicits the stub, then loops)
+  perturb: user
 
 data:
   dir: ${root_dir}/data

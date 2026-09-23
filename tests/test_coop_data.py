@@ -5,8 +5,8 @@ import json
 import torch
 
 from adversariallm.training.data import (
-    AdvTupleStream, HelpRefusePairStream, build_kl_stream, collate_help_pair,
-    split_adv_stream,
+    AdvTupleStream, HelpRefusePairStream, build_kl_stream, collate_adv, collate_help_pair,
+    split_adv_stream, user_token_mask,
 )
 
 
@@ -15,8 +15,11 @@ class _FakeTok:
     Llama tokenizer). Arbitrary shape: user -> "U<content>", assistant -> "R<content>E",
     generation prompt -> "R"."""
 
-    def __call__(self, text, **kw):
-        return {"input_ids": [ord(c) for c in text]}
+    def __call__(self, text, return_offsets_mapping=False, **kw):
+        out = {"input_ids": [ord(c) for c in text]}
+        if return_offsets_mapping:
+            out["offset_mapping"] = [(i, i + 1) for i in range(len(text))]
+        return out
 
     def apply_chat_template(self, conv, tokenize=False, add_generation_prompt=False, **kw):
         s = ""
@@ -98,3 +101,23 @@ def test_build_kl_stream_routes_by_source(monkeypatch):
     d.build_kl_stream({}, "magpie", None, "m", window=[0, 3], max_length=42)
     assert seen["rows"] == [("p1", "r1"), ("p3", "r3")]    # None response dropped
     assert seen["max_length"] == 42
+
+
+def test_user_token_mask_covers_exactly_the_user_message():
+    # _FakeTok renders "U<content>R": template U ... R, one token per char
+    mask = user_token_mask(_FakeTok(), "abc", length=8)
+    assert mask.tolist() == [False, True, True, True, False, False, False, False]
+
+
+def test_user_token_mask_can_narrow_to_a_span_of_the_message():
+    mask = user_token_mask(_FakeTok(), "abc xyz", span=(3, 7))   # the " xyz" suffix
+    assert mask.tolist() == [False, False, False, False, True, True, True, True, False]
+
+
+def test_adv_batches_carry_the_user_message_mask(tmp_path):
+    ds = _write_adv_data(tmp_path, {"b1": ["A1"], "b2": ["Blonger"]})
+    batch = collate_adv([ds[0], ds[1]])
+    # promptA -> "UpromptAR" + target: the 7 prompt chars are perturbable, nothing else (pads False)
+    assert batch["h_perturb_mask"].shape == batch["h_ids"].shape
+    assert batch["h_perturb_mask"].sum(dim=1).tolist() == [7, 7]
+    assert batch["h_perturb_mask"][0, 1:8].all() and not batch["h_perturb_mask"][0, 0]

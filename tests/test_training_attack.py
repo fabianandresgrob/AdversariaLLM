@@ -76,7 +76,7 @@ def test_perturb_mask_confines_the_perturbation():
     target_ids = torch.tensor([[0, 0, 0, 0, 5, 6]])
     attn = torch.ones_like(ids)
     only = torch.tensor([[False, False, True, False, False, False]])
-    attack = _attack(target_eot=False)
+    attack = _attack(target_eot=False, perturb="user")
     model = _TinyLM()
     model.requires_grad_(False)
     out = attack.attack(model, {"h_ids": ids, "h_targetids": target_ids, "h_attn": attn, "h_perturb_mask": only})
@@ -84,6 +84,25 @@ def test_perturb_mask_confines_the_perturbation():
     moved = (out - clean).norm(dim=-1)[0]
     assert moved[2] > 0
     assert torch.all(moved[[0, 1, 3, 4, 5]] == 0)
+
+
+def test_perturb_user_uses_the_batch_mask_and_all_ignores_it():
+    ids = torch.tensor([[1, 2, 3, 4, 5, 6]])
+    target_ids = torch.tensor([[0, 0, 0, 0, 5, 6]])
+    user = torch.tensor([[False, True, True, False, False, False]])
+    batch = {"h_ids": ids, "h_targetids": target_ids, "h_attn": torch.ones_like(ids), "h_perturb_mask": user}
+    model = _TinyLM()
+    model.requires_grad_(False)
+    for perturb, expect_still in (("user", [0, 3]), ("all", [])):
+        attack = _attack(perturb=perturb)
+        moved = (attack.attack(model, batch) - attack._attack.get_embeddings(ids)).norm(dim=-1)[0]
+        assert all(moved[i] == 0 for i in expect_still)
+        assert moved[1] > 0 and moved[2] > 0
+
+
+def test_perturb_rejects_unknown_modes():
+    with pytest.raises(ValueError, match="perturb"):
+        _attack(perturb="template")
 
 
 def test_without_a_mask_every_prompt_position_may_move():

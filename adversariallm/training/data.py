@@ -25,6 +25,25 @@ def render_full(tokenizer, prompt, response):
     )
 
 
+def user_token_mask(tokenizer, prompt, length=None, span=None):
+    """Bool mask over the tokens of render_prompt(tokenizer, prompt) that carry the user message --
+    everything else (system block, role headers, generation prefix) is template. `span` (char
+    offsets into `prompt`) narrows it to part of the message, e.g. an appended suffix. Right-padded
+    with False to `length` (a full prompt+response sequence). Uses the tokenizer's char offsets, so
+    it is exact for any chat template, including tokens that straddle the message boundary."""
+    rendered = render_prompt(tokenizer, prompt)
+    start = rendered.rfind(prompt)
+    if start < 0:
+        raise ValueError("the chat template altered the user message; cannot locate it")
+    lo, hi = span if span is not None else (0, len(prompt))
+    lo, hi = start + lo, start + hi
+    offsets = tokenizer(rendered, add_special_tokens=False, return_offsets_mapping=True)["offset_mapping"]
+    mask = torch.tensor([s < hi and e > lo for s, e in offsets], dtype=torch.bool)
+    if length is not None:
+        mask = torch.cat([mask, torch.zeros(length - mask.numel(), dtype=torch.bool)])
+    return mask
+
+
 def generation_prefix(tokenizer):
     """The assistant-header scaffold the template appends at generation onset (the old
     registry's `response_key`). Derived by diffing the same conversation rendered with and
@@ -155,6 +174,7 @@ class AdvTupleStream(Dataset):
         b_ids, b_lab, b_tgt, b_attn = build_example_full(x, y_b, self.tokenizer)
         return {
             "prompt": x,
+            "h_perturb_mask": user_token_mask(self.tokenizer, x, h_ids.numel()),  # user message only
             "h_ids": h_ids,
             "h_labels": h_lab,
             "h_targetids": h_tgt,
@@ -230,6 +250,7 @@ def collate_adv(batch):
         "h_labels",
         "h_targetids",
         "h_attn",
+        "h_perturb_mask",
         "b_ids",
         "b_labels",
         "b_targetids",

@@ -88,20 +88,11 @@ class GCGConfig:
 
 def load_detector(checkpoint_path: str, model: PreTrainedModel):
     """Load a coop probe (a <tag>_reader.pt pair checkpoint, or a bare probe state_dict)."""
-    from ..training.readers import DEFAULT_READOUT, DEFAULT_READOUT_K, LinearProbe
+    from ..training.readers import load_reader
 
-    ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
-    is_pair = isinstance(ckpt, dict) and "reader" in ckpt
-    state = ckpt["reader"] if is_pair else ckpt
     # Read the probe where it was trained, so the attacker evades the detector the defense
     # actually runs -- a probe read at another position is a different detector.
-    trained = ((ckpt.get("cfg") or {}).get("reader") or {}) if is_pair else {}
-    probe = LinearProbe(  # (2, input_dim)
-        state["linear.weight"].shape[1],
-        readout=trained.get("readout") or DEFAULT_READOUT,
-        readout_k=trained.get("readout_k") or DEFAULT_READOUT_K,
-    )
-    probe.load_state_dict(state)
+    probe = load_reader(checkpoint_path)
     return probe.to(next(model.parameters()).device).eval()
 
 

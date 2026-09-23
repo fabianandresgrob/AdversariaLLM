@@ -4,7 +4,7 @@ from typing import Any
 
 import torch
 
-from ...training.readers import DEFAULT_READOUT, DEFAULT_READOUT_K, LinearProbe
+from ...training.readers import load_reader
 from .activation_monitor import ActivationMonitor
 from .base import register_monitor
 
@@ -15,7 +15,8 @@ class LinearProbeMonitor(ActivationMonitor):
     (readers.LinearProbe). Same readout position + template as coop training -- the position is
     taken from the pair checkpoint -- so the co-trained probe scores identically at eval. Reads
     the target model directly — no second model.
-    Loads a coop pair checkpoint (`{tag}_reader.pt`, key "reader") or a bare probe state_dict."""
+    Loads a coop pair checkpoint (`{tag}_reader.pt`, key "reader") or a bare probe state_dict;
+    a checkpoint whose cfg.reader.type is "dual" loads a DualProbe (prompt + response channel)."""
 
     NAME = "linear_probe"
 
@@ -46,18 +47,10 @@ class LinearProbeMonitor(ActivationMonitor):
     def _ensure_head(self, target_model) -> None:
         if self._probe is not None:
             return
-        ckpt = torch.load(self.checkpoint_path, map_location="cpu", weights_only=False)
-        is_pair = isinstance(ckpt, dict) and "reader" in ckpt
-        state = ckpt["reader"] if is_pair else ckpt
-        trained = ((ckpt.get("cfg") or {}).get("reader") or {}) if is_pair else {}
-        input_dim = state["linear.weight"].shape[1]  # (2, input_dim)
-        probe = LinearProbe(  # fp32 params; readout casts hidden to fp32
-            input_dim,
-            readout=self.readout or trained.get("readout") or DEFAULT_READOUT,
-            readout_k=self.readout_k or trained.get("readout_k") or DEFAULT_READOUT_K,
-        )
-        probe.load_state_dict(state)
-        probe.to(next(target_model.parameters()).device).eval()
+        # fp32 params; the readout casts hidden to fp32. Type (linear | dual) and position come
+        # from the checkpoint; readout/readout_k are the LinearProbe ablation overrides.
+        probe = load_reader(self.checkpoint_path, readout=self.readout, readout_k=self.readout_k)
+        probe.to(next(target_model.parameters()).device)
         self._probe = probe
 
     def reads_response(self, target_model) -> bool:

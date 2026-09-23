@@ -18,6 +18,9 @@ any response position scores prompt *and* response. `readout` picks between them
                     outputs the instructions start at a median of 74 tokens) — that case
                     is what stream_last covers
 
+A second reader type, DualProbe (type "dual"), keeps the prompt_last probe unchanged and adds a
+separate response channel with its own weights; see its docstring.
+
 Every mode derives its positions from target_ids/attention_mask, so all of them are
 invariant to right padding and to variable prompt/response lengths.
 
@@ -40,6 +43,10 @@ DEFAULT_READOUT = "prompt_last"
 # p90 of the adv_training target lengths (median 18, max 34), so the window covers the whole
 # teacher-forced target for ~90% of rows instead of truncating it mid-target.
 DEFAULT_READOUT_K = 24
+# DualProbe response channel: tokens per rolling window before the max. Long enough that one odd
+# token cannot fire the channel, short enough that a harmful paragraph deep in a refusal-prefixed
+# answer still dominates its window.
+DEFAULT_RESPONSE_WINDOW = 16
 
 
 def readout_index(target_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
@@ -174,10 +181,116 @@ class LinearProbe(Reader, nn.Module):
         return self.linear(self.readout(hidden, target_ids, attention_mask))
 
 
+def window_max(values: torch.Tensor, mask: torch.Tensor, window: int) -> torch.Tensor:
+    """Max over rolling means of `window` consecutive masked positions, per row: (B, T) -> (B,).
+
+    The masked region is assumed contiguous (a response followed by right padding). A row
+    shorter than `window` gets the mean over the whole region; a row with no masked position
+    gets -inf, so callers must handle it (DualProbe treats it as "no response")."""
+    mask = mask.bool()
+    v = values.float() * mask
+    n = mask.float()
+    zero = torch.zeros_like(v[:, :1])
+    cs = torch.cat([zero, v.cumsum(dim=1)], dim=1)  # (B, T+1)
+    cn = torch.cat([zero, n.cumsum(dim=1)], dim=1)
+    end = torch.arange(1, v.size(1) + 1, device=v.device)  # window ends (exclusive), (T,)
+    start = (end - window).clamp_min(0)
+    win_sum = cs[:, end] - cs[:, start]
+    win_n = cn[:, end] - cn[:, start]
+    need = torch.minimum(n.sum(dim=1, keepdim=True), torch.tensor(float(window), device=v.device))
+    valid = mask & (win_n >= need) & (win_n > 0)
+    means = win_sum / win_n.clamp_min(1)
+    return means.masked_fill(~valid, float("-inf")).max(dim=1).values
+
+
+class DualProbe(Reader, nn.Module):
+    """prompt_last probe + an independent response channel; fires if EITHER channel fires.
+
+        p_harmful = max( p_prompt , p_response )
+
+    The prompt channel is a LinearProbe at the last prompt token -- the readout that catches
+    optimized suffixes, even adaptively. The response channel scores every response token with
+    its own linear head (unit-normed activations, as the prompt channel) and pools the per-token
+    margins as the max over rolling windows (window_max), so harmful content anywhere in a long
+    answer can fire it. Taking the max of the two probabilities, rather than one linear head over
+    both, means adding the response channel can never lower the prompt channel's score: a
+    confident "benign" response cannot talk the probe out of a suffix it caught. A row with no
+    response scores on the prompt channel alone.
+
+    The response head starts at p_response ~ 0 (zero weights, benign-leaning bias), so an
+    untrained DualProbe scores exactly like its prompt channel.
+    """
+
+    readout_mode = "dual"
+
+    def __init__(self, input_dim: int, eps: float = 1e-6, response_window: int = DEFAULT_RESPONSE_WINDOW):
+        nn.Module.__init__(self)
+        self.eps = eps
+        self.response_window = int(response_window)
+        self.prompt = LinearProbe(input_dim, eps=eps, readout="prompt_last")
+        self.response = nn.Linear(input_dim, 2)
+        with torch.no_grad():
+            self.response.weight.zero_()
+            self.response.bias.copy_(torch.tensor([-10.0, 10.0]))  # [harmful, benign]
+
+    def response_margin(
+        self, hidden: torch.Tensor, target_ids: torch.Tensor, attention_mask: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """(pooled harmful-minus-benign logit margin (B,), has_response (B,) bool)."""
+        region = (target_ids != 0) & attention_mask.bool()
+        h = hidden.float()
+        h = h / h.norm(dim=-1, keepdim=True).clamp_min(self.eps)
+        logits = self.response(h)  # (B, T, 2)
+        margins = logits[..., HARMFUL_COL] - logits[..., BENIGN_COL]
+        has = region.any(dim=1)
+        pooled = window_max(margins, region, self.response_window)
+        return torch.where(has, pooled, torch.zeros_like(pooled)), has
+
+    def p_harmful(self, hidden: torch.Tensor, target_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+        p_prompt = self.prompt.p_harmful(hidden, target_ids, attention_mask)
+        margin, has = self.response_margin(hidden, target_ids, attention_mask)
+        p_resp = torch.where(has, torch.sigmoid(margin), torch.zeros_like(margin))
+        return torch.maximum(p_prompt, p_resp)
+
+    def logits(self, hidden: torch.Tensor, target_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+        """Log-probabilities in the (B, 2) logits layout, so softmax(logits)[:, 0] == p_harmful."""
+        p = self.p_harmful(hidden, target_ids, attention_mask).clamp(1e-7, 1 - 1e-7)
+        out = torch.stack([p.log(), (-p).log1p()], dim=-1)
+        return out if HARMFUL_COL == 0 else out.flip(-1)
+
+
+def load_reader(checkpoint_path: str, readout: str | None = None, readout_k: int | None = None) -> Reader:
+    """Build a reader from a pair checkpoint ({"reader", "cfg"}) or a bare LinearProbe state_dict.
+
+    The type and readout come from the checkpoint's cfg.reader, so a probe is scored where it was
+    trained. `readout`/`readout_k` override the LinearProbe position (an ablation); a DualProbe has
+    fixed positions and refuses them. Returned on CPU in eval mode."""
+    ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    is_pair = isinstance(ckpt, dict) and "reader" in ckpt
+    state = ckpt["reader"] if is_pair else ckpt
+    trained = ((ckpt.get("cfg") or {}).get("reader") or {}) if is_pair else {}
+    if trained.get("type") == "dual":
+        if readout or readout_k:
+            raise ValueError("a dual probe reads fixed positions; readout overrides do not apply")
+        reader: Reader = DualProbe(
+            state["prompt.linear.weight"].shape[1],
+            response_window=trained.get("response_window") or DEFAULT_RESPONSE_WINDOW,
+        )
+    else:
+        reader = LinearProbe(  # (2, input_dim)
+            state["linear.weight"].shape[1],
+            readout=readout or trained.get("readout") or DEFAULT_READOUT,
+            readout_k=readout_k or trained.get("readout_k") or DEFAULT_READOUT_K,
+        )
+    reader.load_state_dict(state)
+    return reader.eval()
+
+
 def build_reader(cfg: dict | None, input_dim: int) -> Reader:
     """Construct the reader from config. v1 supports "linear"; MLP/gemma slot in here.
 
-    cfg keys: type, readout (see READOUT_MODES), readout_k (response_mean window)."""
+    cfg keys: type ("linear" | "dual"), readout (see READOUT_MODES), readout_k (response_mean
+    window), response_window (dual only)."""
     cfg = cfg or {}
     kind = cfg.get("type", "linear")
     if kind == "linear":
@@ -186,4 +299,6 @@ def build_reader(cfg: dict | None, input_dim: int) -> Reader:
             readout=cfg.get("readout") or DEFAULT_READOUT,
             readout_k=cfg.get("readout_k") or DEFAULT_READOUT_K,
         )
+    if kind == "dual":
+        return DualProbe(input_dim, response_window=cfg.get("response_window") or DEFAULT_RESPONSE_WINDOW)
     raise ValueError(f"unknown reader type: {kind!r}")

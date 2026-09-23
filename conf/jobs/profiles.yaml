@@ -34,6 +34,9 @@ run_calibrate_probe.py:
   config_name: calibrate_probe
 probe_diagnose.py:              # shares calibrate_probe's config (model, probe, layer, batch_size)
   config_name: calibrate_probe
+train_response_head.py:
+  config_name: train_response_head
+  name_key: name
 run_utility_eval.py:
   config_name: utility_eval
 run_gate_diagnostics.py:

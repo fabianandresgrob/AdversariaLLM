@@ -11,3 +11,6 @@ artifacts:
 sweep:
   +run:
   - Q-bp-it50-s0
+  - Q-bp-s0
+  - Q-bp-klhead-s0
+  - Q-bp3-s0

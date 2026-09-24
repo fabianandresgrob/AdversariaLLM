@@ -81,6 +81,7 @@ training:
   n_detector_steps: 1        # spec default (tunable ablation; δ=0/N=3 is a valid alt)
   rep_warmup_steps: 0        # default off (prefitted probe); >0 for the cold-probe ablation
   checkpoint_every: 250      # 4 step-tagged adapters/run (~180MB); enough to inspect the oscillation
+  ema_decay: null            # e.g. 0.995: also save an EMA of adapter + probe (ema_adapter); training unchanged
   val_every: 25              # held-out recall@1%FPR, OOD over-refusal, four-case frequencies
   benign_gen_n: 16           # xs_test AND alpaca prompts free-generated for the refusal rates
   val_attack_gen_tokens: 96  # continuation length under the val attack (model/asr_gen)

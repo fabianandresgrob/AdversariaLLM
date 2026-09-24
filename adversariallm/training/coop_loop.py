@@ -12,6 +12,7 @@ apply the incremental-backward pattern from loop.py:train_step).
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -378,6 +379,34 @@ def _save_pair(model, reader, container, step, out_dir, tag):
     )
 
 
+class ParamEMA:
+    """Exponential moving average of the trainable parameters (fp32 shadow copies). Training never
+    reads it: gradient steps on the attack-vs-(model, probe) game circle around the equilibrium, the
+    time-average settles, so the average is saved next to the last iterate and evaluated post hoc."""
+
+    def __init__(self, params, decay):
+        self.params, self.decay = list(params), float(decay)
+        self.shadow = [p.detach().float().clone() for p in self.params]
+
+    @torch.no_grad()
+    def update(self):
+        for s, p in zip(self.shadow, self.params):
+            s.lerp_(p.detach().float(), 1.0 - self.decay)
+
+    @contextlib.contextmanager
+    @torch.no_grad()
+    def swapped_in(self):
+        """Load the averaged weights into the live parameters for the duration (e.g. to save them)."""
+        backup = [p.detach().clone() for p in self.params]
+        for s, p in zip(self.shadow, self.params):
+            p.copy_(s.to(p.dtype))
+        try:
+            yield
+        finally:
+            for b, p in zip(backup, self.params):
+                p.copy_(b)
+
+
 def _seed_everything(seed):
     """Seed training randomness (LoRA init, random probe init, loader shuffle order) so a seed
     sweep is real. Eval splits stay on data.val_seed (fixed) — held-out data is not reseeded."""
@@ -578,6 +607,10 @@ def run_coop_training(cfg):
         if wandb_run is not None:
             wandb_run.log(base, step=0)
 
+    # off by default; the EMA pair is saved as ema_adapter / ema_reader.pt (+ ema_step<N>_*)
+    ema_decay = cfg.training.get("ema_decay")
+    ema = ParamEMA(model_trainable + reader_params, ema_decay) if ema_decay else None
+
     model.train()
     for step in range(cfg.training.n_steps):
         adv_batch = _to_device(next(adv_iter), device)
@@ -617,6 +650,8 @@ def run_coop_training(cfg):
             device_hp, use_rep, warming, device,
         )
         logs["det"] = sum(det_losses) / len(det_losses)
+        if ema is not None:
+            ema.update()
         if attack is not None:  # does the attack still reach its target? (~0 every step = too strong)
             logs["attack_loss"] = attack.last_target_loss
 
@@ -633,8 +668,14 @@ def run_coop_training(cfg):
         ckpt_every = int(cfg.training.checkpoint_every)
         if ckpt_every and (step + 1) % ckpt_every == 0:
             _save_pair(model, reader, container, step, out_dir, tag=f"step{step + 1}")
+            if ema is not None:
+                with ema.swapped_in():
+                    _save_pair(model, reader, container, step, out_dir, tag=f"ema_step{step + 1}")
 
     _save_pair(model, reader, container, cfg.training.n_steps, out_dir, tag="final")
+    if ema is not None:
+        with ema.swapped_in():
+            _save_pair(model, reader, container, cfg.training.n_steps, out_dir, tag="ema")
     if wandb_run is not None:
         wandb_run.finish()
     return out_dir

@@ -1,7 +1,10 @@
-# Seeds 1-2 of the Q benign-perturbation recipe at 50 attack iterations (seed 0 ran ad hoc as exp coop-Q; same
-# overrides) + an EMA of adapter and probe (ema_adapter), which training never reads. Q-bp-s0 and Q-bp-it50-s0 traded off harm vs over-refusal at one seed each; these tell whether that is real.
+# The Q benign-perturbation recipe with a higher refusal-gate floor (epsilon 0.05 -> 0.25). With the floor at 0.05
+# the model gets almost no refusal gradient whenever the probe catches the attack, drifts back to complying until
+# the probe misses, and the cycle repeats; a floor keeps some refusal pressure regardless of the probe (the cost:
+# less division of labour, maybe more over-refusal). At 100 and 50 attack iterations, with the EMA saved as in
+# coop-Q-seeds-*.
 entrypoint: run_coop_train.py
-name: Q-bp-it50-s{seed}
+name: Q-bp-it{attack.iters}-gate{epsilon}-s{seed}
 time_per_run: "08:00:00"
 overrides:
   attack.enabled: true
@@ -9,7 +12,6 @@ overrides:
   attack.target_eot: false
   attack.use_detector: true
   attack.eps: 0.1
-  attack.iters: 50
   training.n_detector_steps: 6
   training.n_steps: 1000
   training.val_every: 50
@@ -21,11 +23,12 @@ overrides:
   data.val_size: 24
   data.val_targets: 6
   data.val_batch_size: 16
-  epsilon: 0.05
   lambda_benign_perturb: 1.0
   output.checkpoint_path: ${root_dir}/checkpoints_coop/Q
 sweep:
-  seed: [1, 2]
+  attack.iters: [100, 50]
+  epsilon: [0.25]
+  seed: [0]
 artifacts:
   - checkpoints_coop/Q/{name}/final_adapter
   - checkpoints_coop/Q/{name}/final_reader.pt

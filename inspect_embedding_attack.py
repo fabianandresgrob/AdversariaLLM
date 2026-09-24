@@ -157,6 +157,7 @@ def main(cfg: DictConfig) -> None:
             records.append({
                 "behavior": behavior, "target_index": r, "target": targets_by_behavior[behavior][r],
                 "loss_start": float(losses[0]), "loss_end": float(losses[-1]),
+                "loss_curve": [round(float(v), 4) for v in losses],  # per iteration, mean over the targets
                 "delta_over_eps_mean": float(delta_norm[r].mean() / core.eps),
                 "n_prompt_tokens": prompt_len, "n_changed": int(changed[r].sum()),
                 "n_user_tokens": int(user.sum()), "n_changed_user": int(changed[r][user[:prompt_len]].sum()),

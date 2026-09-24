@@ -151,7 +151,8 @@ def main(cfg: DictConfig) -> None:
             targets_json=cfg.harmful.targets, safe_csv=cfg.harmful.safe,
             tokenizer=tok, model_name=cfg.chat_template_id,
         )
-        _, adv_val_ds = split_adv_stream(adv_ds, val_size=int(cfg.harmful.val_size), seed=int(cfg.harmful.val_seed))
+        _, adv_val_ds = split_adv_stream(adv_ds, val_size=int(cfg.harmful.val_size), seed=int(cfg.harmful.val_seed),
+                                        val_targets=int(cfg.harmful.get("val_targets", 1)))
         harmful_batches = [
             _to_device(b, device)
             for b in DataLoader(adv_val_ds, batch_size=int(cfg.harmful.batch_size), shuffle=False, collate_fn=collate_adv)
@@ -178,6 +179,7 @@ def main(cfg: DictConfig) -> None:
             model.get_input_embeddings().weight, response_key, tok,
             iters=int(cfg.attack.iters), eps=float(cfg.attack.eps), lr=float(cfg.attack.lr),
             detector_loss_coeff=float(cfg.attack.detector_loss_coeff), detector_layer=layer,
+            target_eot=bool(cfg.attack.get("target_eot", True)), perturb=str(cfg.attack.get("perturb", "all")),
         )
 
         native = _native_use_detector(train_cfg)

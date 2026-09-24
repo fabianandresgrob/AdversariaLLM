@@ -72,6 +72,7 @@ harmful:
   safe: safe_responses/adv_training_behaviors_safe_responses_longer.csv
   val_size: 16
   val_seed: 0
+  val_targets: 1       # targets kept per val behavior (coop data.val_targets); the Q runs validate on 6
   batch_size: 4
 
 attack:
@@ -79,6 +80,8 @@ attack:
   eps: 1.0
   lr: 0.01
   detector_loss_coeff: 0.5
+  target_eot: true     # coop attack.target_eot; false = the end-of-turn token is not part of the attack target
+  perturb: all         # coop attack.perturb; user = only the user message is perturbed
 
 benign:
   calibration_benign: alpaca   # sets the 1%-FPR threshold, same pinned source as training

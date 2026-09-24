@@ -16,9 +16,10 @@ overrides:
   harmful.val_targets: 6
   harmful.batch_size: 16
   benign.benign_gen_n: 40
+  judge.enabled: true
   out: ${root_dir}/outputs/eval/cross_attack/${block}/${run}/seed${seed}
 sweep:
-  +run: [Q-bp-it50-s0]
+  +run: [Q-bp-it50-s0, Q-bp-s0, Q-bp-klhead-s0, Q-bp3-s0]
   seed: [0]
 artifacts:
   - outputs/eval/cross_attack/{+block}/{+run}/seed{seed}/cross_attack_eval.json

@@ -47,3 +47,14 @@ def test_answer_head_mask_selects_the_first_answer_predictions():
     # position t predicts token t+1: positions 2 and 3 predict the first two answer tokens
     assert head.tolist() == [[False, False, True, True, False, False, False]]
     assert _answer_head_mask(labels, attn, n_tokens=10).sum() == 4
+
+
+def test_head_kl_equals_the_masked_full_kl():
+    from adversariallm.training.coop_loop import _head_kl
+    from adversariallm.training.losses import utility_kl
+
+    torch.manual_seed(0)
+    m, r = torch.randn(2, 5, 7), torch.randn(2, 5, 7)
+    head = torch.tensor([[False, True, True, False, False], [False, False, True, False, False]])
+    assert torch.allclose(_head_kl(m, r, head), utility_kl(m, r, attention_mask=head), atol=1e-6)
+    assert _head_kl(m, r, torch.zeros_like(head)).item() == 0.0

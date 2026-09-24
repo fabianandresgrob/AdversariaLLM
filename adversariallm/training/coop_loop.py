@@ -113,6 +113,15 @@ def _answer_head_mask(labels, attn, n_tokens):
     return ans & (ans.long().cumsum(dim=1) <= n_tokens)
 
 
+def _head_kl(model_logits, ref_logits, head):
+    """KL(model || ref) averaged over the positions in `head` (B, T) only. Selects those rows before
+    the softmax: a full-width log-softmax over a 128k vocabulary for ~1000 positions per example is
+    what the head terms must not pay for a mask that keeps at most kl_head_tokens of them."""
+    if not head.any():
+        return model_logits.sum() * 0.0
+    return utility_kl(model_logits[head].unsqueeze(0), ref_logits[head].unsqueeze(0))
+
+
 def _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch,
                 easy_batch, hp, use_rep, warming, device):
     """One model update: reader frozen, model trainable. Two disjoint example types summed
@@ -171,7 +180,7 @@ def _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch,
         if lam_head > 0 or lam_pert > 0:
             head = _answer_head_mask(easy_batch["labels"], easy_batch["attn"], int(hp.get("kl_head_tokens", 32)))
         if lam_head > 0:
-            kl_head = utility_kl(u_logits[:, :-1], r_logits[:, :-1], attention_mask=head)
+            kl_head = _head_kl(u_logits[:, :-1], r_logits[:, :-1], head)
             total = total + lam_head * kl_head
             logs["kl_head"] = kl_head.item()
         if lam_pert > 0:
@@ -183,7 +192,7 @@ def _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch,
             noise = noise / noise.norm(dim=-1, keepdim=True).clamp_min(1e-6) * hp["benign_radius"]
             mask = easy_batch["perturb_mask"][:, :width].unsqueeze(-1).to(emb.dtype)
             p_logits = model(inputs_embeds=emb + noise * mask, attention_mask=easy_batch["attn"][:, :width]).logits
-            kl_pert = utility_kl(p_logits[:, :-1], r_logits[:, : width - 1], attention_mask=head[:, : width - 1])
+            kl_pert = _head_kl(p_logits[:, :-1], r_logits[:, : width - 1], head[:, : width - 1])
             total = total + lam_pert * kl_pert
             logs["kl_benign_perturb"] = kl_pert.item()
 

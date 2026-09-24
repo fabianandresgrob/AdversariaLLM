@@ -483,7 +483,8 @@ def run_coop_training(cfg):
     # held-out validation: clean harmful (from the split)
     harmful_val_batches = [
         _to_device(b, device)
-        for b in DataLoader(adv_val_ds, batch_size=cfg.data.harmful_batch_size, shuffle=False, collate_fn=collate_adv)
+        for b in DataLoader(adv_val_ds, batch_size=int(cfg.data.get("val_batch_size") or cfg.data.harmful_batch_size),
+                            shuffle=False, collate_fn=collate_adv)
     ]
     # PINNED calibration benign (easy, VAL window) — sets the 1%-FPR threshold for EVERY run
     calib_prompts, calib_resp = load_dataset_prompts(

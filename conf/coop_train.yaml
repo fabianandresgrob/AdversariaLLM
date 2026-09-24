@@ -65,6 +65,7 @@ data:
   utility_batch_size: 4
   val_size: 16                      # harmful behaviors held out for validation
   val_targets: 4                    # targets per val behavior -> 64 attacked val prompts
+  val_batch_size: null              # val attack/generation batch; null = harmful_batch_size (4)
   val_seed: 0
   # Benign split: easy = detector class + PINNED calibration.
   kl_source: ultrachat              # KL-leash dataset; any registered source (e.g. magpie) or ultrachat

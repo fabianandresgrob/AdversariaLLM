@@ -122,6 +122,24 @@ def _head_kl(model_logits, ref_logits, head):
     return utility_kl(model_logits[head].unsqueeze(0), ref_logits[head].unsqueeze(0))
 
 
+def _benign_perturb_kl(model, ref, easy_batch, hp):
+    """KL(model(x + d) || ref(x)) on the first kl_head_tokens answer tokens of benign examples, with d
+    a random perturbation of norm hp["benign_radius"] on each user-message token. Runs only up to
+    the last head position. Called first in the model step and backpropagated on its own, so its
+    graph is freed before the rest of the step is built (the step holds several graphs at once)."""
+    head = _answer_head_mask(easy_batch["labels"], easy_batch["attn"], int(hp.get("kl_head_tokens", 32)))
+    cols = head.any(dim=0).nonzero()
+    width = int(cols.max()) + 2 if cols.numel() else 2
+    ids, attn = easy_batch["input_ids"][:, :width], easy_batch["attn"][:, :width]
+    emb = model.get_input_embeddings()(ids)
+    r_logits = ref.logits(inputs_embeds=emb.detach(), attention_mask=attn)
+    noise = torch.randn_like(emb)
+    noise = noise / noise.norm(dim=-1, keepdim=True).clamp_min(1e-6) * hp["benign_radius"]
+    mask = easy_batch["perturb_mask"][:, :width].unsqueeze(-1).to(emb.dtype)
+    p_logits = model(inputs_embeds=emb + noise * mask, attention_mask=attn).logits
+    return _head_kl(p_logits[:, :-1], r_logits[:, :-1], head[:, : width - 1])
+
+
 def _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch,
                 easy_batch, hp, use_rep, warming, device):
     """One model update: reader frozen, model trainable. Two disjoint example types summed
@@ -144,6 +162,13 @@ def _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch,
     opt_model.zero_grad(set_to_none=True)
     logs = {}
     total = torch.zeros((), device=device)
+
+    lam_pert = hp.get("lambda_benign_perturb", 0.0)
+    if lam_pert > 0 and easy_batch is not None:  # own backward first: gradients add up, memory does not
+        kl_pert = _benign_perturb_kl(model, ref, easy_batch, hp)
+        (lam_pert * kl_pert).backward()
+        logs["kl_benign_perturb"] = kl_pert.item()
+        del kl_pert
 
     # ---- harmful: gated refusal teaching + gated representation ----
     h_hidden, logits_h = _hidden_and_logits(model, layer, inputs_embeds=adv_embeds, attention_mask=adv_batch["h_attn"])
@@ -176,29 +201,16 @@ def _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch,
         total = total + hp["lambda_kl"] * kl
         logs["kl"] = kl.item()
 
-        lam_head, lam_pert = hp.get("lambda_kl_head", 0.0), hp.get("lambda_benign_perturb", 0.0)
-        if lam_head > 0 or lam_pert > 0:
-            head = _answer_head_mask(easy_batch["labels"], easy_batch["attn"], int(hp.get("kl_head_tokens", 32)))
+        lam_head = hp.get("lambda_kl_head", 0.0)
         if lam_head > 0:
+            head = _answer_head_mask(easy_batch["labels"], easy_batch["attn"], int(hp.get("kl_head_tokens", 32)))
             kl_head = _head_kl(u_logits[:, :-1], r_logits[:, :-1], head)
             total = total + lam_head * kl_head
             logs["kl_head"] = kl_head.item()
-        if lam_pert > 0:
-            # only the prefix up to the last head position is needed
-            cols = head.any(dim=0).nonzero()
-            width = int(cols.max()) + 2 if cols.numel() else 2
-            emb = model.get_input_embeddings()(u_ids[:, :width])
-            noise = torch.randn_like(emb)
-            noise = noise / noise.norm(dim=-1, keepdim=True).clamp_min(1e-6) * hp["benign_radius"]
-            mask = easy_batch["perturb_mask"][:, :width].unsqueeze(-1).to(emb.dtype)
-            p_logits = model(inputs_embeds=emb + noise * mask, attention_mask=easy_batch["attn"][:, :width]).logits
-            kl_pert = _head_kl(p_logits[:, :-1], r_logits[:, : width - 1], head[:, : width - 1])
-            total = total + lam_pert * kl_pert
-            logs["kl_benign_perturb"] = kl_pert.item()
 
     total.backward()
     opt_model.step()
-    logs["total"] = total.item()
+    logs["total"] = total.item() + lam_pert * logs.get("kl_benign_perturb", 0.0)
     return logs, wh.detach(), wm.detach()
 
 

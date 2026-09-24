@@ -35,3 +35,15 @@ def test_generate_from_embeds_batches():
     prompts = [torch.ones(2, 3) for _ in range(5)]
     assert len(_generate_from_embeds(model, _Tok(), prompts, max_new_tokens=1, batch_size=2)) == 5
     assert [c[0].size(0) for c in model.calls] == [2, 2, 1]
+
+
+def test_answer_head_mask_selects_the_first_answer_predictions():
+    from adversariallm.training.coop_loop import _answer_head_mask
+
+    # prompt 3 tokens (-100), answer 4 tokens, then 1 pad
+    labels = torch.tensor([[-100, -100, -100, 5, 6, 7, 8, -100]])
+    attn = torch.tensor([[1, 1, 1, 1, 1, 1, 1, 0]])
+    head = _answer_head_mask(labels, attn, n_tokens=2)
+    # position t predicts token t+1: positions 2 and 3 predict the first two answer tokens
+    assert head.tolist() == [[False, False, True, True, False, False, False]]
+    assert _answer_head_mask(labels, attn, n_tokens=10).sum() == 4

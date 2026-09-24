@@ -216,7 +216,10 @@ class UtilityStream(Dataset):
         if self.max_length is not None and ids.numel() > self.max_length:
             ids, lab = ids[: self.max_length], lab[: self.max_length]  # cap runaway lengths
         attn = torch.ones_like(ids)
-        return {"input_ids": ids, "labels": lab, "attn": attn}
+        # the user message's tokens, for the benign-perturbation term (see coop _model_step)
+        user = user_token_mask(self.tokenizer, x)[: ids.numel()]
+        perturb = torch.cat([user, torch.zeros(ids.numel() - user.numel(), dtype=torch.bool)])
+        return {"input_ids": ids, "labels": lab, "attn": attn, "perturb_mask": perturb}
 
 
 def build_kl_stream(datasets_cfg, kl_source, tokenizer, model_name,
@@ -264,7 +267,7 @@ def collate_adv(batch):
 
 def collate_util(batch):
     """Collate UtilityStream items: input_ids/attn padded with 0, labels with -100."""
-    return pad_collate(batch, ["input_ids", "labels", "attn"], pad_id=0)
+    return pad_collate(batch, ["input_ids", "labels", "attn", "perturb_mask"], pad_id=0)
 
 
 class BenignStream(Dataset):

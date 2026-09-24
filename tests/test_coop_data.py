@@ -115,3 +115,21 @@ def test_adv_batches_carry_the_user_message_mask(tmp_path):
     assert batch["h_perturb_mask"].shape == batch["h_ids"].shape
     assert batch["h_perturb_mask"].sum(dim=1).tolist() == [7, 7]
     assert batch["h_perturb_mask"][0, 1:8].all() and not batch["h_perturb_mask"][0, 0]
+
+
+def test_utility_stream_marks_the_user_message():
+    from adversariallm.training.data import UtilityStream, collate_util
+
+    ds = UtilityStream(_FakeTok(), "m", rows=[("abc", "xy"), ("de", "zzz")])
+    item = ds[0]
+    # "UabcRxyE": U template, abc user, R xy E answer
+    assert item["perturb_mask"].tolist() == [False, True, True, True, False, False, False, False]
+    batch = collate_util([ds[0], ds[1]])
+    assert batch["perturb_mask"].shape == batch["input_ids"].shape
+
+
+def test_utility_stream_mask_survives_truncation_into_the_prompt():
+    from adversariallm.training.data import UtilityStream
+
+    item = UtilityStream(_FakeTok(), "m", rows=[("abcdef", "xy")], max_length=3)[0]
+    assert item["perturb_mask"].tolist() == [False, True, True]

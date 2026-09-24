@@ -34,6 +34,12 @@ delta: 0.0            # rep-gate floor; LOCKED at 0 (v1 stability result)
 lambda_beh: 1.0
 lambda_rep: 1.0
 lambda_kl: 1.0
+# Optional benign terms (0 = off, the behaviour of all runs before 2026-09-24):
+lambda_kl_head: 0.0          # KL on only the first kl_head_tokens answer tokens (the refuse/answer decision)
+kl_head_tokens: 32
+lambda_benign_perturb: 0.0   # benign prompt with a random user-message perturbation must answer like the
+                             # clean prompt (KL on the same head tokens): breaks "perturbed => refuse"
+benign_perturb_eps: null     # perturbation radius as a multiple of the mean embedding norm; null = attack.eps
 
 # Stage A = no attack (clean prompt); Stage B = continuous embedding attack.
 attack:

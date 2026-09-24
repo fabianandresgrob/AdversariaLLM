@@ -105,6 +105,14 @@ def _detector_step(model, reader, opt_det, layer, adv_embeds, adv_batch, easy_ba
     return loss.item()
 
 
+def _answer_head_mask(labels, attn, n_tokens):
+    """(B, T-1) mask over next-token positions whose target is one of the first `n_tokens` answer
+    tokens (labels != -100): where the model decides to answer or refuse. Aligned with
+    logits[:, :-1], i.e. position t predicts token t+1."""
+    ans = (labels[:, 1:] != -100) & attn[:, 1:].bool()
+    return ans & (ans.long().cumsum(dim=1) <= n_tokens)
+
+
 def _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch,
                 easy_batch, hp, use_rep, warming, device):
     """One model update: reader frozen, model trainable. Two disjoint example types summed
@@ -112,7 +120,15 @@ def _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch,
 
         harmful      : lambda_beh * [eps+(1-eps)*w_D] * CE(y_safe)
                      + lambda_rep * [delta+(1-delta)*w_M] * detector_ce(reader(h), harmful=0)
-        easy benign  : lambda_kl * KL(model||ref)
+        easy benign  : lambda_kl * KL(model||ref)                   (every attended token)
+                     + lambda_kl_head * KL(model||ref)              (first kl_head_tokens answer
+                                                                     tokens only; off by default)
+                     + lambda_benign_perturb * KL(model(x+d)||ref(x))  (same head tokens, with
+                       a random perturbation d of norm benign_radius on the user message: a
+                       perturbed prompt must not mean "refuse"; off by default)
+
+    The full KL averages over up to ~1000 tokens, so the answer's first tokens -- where refusing
+    is decided -- barely register in it; the two head terms weight exactly those.
 
     No away term. Gates are stop-gradient. During warmup (`warming`): rep term off and the
     harmful behavior gate is forced to eps=1 (w_D is meaningless while a cold probe warms)."""
@@ -150,6 +166,26 @@ def _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch,
         kl = utility_kl(u_logits, r_logits, attention_mask=easy_batch["attn"])
         total = total + hp["lambda_kl"] * kl
         logs["kl"] = kl.item()
+
+        lam_head, lam_pert = hp.get("lambda_kl_head", 0.0), hp.get("lambda_benign_perturb", 0.0)
+        if lam_head > 0 or lam_pert > 0:
+            head = _answer_head_mask(easy_batch["labels"], easy_batch["attn"], int(hp.get("kl_head_tokens", 32)))
+        if lam_head > 0:
+            kl_head = utility_kl(u_logits[:, :-1], r_logits[:, :-1], attention_mask=head)
+            total = total + lam_head * kl_head
+            logs["kl_head"] = kl_head.item()
+        if lam_pert > 0:
+            # only the prefix up to the last head position is needed
+            cols = head.any(dim=0).nonzero()
+            width = int(cols.max()) + 2 if cols.numel() else 2
+            emb = model.get_input_embeddings()(u_ids[:, :width])
+            noise = torch.randn_like(emb)
+            noise = noise / noise.norm(dim=-1, keepdim=True).clamp_min(1e-6) * hp["benign_radius"]
+            mask = easy_batch["perturb_mask"][:, :width].unsqueeze(-1).to(emb.dtype)
+            p_logits = model(inputs_embeds=emb + noise * mask, attention_mask=easy_batch["attn"][:, :width]).logits
+            kl_pert = utility_kl(p_logits[:, :-1], r_logits[:, : width - 1], attention_mask=head[:, : width - 1])
+            total = total + lam_pert * kl_pert
+            logs["kl_benign_perturb"] = kl_pert.item()
 
     total.backward()
     opt_model.step()
@@ -360,6 +396,9 @@ def run_coop_training(cfg):
         "tau", "tau_b", "epsilon", "delta",
         "lambda_beh", "lambda_rep", "lambda_kl",
     )}
+    # optional benign terms (absent from older configs -> off)
+    device_hp.update({k: float(container.get(k) or 0.0) for k in ("lambda_kl_head", "lambda_benign_perturb")})
+    device_hp["kl_head_tokens"] = int(container.get("kl_head_tokens") or 32)
 
     model_params = cfg.models[cfg.model]
     template_id = cfg.chat_template_id
@@ -450,6 +489,10 @@ def run_coop_training(cfg):
     layer = int(container["reader"].get("layer", -1)) if container.get("reader") else -1
 
     # attack (Stage B: model-only; Stage C: also detector-aware via attack.use_detector) or None (Stage A)
+    # benign-perturbation radius: per token, like the attack's (eps x mean embedding norm)
+    emb_norm = model.get_input_embeddings().weight.norm(dim=-1).mean().item()
+    device_hp["benign_radius"] = float(container.get("benign_perturb_eps") or cfg.attack.eps) * emb_norm
+
     attack = None
     if cfg.attack.enabled:
         response_key = generation_prefix(tokenizer)

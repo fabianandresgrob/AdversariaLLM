@@ -1,0 +1,15 @@
+# 1%-FPR calibration (2000 held-out alpaca) of the EMA probe in checkpoints_coop/R/R-noprobe-it50-s0-ema (symlinks to the run's
+# ema_adapter / ema_reader.pt), so defense=coop_probe can use it; as gen_eval_experiments.py's calib template.
+entrypoint: run_calibrate_probe.py
+name: calib-{+run}
+time_per_run: 01:30:00
+overrides:
+  +block: R
+  adapter_path: ${root_dir}/checkpoints_coop/${block}/${run}/final_adapter
+  checkpoint_path: ${root_dir}/checkpoints_coop/${block}/${run}/final_reader.pt
+  calibration_window: calib
+artifacts:
+- checkpoints_coop/{+block}/{+run}/threshold_1pct_calib.json
+sweep:
+  +run:
+  - R-noprobe-it50-s0-ema

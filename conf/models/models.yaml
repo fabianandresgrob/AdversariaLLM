@@ -1469,4 +1469,26 @@ M-streamlast-s0:
   trust_remote_code: true
   adapter_path: ${root_dir}/checkpoints_coop/M-streamlast/M-streamlast-s0/final_adapter
   reader_path: ${root_dir}/checkpoints_coop/M-streamlast/M-streamlast-s0/final_reader.pt
+Q-bp-it50-gate0p25-s0-ema:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/Q/Q-bp-it50-gate0.25-s0-ema/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/Q/Q-bp-it50-gate0.25-s0-ema/final_reader.pt
+R-noprobe-it50-s0-ema:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/R/R-noprobe-it50-s0-ema/final_adapter
+  reader_path: ${root_dir}/checkpoints_coop/R/R-noprobe-it50-s0-ema/final_reader.pt
 # <<< generated coop checkpoints <<<

@@ -8,5 +8,5 @@ overrides:
   datasets.jbb_behaviors.idx: list(range(0,20))
 sweep:
   model:
-  - M-respmean-s0
-  - M-streamlast-s0
+  - Q-bp-it50-gate0p25-s0-ema
+  - R-noprobe-it50-s0-ema

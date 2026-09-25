@@ -12,6 +12,5 @@ overrides:
   defense: coop_probe
 sweep:
   model:
-  - M-respmean-s0
-  - M-streamlast-s0
-  - E-nd6-s0
+  - Q-bp-it50-gate0p25-s0-ema
+  - R-noprobe-it50-s0-ema

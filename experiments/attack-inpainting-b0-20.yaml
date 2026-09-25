@@ -9,5 +9,5 @@ overrides:
   attacks.inpainting.num_samples_per_behavior: 128
 sweep:
   model:
-  - M-respmean-s0
-  - M-streamlast-s0
+  - Q-bp-it50-gate0p25-s0-ema
+  - R-noprobe-it50-s0-ema

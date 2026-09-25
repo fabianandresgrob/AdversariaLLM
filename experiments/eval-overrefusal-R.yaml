@@ -1,0 +1,15 @@
+# R runs (checkpoints_coop/R): final and EMA checkpoints, same eval as eval-overrefusal-Q2 (the collapsed delta run is left out).
+entrypoint: run_overrefusal_eval.py
+name: overrefusal-{+run}-{+ckpt}
+time_per_run: 02:00:00
+overrides:
+  +block: R
+  ~checkpoints.base: base
+  +checkpoints.model: ${root_dir}/checkpoints_coop/${block}/${run}/${ckpt}_adapter
+  out: ${root_dir}/outputs/eval/overrefusal/${block}/${run}-${ckpt}
+  judge.enabled: true
+artifacts:
+- outputs/eval/overrefusal/{+block}/{+run}-{+ckpt}/overrefusal.json
+sweep:
+  +run: [R-gate0.1-it50-s0, R-gate0.25-it50-replay-s0, R-noprobe-it50-s0]
+  +ckpt: [final, ema]

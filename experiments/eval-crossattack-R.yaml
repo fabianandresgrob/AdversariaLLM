@@ -1,0 +1,25 @@
+# R runs (checkpoints_coop/R): final and EMA checkpoints, same eval as eval-crossattack-Q2 (the collapsed delta run is left out).
+entrypoint: run_cross_attack_eval.py
+name: xattack-{+run}-{+ckpt}-a{seed}
+time_per_run: "02:00:00"
+overrides:
+  +block: R
+  adapter_path: ${root_dir}/checkpoints_coop/${block}/${run}/${ckpt}_adapter
+  eval_use_detector: [true, false]
+  eval_detector_coeffs: [0.5]
+  attack.iters: 100
+  attack.eps: 0.1
+  attack.target_eot: false
+  attack.perturb: user
+  harmful.val_size: 24
+  harmful.val_targets: 6
+  harmful.batch_size: 16
+  benign.benign_gen_n: 40
+  judge.enabled: true
+  out: ${root_dir}/outputs/eval/cross_attack/${block}/${run}-${ckpt}/seed${seed}
+sweep:
+  +run: [R-gate0.1-it50-s0, R-gate0.25-it50-replay-s0, R-noprobe-it50-s0]
+  +ckpt: [final, ema]
+  seed: [0]
+artifacts:
+  - outputs/eval/cross_attack/{+block}/{+run}-{+ckpt}/seed{seed}/cross_attack_eval.json

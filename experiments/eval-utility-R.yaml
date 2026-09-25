@@ -1,0 +1,13 @@
+# R runs (checkpoints_coop/R): final and EMA checkpoints, same eval as eval-utility-Q2 (the collapsed delta run is left out).
+entrypoint: run_utility_eval.py
+name: utility-{+run}-{+ckpt}
+time_per_run: 02:00:00
+overrides:
+  +block: R
+  adapter_path: ${root_dir}/checkpoints_coop/${block}/${run}/${ckpt}_adapter
+  out: ${root_dir}/outputs/eval/utility/${block}/${run}-${ckpt}
+artifacts:
+- outputs/eval/utility/{+block}/{+run}-{+ckpt}/utility.json
+sweep:
+  +run: [R-gate0.1-it50-s0, R-gate0.25-it50-replay-s0, R-noprobe-it50-s0]
+  +ckpt: [final, ema]

@@ -1,0 +1,16 @@
+# Full xs_test over-refusal (string match + judge) for the final, EMA and step-500 checkpoints of the Q seeds and
+# gate-0.25 runs, as eval-overrefusal-Q; results in overrefusal/Q/<run>-<ckpt>/.
+entrypoint: run_overrefusal_eval.py
+name: overrefusal-{+run}-{+ckpt}
+time_per_run: 02:00:00
+overrides:
+  +block: Q
+  ~checkpoints.base: base
+  +checkpoints.model: ${root_dir}/checkpoints_coop/${block}/${run}/${ckpt}_adapter
+  out: ${root_dir}/outputs/eval/overrefusal/${block}/${run}-${ckpt}
+  judge.enabled: true
+artifacts:
+- outputs/eval/overrefusal/{+block}/{+run}-{+ckpt}/overrefusal.json
+sweep:
+  +run: [Q-bp-s1, Q-bp-s2, Q-bp-it50-s1, Q-bp-it50-s2, Q-bp-it100-gate0.25-s0, Q-bp-it50-gate0.25-s0]
+  +ckpt: [final, ema, step500]

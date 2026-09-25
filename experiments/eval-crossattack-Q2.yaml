@@ -1,0 +1,26 @@
+# The Q seeds and gate-0.25 runs (checkpoints_coop/Q): final, EMA and step-500 checkpoints under the full 100-iteration
+# attack, as eval-crossattack-Q. Results go to cross_attack/Q/<run>-<ckpt>/ (the Q-set results stay at <run>/).
+entrypoint: run_cross_attack_eval.py
+name: xattack-{+run}-{+ckpt}-a{seed}
+time_per_run: "02:00:00"
+overrides:
+  +block: Q
+  adapter_path: ${root_dir}/checkpoints_coop/${block}/${run}/${ckpt}_adapter
+  eval_use_detector: [true, false]
+  eval_detector_coeffs: [0.5]
+  attack.iters: 100
+  attack.eps: 0.1
+  attack.target_eot: false
+  attack.perturb: user
+  harmful.val_size: 24
+  harmful.val_targets: 6
+  harmful.batch_size: 16
+  benign.benign_gen_n: 40
+  judge.enabled: true
+  out: ${root_dir}/outputs/eval/cross_attack/${block}/${run}-${ckpt}/seed${seed}
+sweep:
+  +run: [Q-bp-s1, Q-bp-s2, Q-bp-it50-s1, Q-bp-it50-s2, Q-bp-it100-gate0.25-s0, Q-bp-it50-gate0.25-s0]
+  +ckpt: [final, ema, step500]
+  seed: [0]
+artifacts:
+  - outputs/eval/cross_attack/{+block}/{+run}-{+ckpt}/seed{seed}/cross_attack_eval.json

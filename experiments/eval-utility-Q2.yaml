@@ -1,0 +1,14 @@
+# lm_eval MMLU / ARC-C / GSM8K for the final and EMA checkpoints of the Q seeds and gate-0.25 runs, as
+# eval-utility-Q; results in utility/Q/<run>-<ckpt>/.
+entrypoint: run_utility_eval.py
+name: utility-{+run}-{+ckpt}
+time_per_run: 02:00:00
+overrides:
+  +block: Q
+  adapter_path: ${root_dir}/checkpoints_coop/${block}/${run}/${ckpt}_adapter
+  out: ${root_dir}/outputs/eval/utility/${block}/${run}-${ckpt}
+artifacts:
+- outputs/eval/utility/{+block}/{+run}-{+ckpt}/utility.json
+sweep:
+  +run: [Q-bp-s1, Q-bp-s2, Q-bp-it50-s1, Q-bp-it50-s2, Q-bp-it100-gate0.25-s0, Q-bp-it50-gate0.25-s0]
+  +ckpt: [final, ema]

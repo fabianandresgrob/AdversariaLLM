@@ -1,0 +1,33 @@
+# R: the same recipe without the probe -- the baseline coop has to beat. Refusal CE on every attacked example
+# (gate floor 1), a model-only attack, no representation term; the probe still trains alongside but never touches
+# the model. CAT-like adversarial training in the same code, data, attack and KL/benign-perturbation terms.
+entrypoint: run_coop_train.py
+name: R-noprobe-it{attack.iters}-s{seed}
+time_per_run: "08:00:00"
+overrides:
+  attack.enabled: true
+  attack.perturb: user
+  attack.target_eot: false
+  attack.eps: 0.1
+  training.n_detector_steps: 6
+  training.val_every: 50
+  training.rep_warmup_steps: 0
+  training.benign_gen_n: 40
+  training.ema_decay: 0.995
+  data.kl_source: magpie
+  data.kl_max_length: 1024
+  data.val_size: 24
+  data.val_targets: 6
+  data.val_batch_size: 16
+  lambda_benign_perturb: 1.0
+  output.checkpoint_path: ${root_dir}/checkpoints_coop/R
+  attack.use_detector: false
+  attack.iters: 50
+  training.n_steps: 1000
+  epsilon: 1.0
+  lambda_rep: 0.0
+sweep:
+  seed: [0]
+artifacts:
+  - checkpoints_coop/R/{name}/final_adapter
+  - checkpoints_coop/R/{name}/final_reader.pt

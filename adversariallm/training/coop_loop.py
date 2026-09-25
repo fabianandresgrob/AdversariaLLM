@@ -71,13 +71,25 @@ def _hidden_and_logits(model, layer, *, inputs_embeds=None, input_ids=None, atte
     return out.hidden_states[layer], out.logits
 
 
-def _detector_step(model, reader, opt_det, layer, adv_embeds, adv_batch, easy_batch, device, feature_sink=None):
+def _replay_loss(reader, replay, device):
+    """Detector CE on buffered readout features from recent steps (harmful=0, benign=1): each update
+    then sees a few hundred attacked prompts instead of this step's 4. A probe fit on the same buffer
+    beats the co-trained one by ~10 points of recall -- it lacks data per update, not updates."""
+    r_h, r_b = replay
+    feats = torch.cat([r_h, r_b]).to(device=device, dtype=reader.linear.weight.dtype)
+    labels = torch.cat([torch.zeros(len(r_h)), torch.ones(len(r_b))]).long().to(device)
+    return detector_ce(reader.linear(feats), labels)
+
+
+def _detector_step(model, reader, opt_det, layer, adv_embeds, adv_batch, easy_batch, device, feature_sink=None,
+                   replay=None):
     """One detector update: model frozen, reader trainable. Mixed batch — attacked harmful
     (label 0) plus easy benign (label 1). Diverse benign is what stops the OOD over-firing.
     Model forwards under no_grad so only the reader trains. Label convention: harmful=0, benign=1.
 
     feature_sink: optional dict {"harmful": list, "benign": list}; the step appends its readout
-    features (detached) so validation can fit a fresh probe on many recent training examples."""
+    features (detached) so validation can fit a fresh probe on many recent training examples.
+    replay: optional (harmful, benign) buffered features; adds _replay_loss with equal weight."""
     opt_det.zero_grad(set_to_none=True)
     logits_parts, labels_parts = [], []
 
@@ -101,6 +113,8 @@ def _detector_step(model, reader, opt_det, layer, adv_embeds, adv_batch, easy_ba
     logits = torch.cat(logits_parts, dim=0)
     labels = torch.cat(labels_parts, dim=0)
     loss = detector_ce(logits, labels)
+    if replay is not None:
+        loss = loss + _replay_loss(reader, replay, device)
     loss.backward()
     opt_det.step()
     return loss.item()
@@ -607,6 +621,12 @@ def run_coop_training(cfg):
         if wandb_run is not None:
             wandb_run.log(base, step=0)
 
+    # detector replay: each detector step also trains on the refit buffer (refit_buffer_steps of features); the
+    # fresh-refit recall then reads data the probe trained on and stops being an independent ceiling
+    detector_replay = bool(cfg.training.get("detector_replay", False))
+    if detector_replay and not hasattr(reader, "linear"):
+        raise ValueError("training.detector_replay needs a reader with a linear head over readout features")
+
     # off by default; the EMA pair is saved as ema_adapter / ema_reader.pt (+ ema_step<N>_*)
     ema_decay = cfg.training.get("ema_decay")
     ema = ParamEMA(model_trainable + reader_params, ema_decay) if ema_decay else None
@@ -626,11 +646,13 @@ def run_coop_training(cfg):
         _assert_grad(model_trainable, False, "model(det phase)")
         _assert_grad(reader_params, True, "reader(det phase)")
         sink = {"harmful": [], "benign": []}
+        replay = refit_train() if detector_replay else None  # the refit buffer, before this step's features
+        replay = tuple(t.to(device) for t in replay) if replay is not None else None
         det_losses = [
             _detector_step(
                 model, reader, opt_det, layer, adv_embeds, adv_batch,
                 _to_device(next(easy_benign_iter), device),
-                device, feature_sink=sink if i == 0 else None,
+                device, feature_sink=sink if i == 0 else None, replay=replay,
             )
             for i in range(n_det)
         ]

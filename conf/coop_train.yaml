@@ -86,6 +86,7 @@ training:
   benign_gen_n: 16           # xs_test AND alpaca prompts free-generated for the refusal rates
   val_attack_gen_tokens: 96  # continuation length under the val attack (model/asr_gen)
   refit_buffer_steps: 100    # training steps of features the fresh-refit probe is fit on
+  detector_replay: false     # true: detector steps also train on that buffer (more attacked prompts per update)
   benign_val_max_new_tokens: 32
 
 output:

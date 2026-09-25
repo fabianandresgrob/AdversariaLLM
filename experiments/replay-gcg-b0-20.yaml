@@ -1,0 +1,14 @@
+# Replay the undefended GCG and detector-aware GCG results (attack-gcg*-b0-20) through the full pipeline
+# (defense=coop_probe): same suffixes and completions, now scored against each model's own calibrated probe --
+# what the probe catches. As the earlier ad hoc replay-gcg* runs, as one sweep.
+entrypoint: run_attacks.py
+name: replay-{+src}-{model}-b0-20
+time_per_run: "01:00:00"
+overrides:
+  attack: replay
+  defense: coop_probe
+  dataset: jbb_behaviors
+  attacks.replay.source: ${root_dir}/outputs/${src}__none__${model}
+sweep:
+  +src: [gcg, gcg_adaptive]
+  model: [Q-bp-it50-gate0p25-s0-ema, R-noprobe-it50-s0-ema]

@@ -18,7 +18,7 @@ overrides:
   judge.enabled: true
   out: ${root_dir}/outputs/eval/cross_attack/${block}/${run}-${ckpt}/seed${seed}
 sweep:
-  +run: [R-gate0.1-it50-s0, R-gate0.25-it50-replay-s0, R-noprobe-it50-s0]
+  +run: [R-gate0.1-it50-s0, R-gate0.25-it50-replay-s0, R-noprobe-it50-s0, R-gate0.25-it50-modelonly-s0, R-gate0.25-it100-long-s1]
   +ckpt: [final, ema]
   seed: [0]
 artifacts:

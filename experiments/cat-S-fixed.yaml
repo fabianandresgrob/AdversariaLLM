@@ -1,0 +1,26 @@
+# S: the real CAT baseline (run_train.py, mode=model_cat: away + toward + KL) with the fixed attack, matched to
+# R-noprobe-it50 (user message only, no end-of-turn in the target, eps 0.1, 50 iterations; magpie leash at 1024,
+# batch 4/4, lr 5e-5, LoRA, 1000 steps). The J runs used the old all-token attack at eps 1.0.
+entrypoint: run_train.py
+name: S-cat-{model_objective}-away{lambda_away}-s{seed}
+time_per_run: "05:00:00"
+overrides:
+  attack.perturb: user
+  attack.target_eot: false
+  attack.eps: 0.1
+  attack.iters: 50
+  data.kl_source: magpie
+  data.kl_max_length: 1024
+  training.n_steps: 1000
+  data.harmful_batch_size: 4
+  data.utility_batch_size: 4
+  training.lr: 5.0e-5
+  training.checkpoint_every: 250
+  update_mode: lora
+  output.checkpoint_path: ${root_dir}/checkpoints_cat/S-cat
+  model_objective: ce
+sweep:
+  lambda_away: [0.25, 1.0]
+  seed: [0]
+artifacts:
+  - checkpoints_cat/S-cat/{name}/final_adapter

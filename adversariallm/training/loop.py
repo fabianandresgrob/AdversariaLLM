@@ -300,6 +300,8 @@ def run_training(cfg):
         iters=cfg.attack.iters,
         eps=cfg.attack.eps,
         lr=cfg.attack.lr,
+        target_eot=bool(cfg.attack.get("target_eot", True)),
+        perturb=str(cfg.attack.get("perturb", "all")),
     )
 
     # objective: flatten the keys build_objective expects

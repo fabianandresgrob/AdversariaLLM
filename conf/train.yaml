@@ -28,6 +28,8 @@ attack:
   iters: 100
   eps: 1.0
   lr: 0.01
+  target_eot: true   # false = the end-of-turn token is not part of the attack target (coop_train.yaml's fix)
+  perturb: all       # user = perturb only the user message, not the chat template (coop_train.yaml's fix)
 
 data:
   dir: ${root_dir}/data

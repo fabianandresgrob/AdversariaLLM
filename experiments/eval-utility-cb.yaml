@@ -1,0 +1,9 @@
+# Baseline: lm_eval MMLU / ARC-C / GSM8K of Circuit Breakers (Llama-3-8B-Instruct-RR; the 'base' row is the CB model itself).
+entrypoint: run_utility_eval.py
+name: utility-cb
+time_per_run: 02:00:00
+overrides:
+  model: GraySwanAI/Llama-3-8B-Instruct-RR
+  out: ${root_dir}/outputs/eval/utility/baselines/cb
+artifacts:
+- outputs/eval/utility/baselines/cb/utility.json

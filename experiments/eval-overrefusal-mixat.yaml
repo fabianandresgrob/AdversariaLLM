@@ -1,0 +1,11 @@
+# Baseline: full xs_test over-refusal (string match + judge) of MixAT (LoRA rank 64 on Llama-3.1-8B-Instruct).
+entrypoint: run_overrefusal_eval.py
+name: overrefusal-mixat
+time_per_run: 02:00:00
+overrides:
+  ~checkpoints.base: base
+  +checkpoints.model: ${root_dir}/checkpoints_baselines/mixat-llama31-8b
+  out: ${root_dir}/outputs/eval/overrefusal/baselines/mixat
+  judge.enabled: true
+artifacts:
+- outputs/eval/overrefusal/baselines/mixat/overrefusal.json

@@ -489,6 +489,27 @@ J-ce-away1p0-s0:
   chat_template: llama-3-instruct
   trust_remote_code: true
   adapter_path: ${root_dir}/checkpoints_cat/J-cat/J-ce-away1.0-s0/final_adapter
+# Published defenses as baselines, under names without "/" (run names may not contain it).
+mixat-llama31-8b:  # MixAT (Dekany et al. 2025) LoRA adapter on Llama-3.1-8B-Instruct, from INSAIT-Institute/Llama3.1-8B-MixAT
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_baselines/mixat-llama31-8b
+cb-llama3-8b-rr:  # Circuit Breakers (Zou et al. 2024); only released on Llama-3-8B-Instruct, not 3.1
+  id: GraySwanAI/Llama-3-8B-Instruct-RR
+  tokenizer_id: GraySwanAI/Llama-3-8B-Instruct-RR
+  short_name: Llama
+  developer_name: GraySwanAI
+  compile: False
+  dtype: bfloat16
+  chat_template: null # CB was trained with standard hf chat template, which corresponds none
+  trust_remote_code: True
+
 # >>> generated coop checkpoints (gen_coop_models.py) >>>
 A-eps0p0-s0:
   id: meta-llama/Meta-Llama-3.1-8B-Instruct

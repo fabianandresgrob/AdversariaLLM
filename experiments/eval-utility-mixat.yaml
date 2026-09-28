@@ -1,0 +1,10 @@
+# Baseline: lm_eval MMLU / ARC-C / GSM8K of MixAT (LoRA rank 64 on Llama-3.1-8B-Instruct).
+entrypoint: run_utility_eval.py
+name: utility-mixat
+time_per_run: 02:00:00
+overrides:
+  adapter_path: ${root_dir}/checkpoints_baselines/mixat-llama31-8b
+  vllm.max_lora_rank: 64
+  out: ${root_dir}/outputs/eval/utility/baselines/mixat
+artifacts:
+- outputs/eval/utility/baselines/mixat/utility.json

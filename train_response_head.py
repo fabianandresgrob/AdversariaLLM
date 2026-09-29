@@ -307,11 +307,17 @@ def main(cfg: DictConfig) -> None:
     reader.prompt.load_state_dict(base.state_dict())
     reader.to(device)
 
-    examples = collect_examples(repo, cfg.model, list(cfg.attacks), cfg.defense, cfg.classifier,
-                                float(cfg.pos_threshold), float(cfg.neg_threshold))
-    train, test = split_examples(examples, int(cfg.test_below), list(cfg.train_attacks),
-                                 int(cfg.cap_per_group), int(cfg.seed), cfg.test_dataset)
-    log.info(f"{len(examples)} labelled completions -> train {len(train)}, test {len(test)}")
+    collect = lambda m: collect_examples(repo, m, list(cfg.attacks), cfg.defense, cfg.classifier,  # noqa: E731
+                                         float(cfg.pos_threshold), float(cfg.neg_threshold))
+    split = lambda ex: split_examples(ex, int(cfg.test_below), list(cfg.train_attacks),  # noqa: E731
+                                      int(cfg.cap_per_group), int(cfg.seed), cfg.test_dataset)
+    examples = collect(cfg.model)
+    train, test = split(examples)
+    train_model = cfg.get("train_model") or cfg.model
+    if train_model != cfg.model:  # train on another model's completions, test on this model's own
+        train, _ = split(collect(train_model))
+    log.info(f"{len(examples)} labelled completions of {cfg.model} -> test {len(test)}; "
+             f"train {len(train)} from {train_model}")
     if not train or not test:
         raise RuntimeError("empty train or test split -- check model/attacks/defense")
 

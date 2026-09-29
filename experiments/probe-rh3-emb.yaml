@@ -1,0 +1,15 @@
+# RH3: an answer channel for the stabilized models' own probes (DualProbe: prompt channel = the model's co-trained
+# probe, frozen; answer channel trained offline). Trained on the embedding attack's completions only (pgd on HarmBench), RH2-E-nd6-emb's recipe, taken from E-nd6-s0's attack runs (train_model) --
+# the new models only have completions on the held-out JBB 0-19 -- with features from the model itself. Tested on the
+# model's own inpainting / PAIR / GCG completions on JBB 0-19, at 1% combined false positives on its alpaca answers.
+entrypoint: train_response_head.py
+name: RH3-{model}-emb
+time_per_run: "02:00:00"
+overrides:
+  train_model: E-nd6-s0
+  train_attacks: [pgd]
+  out_dir: ${root_dir}/checkpoints_probe/RH3/${name}
+sweep:
+  model: [Q-bp-it50-gate0p25-s0-ema, R-noprobe-it50-s0-ema]
+artifacts:
+  - checkpoints_probe/RH3/{name}/final_reader.pt

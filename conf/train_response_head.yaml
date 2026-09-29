@@ -16,6 +16,9 @@ layer: -1
 
 attacks: [inpainting, pair, gcg, pgd]  # read from outputs/; those run on test behaviors are evaluated
 train_attacks: ${attacks}          # subset that trains the head (leave one out to test transfer)
+train_model: null                  # take the training completions from this models.yaml entry's attack runs
+                                   # (its features still come from `model`); null = model's own. The test
+                                   # set is always `model`'s own completions on the held-out behaviors.
 defense: none                      # the raw model's completions
 classifier: strong_reject
 pos_threshold: 0.5                 # hit: the ASR threshold

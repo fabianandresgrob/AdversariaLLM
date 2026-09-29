@@ -1,0 +1,18 @@
+# CAT following Leo's recipe (cat-T-leo-*, conf/cat_recipe/leo.yaml): lm_eval MMLU / ARC-C / GSM8K.
+entrypoint: run_utility_eval.py
+name: utility-{+run}
+time_per_run: 02:00:00
+overrides:
+  +block: T-cat
+  adapter_path: ${root_dir}/checkpoints_cat/${block}/${run}/final_adapter
+  vllm.max_lora_rank: 64          # the recipe's LoRA is rank 64
+  out: ${root_dir}/outputs/eval/utility/${block}/${run}
+artifacts:
+- outputs/eval/utility/{+block}/{+run}/utility.json
+sweep:
+  +run:
+  - T-cat-leo-s0
+  - T-cat-leo-coopattack-s0
+  - T-cat-leo-magpie-s0
+  - T-cat-leo-magpie-coopattack-s0
+  - T-cat-leo-magpie-kl-coopattack-s0

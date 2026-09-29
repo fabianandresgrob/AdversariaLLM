@@ -509,6 +509,16 @@ S-cat-ce-away1p0-s0:
   chat_template: llama-3-instruct
   trust_remote_code: true
   adapter_path: ${root_dir}/checkpoints_cat/S-cat/S-cat-ce-away1.0-s0/final_adapter
+T-cat-leo-s0 T-cat-leo-coopattack-s0 T-cat-leo-magpie-s0 T-cat-leo-magpie-coopattack-s0 T-cat-leo-magpie-kl-coopattack-s0:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_cat/T-cat/T-cat-leo-s0 T-cat-leo-coopattack-s0 T-cat-leo-magpie-s0 T-cat-leo-magpie-coopattack-s0 T-cat-leo-magpie-kl-coopattack-s0/final_adapter
 # Published defenses as baselines, under names without "/" (run names may not contain it).
 mixat-llama31-8b:  # MixAT (Dekany et al. 2025) LoRA adapter on Llama-3.1-8B-Instruct, from INSAIT-Institute/Llama3.1-8B-MixAT
   id: meta-llama/Meta-Llama-3.1-8B-Instruct

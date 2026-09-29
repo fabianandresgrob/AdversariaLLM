@@ -8,5 +8,8 @@ overrides:
   datasets.jbb_behaviors.idx: list(range(0,20))
 sweep:
   model:
-  - S-cat-ce-away0p25-s0
-  - S-cat-ce-away1p0-s0
+  - T-cat-leo-s0
+  - T-cat-leo-coopattack-s0
+  - T-cat-leo-magpie-s0
+  - T-cat-leo-magpie-coopattack-s0
+  - T-cat-leo-magpie-kl-coopattack-s0

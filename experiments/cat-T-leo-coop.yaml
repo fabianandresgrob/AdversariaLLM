@@ -1,0 +1,16 @@
+# T: CAT following Leo's recipe (conf/cat_recipe/leo.yaml), coop's training attack (eps 0.1, 50 Adam steps, lr 0.01) instead of Leo's, for the direct comparison.
+entrypoint: run_train.py
+name: T-cat-leo-coopattack-s{seed}
+time_per_run: "08:00:00"
+overrides:
+  +cat_recipe: leo
+  attack.eps: 0.1
+  attack.iters: 50
+  attack.lr: 0.01
+  attack.optimizer: adam
+  training.checkpoint_every: 50
+  output.checkpoint_path: ${root_dir}/checkpoints_cat/T-cat
+sweep:
+  seed: [0]
+artifacts:
+  - checkpoints_cat/T-cat/{name}/final_adapter

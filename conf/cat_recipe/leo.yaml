@@ -1,0 +1,46 @@
+# @package _global_
+# CAT as in Xhonneux, Sordoni, Guennemann, Gidel, Schwinn (NeurIPS 2024), Llama-2-7B column of their hyperparameter
+# table (Llama-3.1 is not in it), with the two attack bugs fixed (user message only, no end-of-turn in the target).
+# Select with +cat_recipe=leo on run_train.py. Deviations: bf16 LoRA instead of 4-bit QLoRA in fp16 (bitsandbytes
+# is not in the env), UltraChat from stingning/ultrachat (first turn) instead of ultrachat_200k, and 24 held-out
+# behaviors (matching coop's eval split) instead of training on all 100.
+model_objective: ce          # away loss: -CE with the away cutoff
+away_cutoff: -7.5
+toward_cutoff: 0.5
+lambda_away: 0.5
+lambda_toward: 0.5
+utility_objective: sft       # utility: next-token CE on UltraChat, weight 1 (no KL leash)
+lambda_utility: 1.0
+
+lora:
+  r: 64
+  alpha: 16
+  dropout: 0.1
+
+attack:
+  iters: 10
+  eps: 0.05
+  lr: 1.0e-4
+  optimizer: sign
+  relative_lr: false
+  target_eot: false
+  perturb: user
+
+data:
+  kl_source: ultrachat
+  utility_fraction: 0.1      # ~150k rows; the 2 epochs draw ~13k
+  kl_max_length: 256         # max sequence length 256
+  harmful_batch_size: 1      # 1 harmful + 7 utility per micro-batch, 8 micro-batches: 64 with a 7:1 ratio
+  utility_batch_size: 7
+  val_size: 24
+
+training:
+  lr: 2.0e-4
+  n_epochs: 2
+  grad_accum: 8
+  optimizer: adamw
+  weight_decay: 0.001
+  lr_schedule: cosine
+  warmup_ratio: 0.03
+  max_grad_norm: 0.3
+  val_every: 25

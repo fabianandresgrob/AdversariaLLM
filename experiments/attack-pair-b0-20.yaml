@@ -11,5 +11,5 @@ overrides:
   attacks.pair.judge_model.tokenizer_id: lmsys/vicuna-13b-v1.5
 sweep:
   model:
-  - mixat-llama31-8b
-  - cb-llama3-8b-rr
+  - S-cat-ce-away0p25-s0
+  - S-cat-ce-away1p0-s0

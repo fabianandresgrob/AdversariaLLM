@@ -1,0 +1,16 @@
+# CAT with the fixed attack (cat-S-fixed): full xs_test over-refusal (string match + judge), as eval-overrefusal-J-cat.
+entrypoint: run_overrefusal_eval.py
+name: overrefusal-{+run}
+time_per_run: 02:00:00
+overrides:
+  +block: S-cat
+  ~checkpoints.base: base
+  +checkpoints.model: ${root_dir}/checkpoints_cat/${block}/${run}/final_adapter
+  out: ${root_dir}/outputs/eval/overrefusal/${block}/${run}
+  judge.enabled: true
+artifacts:
+- outputs/eval/overrefusal/{+block}/{+run}/overrefusal.json
+sweep:
+  +run:
+  - S-cat-ce-away0.25-s0
+  - S-cat-ce-away1.0-s0

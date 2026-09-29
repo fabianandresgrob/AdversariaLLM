@@ -1,0 +1,14 @@
+# CAT with the fixed attack (cat-S-fixed): lm_eval MMLU / ARC-C / GSM8K, as eval-utility-J-cat.
+entrypoint: run_utility_eval.py
+name: utility-{+run}
+time_per_run: 02:00:00
+overrides:
+  +block: S-cat
+  adapter_path: ${root_dir}/checkpoints_cat/${block}/${run}/final_adapter
+  out: ${root_dir}/outputs/eval/utility/${block}/${run}
+artifacts:
+- outputs/eval/utility/{+block}/{+run}/utility.json
+sweep:
+  +run:
+  - S-cat-ce-away0.25-s0
+  - S-cat-ce-away1.0-s0

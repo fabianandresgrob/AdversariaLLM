@@ -94,3 +94,27 @@ def test_polluting_attack_stub_actually_pollutes():
     adv_batch = {"h_attn": torch.ones(2, 3, dtype=torch.long)}
     _PollutingAttack(torch.randn(2, 3, 4)).attack(model, adv_batch)
     assert any(p.grad is not None and p.grad.abs().sum() > 0 for p in model.parameters())
+
+
+def test_accumulated_micro_steps_average_the_objective_and_keep_earlier_grads():
+    """Two micro-steps at scale 1/2 must leave the mean of their objective gradients: the second
+    step's attack may neither add its own gradients nor wipe the first step's."""
+    torch.manual_seed(0)
+    model = _TinyLM()
+    B, T = 2, 3
+    batches = [{"h_attn": torch.ones(B, T, dtype=torch.long), "h_labels": torch.tensor([[-100, 1, 2], [-100, 3, 4]])},
+               {"h_attn": torch.ones(B, T, dtype=torch.long), "h_labels": torch.tensor([[-100, 5, 6], [-100, 0, 1]])}]
+    embeds = [torch.randn(B, T, 4), torch.randn(B, T, 4)]
+    objective = Objective(active_terms={"away"}, away_variant="ce", lambda_away=1.0)
+    for e, b in zip(embeds, batches):
+        train_step(model, ref=None, attack=_PollutingAttack(e), objective=objective, adv_batch=b, util_batch=None,
+                   scale=0.5)
+    actual = _grads(model)
+
+    model.zero_grad(set_to_none=True)
+    for e, b in zip(embeds, batches):
+        logits = model(inputs_embeds=e, attention_mask=b["h_attn"]).logits
+        (0.5 * away_from_harmful(logits[:, :-1], b["h_labels"][:, 1:], variant="ce")).backward()
+    expected = _grads(model)
+    for name in expected:
+        assert torch.allclose(actual[name], expected[name], atol=1e-6), name

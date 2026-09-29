@@ -23,3 +23,10 @@ def test_ipo_objective_drops_away_toward():
 def test_kl_can_be_disabled():
     obj = build_objective({"model_objective": "ce", "lambda_kl": 0.0})
     assert "kl" not in obj.active_terms
+
+
+def test_sft_utility_replaces_the_kl_term_and_cutoffs_pass_through():
+    obj = build_objective({"model_objective": "ce", "utility_objective": "sft", "lambda_utility": 1.0,
+                           "away_cutoff": -7.5, "toward_cutoff": 0.5})
+    assert obj.active_terms == {"away", "toward", "sft"}
+    assert (obj.away_cutoff, obj.toward_cutoff) == (-7.5, 0.5)

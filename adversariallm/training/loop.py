@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 from dataclasses import dataclass
 
@@ -17,21 +18,35 @@ class Objective:
     lambda_toward: float = 1.0
     lambda_kl: float = 1.0
     beta: float = 0.1
+    away_cutoff: float | None = None
+    toward_cutoff: float | None = None
+    lambda_utility: float = 1.0
 
 
 def build_objective(cfg: dict) -> Objective:
+    """utility_objective picks the benign term: "kl" (KL leash to the reference, weight lambda_kl) or
+    "sft" (plain next-token CE on the utility data, weight lambda_utility, as in CAT)."""
     mode = cfg.get("model_objective", "ce")
-    kl = {"kl"} if cfg.get("lambda_kl", 1.0) else set()
+    utility = cfg.get("utility_objective", "kl")
+    if utility == "kl":
+        util = {"kl"} if cfg.get("lambda_kl", 1.0) else set()
+    elif utility == "sft":
+        util = {"sft"} if cfg.get("lambda_utility", 1.0) else set()
+    else:
+        raise ValueError(f"unknown utility_objective: {utility}")
+    common = dict(lambda_kl=cfg.get("lambda_kl", 1.0), lambda_utility=cfg.get("lambda_utility", 1.0))
     if mode in ("ce", "ul"):
         return Objective(
-            active_terms={"away", "toward"} | kl,
+            active_terms={"away", "toward"} | util,
             away_variant=mode,
             lambda_away=cfg.get("lambda_away", 1.0),
             lambda_toward=cfg.get("lambda_toward", 1.0),
-            lambda_kl=cfg.get("lambda_kl", 1.0),
+            away_cutoff=cfg.get("away_cutoff"),
+            toward_cutoff=cfg.get("toward_cutoff"),
+            **common,
         )
     if mode == "ipo":
-        return Objective(active_terms={"ipo"} | kl, beta=cfg.get("beta", 0.1), lambda_kl=cfg.get("lambda_kl", 1.0))
+        return Objective(active_terms={"ipo"} | util, beta=cfg.get("beta", 0.1), **common)
     raise ValueError(f"unknown model_objective: {mode}")
 
 
@@ -108,8 +123,9 @@ def _benign_under_adv_prompt(model, adv_embeds, adv_batch):
     return embeds, attn, labels
 
 
-def train_step(model, ref, attack, objective, adv_batch, util_batch):
-    """One model-CAT step. Populates .grad; the caller steps the optimizer.
+def train_step(model, ref, attack, objective, adv_batch, util_batch, scale=1.0):
+    """One model-CAT step. Populates .grad; the caller steps the optimizer. scale multiplies every
+    term's gradient (1 / grad_accum when several micro-batches make one optimizer step).
 
     Each active loss term is backpropagated the moment it is computed, freeing its
     graph before the next term runs. Grads accumulate in .grad, so this is identical
@@ -121,19 +137,25 @@ def train_step(model, ref, attack, objective, adv_batch, util_batch):
 
     def _backward(term, weight, name):
         nonlocal total
-        (weight * term).backward()
+        (scale * weight * term).backward()
         logs[name] = term.item()
         total += weight * logs[name]
 
     # The attack optimizes its perturbation by backward()ing through the model, which
-    # accumulates into the model's parameters; those grads must not reach opt.step().
+    # accumulates into the model's parameters; those grads must not reach opt.step(). Earlier
+    # micro-batches' grads (gradient accumulation) are set aside meanwhile and put back.
+    kept = [(p, p.grad) for p in model.parameters()]
+    for p, _ in kept:
+        p.grad = None
     adv_embeds = attack.attack(model, adv_batch, detector=None, use_detector=False)
-    model.zero_grad(set_to_none=True)
+    for p, g in kept:
+        p.grad = g
 
     if "away" in objective.active_terms:
         logits_h = model(inputs_embeds=adv_embeds, attention_mask=adv_batch["h_attn"]).logits
         _backward(
-            away_from_harmful(logits_h[:, :-1], adv_batch["h_labels"][:, 1:], variant=objective.away_variant),
+            away_from_harmful(logits_h[:, :-1], adv_batch["h_labels"][:, 1:], variant=objective.away_variant,
+                              cutoff=objective.away_cutoff),
             objective.lambda_away,
             "away",
         )
@@ -142,7 +164,8 @@ def train_step(model, ref, attack, objective, adv_batch, util_batch):
         # benign continuation under the SAME adversarial prompt
         be, b_attn, b_labels = _benign_under_adv_prompt(model, adv_embeds, adv_batch)
         logits_b = model(inputs_embeds=be, attention_mask=b_attn).logits
-        _backward(toward_benign(logits_b[:, :-1], b_labels[:, 1:]), objective.lambda_toward, "toward")
+        _backward(toward_benign(logits_b[:, :-1], b_labels[:, 1:], cutoff=objective.toward_cutoff),
+                  objective.lambda_toward, "toward")
 
     if "ipo" in objective.active_terms:
         # sequence log-probs of benign(chosen)/harmful(rejected) under model and
@@ -165,6 +188,10 @@ def train_step(model, ref, attack, objective, adv_batch, util_batch):
         u_logits = model(input_ids=u_ids, attention_mask=util_batch["attn"]).logits
         r_logits = ref.logits(inputs_embeds=model.get_input_embeddings()(u_ids), attention_mask=util_batch["attn"])
         _backward(utility_kl(u_logits, r_logits, attention_mask=util_batch["attn"]), objective.lambda_kl, "kl")
+
+    if "sft" in objective.active_terms:
+        u_logits = model(input_ids=util_batch["input_ids"], attention_mask=util_batch["attn"]).logits
+        _backward(toward_benign(u_logits[:, :-1], util_batch["labels"][:, 1:]), objective.lambda_utility, "sft")
 
     logs["total"] = total
     return logs
@@ -233,6 +260,7 @@ def run_training(cfg):
     _seed_everything(int(cfg.get("seed", 0)))  # LoRA init + loader shuffles, so a CAT seed sweep is real
 
     update_mode = cfg.update_mode
+    lora_cfg = cfg.get("lora") or {}
     if update_mode == "lora":
         import peft
         from peft import LoraConfig
@@ -240,8 +268,8 @@ def run_training(cfg):
         model = peft.get_peft_model(
             model,
             LoraConfig(
-                r=8,
-                lora_alpha=32,
+                r=int(lora_cfg.get("r", 8)),
+                lora_alpha=int(lora_cfg.get("alpha", 32)),
                 target_modules=[
                     "q_proj",
                     "k_proj",
@@ -251,7 +279,7 @@ def run_training(cfg):
                     "up_proj",
                     "down_proj",
                 ],
-                lora_dropout=0.05,
+                lora_dropout=float(lora_cfg.get("dropout", 0.05)),
                 task_type="CAUSAL_LM",
             ),
         )
@@ -302,6 +330,8 @@ def run_training(cfg):
         lr=cfg.attack.lr,
         target_eot=bool(cfg.attack.get("target_eot", True)),
         perturb=str(cfg.attack.get("perturb", "all")),
+        optimizer=str(cfg.attack.get("optimizer", "adam")),
+        relative_lr=bool(cfg.attack.get("relative_lr", False)),
     )
 
     # objective: flatten the keys build_objective expects
@@ -312,11 +342,30 @@ def run_training(cfg):
             "lambda_toward": container.get("lambda_toward", 1.0),
             "lambda_kl": container.get("lambda_kl", 1.0),
             "beta": container.get("beta", 0.1),
+            "away_cutoff": container.get("away_cutoff"),
+            "toward_cutoff": container.get("toward_cutoff"),
+            "utility_objective": container.get("utility_objective", "kl"),
+            "lambda_utility": container.get("lambda_utility", 1.0),
         }
     )
 
     trainable = [p for p in model.parameters() if p.requires_grad]
-    opt = torch.optim.Adam(trainable, lr=cfg.training.lr)
+    tr = cfg.training
+    accum = int(tr.get("grad_accum", 1))
+    n_steps = int(tr.n_steps)
+    if tr.get("n_epochs"):  # CAT counts epochs over the harmful rows; one step = harmful_batch_size * accum rows
+        n_steps = math.ceil(float(tr.n_epochs) * len(adv_train_ds) / (cfg.data.harmful_batch_size * accum))
+        log.info(f"{tr.n_epochs} epochs over {len(adv_train_ds)} harmful rows -> {n_steps} optimizer steps")
+    if tr.get("optimizer", "adam") == "adamw":
+        opt = torch.optim.AdamW(trainable, lr=tr.lr, weight_decay=float(tr.get("weight_decay", 0.0)))
+    else:
+        opt = torch.optim.Adam(trainable, lr=tr.lr)
+    sched = None
+    if tr.get("lr_schedule", "constant") == "cosine":
+        from transformers import get_cosine_schedule_with_warmup
+
+        sched = get_cosine_schedule_with_warmup(opt, math.ceil(float(tr.get("warmup_ratio", 0.0)) * n_steps), n_steps)
+    max_grad_norm = tr.get("max_grad_norm")
 
     adv_iter = _cycle(adv_loader)
     util_iter = _cycle(util_loader)
@@ -335,12 +384,17 @@ def run_training(cfg):
 
     best_val = float("inf")
     model.train()
-    for step in range(cfg.training.n_steps):
-        adv_batch = _to_device(next(adv_iter), device)
-        util_batch = _to_device(next(util_iter), device)
-
-        logs = train_step(model, ref, attack, objective, adv_batch, util_batch)
+    for step in range(n_steps):
+        micro = [train_step(model, ref, attack, objective, _to_device(next(adv_iter), device),
+                            _to_device(next(util_iter), device), scale=1.0 / accum)
+                 for _ in range(accum)]
+        logs = {k: sum(m[k] for m in micro) / accum for k in micro[0]}
+        if max_grad_norm:
+            logs["grad_norm"] = torch.nn.utils.clip_grad_norm_(trainable, float(max_grad_norm)).item()
         opt.step()
+        if sched is not None:
+            sched.step()
+            logs["lr"] = sched.get_last_lr()[0]
         opt.zero_grad()
 
         log.info(f"[step {step}] " + " ".join(f"{k}={v:.4f}" for k, v in logs.items()))
@@ -370,7 +424,7 @@ def run_training(cfg):
         if checkpoint_every and (step + 1) % checkpoint_every == 0:
             _save_checkpoint(model, container, step, out_dir, update_mode, tag=f"step{step + 1}")
 
-    _save_checkpoint(model, container, cfg.training.n_steps, out_dir, update_mode, tag="final")
+    _save_checkpoint(model, container, n_steps, out_dir, update_mode, tag="final")
     if wandb_run is not None:
         wandb_run.finish()
     return out_dir

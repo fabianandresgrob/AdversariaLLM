@@ -13,27 +13,40 @@ def _token_ce(logits: torch.Tensor, targets: torch.Tensor, ignore_index: int = -
     )
 
 
-def toward_benign(logits: torch.Tensor, targets: torch.Tensor, ignore_index: int = -100) -> torch.Tensor:
-    """Standard CE: minimizing makes y_benign more likely."""
-    return _token_ce(logits, targets, ignore_index)
+def soft_floor(loss: torch.Tensor, cutoff: float | None) -> torch.Tensor:
+    """CAT's loss cutoff (Xhonneux et al. 2024): below `cutoff` the loss is replaced by
+    cutoff + 0.001 * loss, so it keeps a thousandth of its gradient. None = no cutoff."""
+    if cutoff is None:
+        return loss
+    return torch.where(loss < cutoff, cutoff + 1e-3 * loss, loss)
+
+
+def toward_benign(logits: torch.Tensor, targets: torch.Tensor, ignore_index: int = -100,
+                  cutoff: float | None = None) -> torch.Tensor:
+    """Standard CE: minimizing makes y_benign more likely. cutoff: CAT's toward cutoff (0.5)."""
+    return soft_floor(_token_ce(logits, targets, ignore_index), cutoff)
 
 
 def away_from_harmful(
-    logits: torch.Tensor, targets: torch.Tensor, variant: str = "ce", ignore_index: int = -100, eps: float = 1e-6
+    logits: torch.Tensor, targets: torch.Tensor, variant: str = "ce", ignore_index: int = -100, eps: float = 1e-6,
+    cutoff: float | None = None,
 ) -> torch.Tensor:
     """Push the model away from y_harmful.
-    variant="ce": -CE (unbounded gradient ascent).
-    variant="ul": unlikelihood -mean(log(1 - p(target))) (bounded)."""
+    variant="ce": -CE (unbounded gradient ascent unless cut off).
+    variant="ul": unlikelihood -mean(log(1 - p(target))) (bounded).
+    cutoff (CAT's away cutoff, e.g. -5): for "ce" the soft floor on -CE; for "ul" tokens whose
+    log p(target) is already below it drop out of the loss (still counted in the mean), as in CAT."""
     if variant == "ce":
-        return -_token_ce(logits, targets, ignore_index)
+        return soft_floor(-_token_ce(logits, targets, ignore_index), cutoff)
     if variant == "ul":
         logp = F.log_softmax(logits, dim=-1)
         mask = targets != ignore_index
         # Clamp before gather: ignore_index (-100) is not a valid vocab index and
         # would be an out-of-bounds gather. mask zeroes those positions afterwards.
-        p_target = logp.gather(-1, targets.clamp_min(0).unsqueeze(-1)).squeeze(-1).exp()  # (B,T)
-        ul = -torch.log((1.0 - p_target).clamp_min(eps))
-        ul = (ul * mask).sum() / mask.sum().clamp_min(1)
+        logp_target = logp.gather(-1, targets.clamp_min(0).unsqueeze(-1)).squeeze(-1)  # (B,T)
+        ul = -torch.log((1.0 - logp_target.exp()).clamp_min(eps))
+        keep = mask if cutoff is None else mask & (logp_target >= cutoff)
+        ul = (ul * keep).sum() / mask.sum().clamp_min(1)
         return ul
     raise ValueError(f"unknown away variant: {variant}")
 

@@ -73,3 +73,39 @@ def test_ipo_matches_formula():
     expected = ((h - 1.0 / (2 * beta)) ** 2).mean()
     out = ipo_preference(pi_c, pi_r, ref_c, ref_r, beta=beta)
     assert torch.allclose(out, expected, atol=1e-6)
+
+
+def test_cat_cutoff_keeps_a_thousandth_of_the_loss_below_it():
+    from adversariallm.training.losses import soft_floor
+
+    loss = torch.tensor([-7.0, -3.0], requires_grad=True)
+    out = soft_floor(loss, -5.0)
+    assert torch.allclose(out, torch.tensor([-5.0 - 0.007, -3.0]))
+    out.sum().backward()
+    assert torch.allclose(loss.grad, torch.tensor([1e-3, 1.0]))
+    assert soft_floor(loss, None) is loss
+
+
+def test_away_ce_cutoff_flattens_once_the_harmful_target_is_unlikely():
+    logits = torch.zeros(1, 2, 5)
+    logits[0, :, 0] = -20.0  # target token 0 is very unlikely: CE is about 21
+    targets = torch.tensor([[0, 0]])
+    plain = away_from_harmful(logits, targets, variant="ce")
+    cut = away_from_harmful(logits, targets, variant="ce", cutoff=-5.0)
+    assert plain < -5.0 and torch.isclose(cut, -5.0 + 1e-3 * plain)
+
+
+def test_away_ul_cutoff_drops_tokens_that_are_already_unlikely():
+    logits = torch.zeros(1, 2, 5)
+    logits[0, 0, 0] = -20.0  # position 0: target already unlikely; position 1: p = 0.2
+    targets = torch.tensor([[0, 0]])
+    cut = away_from_harmful(logits, targets, variant="ul", cutoff=-5.0)
+    only_second = -torch.log(torch.tensor(1 - 0.2)) / 2  # mean still over both tokens, as in CAT
+    assert torch.isclose(cut, only_second, atol=1e-5)
+
+
+def test_toward_cutoff_stops_pushing_below_it():
+    logits = torch.zeros(1, 1, 5)
+    logits[0, 0, 1] = 20.0  # target 1 almost certain: CE about 0
+    targets = torch.tensor([[1]])
+    assert toward_benign(logits, targets, cutoff=0.5) > 0.49

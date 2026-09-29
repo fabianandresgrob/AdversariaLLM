@@ -23,6 +23,16 @@ lambda_away: 1.0
 lambda_toward: 1.0
 lambda_kl: 1.0
 beta: 0.1
+# CAT's loss cutoffs (Xhonneux et al. 2024: away -5, Llama-2 -7.5; toward 0.5); null = off
+away_cutoff: null
+toward_cutoff: null
+utility_objective: kl      # kl = KL leash to the reference (lambda_kl) | sft = next-token CE on the utility data (CAT)
+lambda_utility: 1.0        # weight of the sft utility term
+
+lora:                      # LoRA on all attention and MLP projections (CAT: r 64, alpha 16, dropout 0.1)
+  r: 8
+  alpha: 32
+  dropout: 0.05
 
 attack:
   iters: 100
@@ -30,6 +40,8 @@ attack:
   lr: 0.01
   target_eot: true   # false = the end-of-turn token is not part of the attack target (coop_train.yaml's fix)
   perturb: all       # user = perturb only the user message, not the chat template (coop_train.yaml's fix)
+  optimizer: adam    # adam | sign (CAT's SignSGD)
+  relative_lr: false # true: lr is scaled by eps x the mean embedding norm
 
 data:
   dir: ${root_dir}/data
@@ -50,6 +62,13 @@ data:
 training:
   lr: 5.0e-5
   n_steps: 450
+  n_epochs: null           # set: n_steps = epochs over the harmful train rows / (harmful_batch_size x grad_accum)
+  grad_accum: 1            # micro-batches per optimizer step (CAT: 8 x (1 harmful + 7 utility) = 64)
+  optimizer: adam          # adam | adamw
+  weight_decay: 0.0
+  lr_schedule: constant    # constant | cosine (with warmup_ratio of the steps as linear warmup)
+  warmup_ratio: 0.0
+  max_grad_norm: null      # gradient clipping (CAT: 0.3)
   val_every: 25
   # Optional diagnostics (both off by default; enable to hunt the robustness/utility tradeoff):
   checkpoint_every: 0             # >0: also save a step-tagged checkpoint every N steps

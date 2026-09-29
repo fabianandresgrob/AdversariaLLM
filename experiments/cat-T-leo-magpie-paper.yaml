@@ -1,0 +1,13 @@
+# T: CAT following Leo's recipe (conf/cat_recipe/leo.yaml) with the SFT utility data from Magpie (coop's leash source) instead of UltraChat, Leo's own attack (eps 0.05, 10 sign steps of 1e-4) with the bugs fixed.
+entrypoint: run_train.py
+name: T-cat-leo-magpie-s{seed}
+time_per_run: "08:00:00"
+overrides:
+  +cat_recipe: leo
+  data.kl_source: magpie
+  training.checkpoint_every: 50
+  output.checkpoint_path: ${root_dir}/checkpoints_cat/T-cat
+sweep:
+  seed: [0]
+artifacts:
+  - checkpoints_cat/T-cat/{name}/final_adapter

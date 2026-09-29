@@ -1,0 +1,19 @@
+# T: CAT following Leo's recipe (conf/cat_recipe/leo.yaml) with coop's training attack, but coop's KL leash (KL to the base model on Magpie, 256 tokens, lambda_kl 1) instead of SFT as the utility term. Same as T-cat-leo-magpie-coopattack except SFT vs KL.
+entrypoint: run_train.py
+name: T-cat-leo-magpie-kl-coopattack-s{seed}
+time_per_run: "08:00:00"
+overrides:
+  +cat_recipe: leo
+  data.kl_source: magpie
+  utility_objective: kl
+  lambda_kl: 1.0
+  attack.eps: 0.1
+  attack.iters: 50
+  attack.lr: 0.01
+  attack.optimizer: adam
+  training.checkpoint_every: 50
+  output.checkpoint_path: ${root_dir}/checkpoints_cat/T-cat
+sweep:
+  seed: [0]
+artifacts:
+  - checkpoints_cat/T-cat/{name}/final_adapter

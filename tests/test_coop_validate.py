@@ -58,3 +58,37 @@ def test_head_kl_equals_the_masked_full_kl():
     head = torch.tensor([[False, True, True, False, False], [False, False, True, False, False]])
     assert torch.allclose(_head_kl(m, r, head), utility_kl(m, r, attention_mask=head), atol=1e-6)
     assert _head_kl(m, r, torch.zeros_like(head)).item() == 0.0
+
+
+def test_score_answers_marks_only_the_generated_tokens_and_caps_them():
+    from types import SimpleNamespace
+
+    from adversariallm.training.coop_loop import _score_answers
+
+    class Model(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.emb = torch.nn.Embedding(50, 3)
+
+        def get_input_embeddings(self):
+            return self.emb
+
+        def forward(self, inputs_embeds=None, input_ids=None, attention_mask=None, output_hidden_states=False):
+            return SimpleNamespace(hidden_states=[inputs_embeds], logits=None)
+
+    class Tok:
+        def __call__(self, text, add_special_tokens=False, return_tensors=None):
+            return {"input_ids": torch.tensor([[10 + i for i in range(len(text))]])}
+
+    seen = []
+
+    class Reader:
+        def p_harmful(self, hidden, target_ids, attn):
+            seen.append((hidden.shape[1], target_ids[0].tolist()))
+            return torch.tensor([0.7])
+
+    prefix = torch.zeros(3, 3)
+    scores = _score_answers(Model(), Reader(), 0, [prefix, prefix], ["ab", "abcdef"], Tok(), max_tokens=4)
+    assert scores == [0.7, 0.7]
+    assert seen[0] == (5, [0, 0, 0, 10, 11])          # prompt positions 0, answer tokens marked
+    assert seen[1] == (7, [0, 0, 0, 10, 11, 12, 13])  # capped at 4 answer tokens

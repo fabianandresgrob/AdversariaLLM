@@ -198,7 +198,9 @@ def transfer_columns(attacks: pd.DataFrame, model: str | None) -> dict:
         if attack not in TRANSFER_ATTACKS:
             continue
         preferred = cells[cells["protocol"].str.contains(PREFERRED_PROTOCOL.get(attack, ""), regex=False)]
-        cell = (preferred if len(preferred) else cells).sort_values("n_behaviors").iloc[0]
+        # the current protocol where it exists, else the most complete cell (never a small smoke test)
+        cell = preferred.sort_values("n_behaviors").iloc[0] if len(preferred) else \
+            cells.sort_values("n_behaviors").iloc[-1]
         out[f"{attack}_asr128" + ("" if defense == "none" else f"_{defense}")] = cell["asr_at_128"]
         counts.add(int(cell["n_behaviors"]))
     if counts:

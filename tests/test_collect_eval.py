@@ -177,3 +177,17 @@ def test_checkpoint_variants_judged_transfer_and_baseline_rows(tmp_path):
     assert pd.isna(df.loc[("Q-a0.25-s0", "step500")].get("pair_asr128"))
     mixat = df.loc[("mixat", "-")]
     assert (mixat.kind, mixat.model, mixat.pair_asr128) == ("baseline", "mixat-llama31-8b", 1.0)
+
+
+def test_cat_config_comes_from_hydras_saved_config_when_there_is_no_run_config(tmp_path):
+    """A preset (+cat_recipe=leo) sets lambda_away and the utility data in a config file, so the recorded
+    CLI overrides alone would leave those columns empty."""
+    repo, jobs = tmp_path / "repo", tmp_path / "runs"
+    _cat_checkpoint(repo, jobs, "T-cat", "T-cat-leo-s0", away=None, seed=0)
+    _write(jobs / "cat-J-ce" / "T-cat-leo-s0" / "latest" / "run.json",
+           {"run": "T-cat-leo-s0", "overrides": {"+cat_recipe": "leo", "seed": 0}})
+    _write(jobs / "cat-J-ce" / "T-cat-leo-s0" / "latest" / "hydra" / ".hydra" / "config.yaml",
+           "seed: 0\nlambda_away: 0.5\nmodel_objective: ce\ndata:\n  kl_source: ultrachat\n")
+    main(["--no-plots", "--jobs-root", str(jobs)], repo=repo)
+    row = pd.read_csv(repo / "outputs/eval/summary/all_runs.csv").iloc[0]
+    assert (row.lambda_away, row.kl_source, row.model_objective) == (0.5, "ultrachat", "ce")

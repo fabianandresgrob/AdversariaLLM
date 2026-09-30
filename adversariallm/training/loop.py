@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import math
 import os
@@ -373,6 +374,9 @@ def run_training(cfg):
     run_name = container.get("name", None) or "run"
     out_dir = os.path.join(cfg.output.checkpoint_path, run_name)
     os.makedirs(out_dir, exist_ok=True)
+    # the resolved config, as coop writes it: evals and collect_eval read settings from here, not from the CLI
+    with open(os.path.join(out_dir, "run_config.json"), "w") as fh:
+        json.dump(container, fh, indent=2, default=str)
 
     wandb_run = _init_wandb(cfg, container)
 

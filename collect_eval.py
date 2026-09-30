@@ -277,6 +277,17 @@ def nest(flat: dict) -> dict:
     return out
 
 
+def hydra_config(job_dir: Path) -> dict | None:
+    """The resolved config hydra saved for the run (<attempt>/hydra/.hydra/config.yaml). Unlike the recorded
+    CLI overrides it also holds what came from config files and presets (e.g. +cat_recipe=leo)."""
+    path = job_dir / "hydra" / ".hydra" / "config.yaml"
+    if not path.is_file():
+        return None
+    import yaml
+
+    return yaml.safe_load(path.read_text())
+
+
 def jobs_index(jobs_root: Path | None) -> dict[str, Path]:
     """run name -> its latest attempt dir. Looked up by run name because the jsc-jobs experiment
     name and the checkpoint block don't always match (coop-I-full vs I-ablation, cat-J-ce vs J-cat)."""
@@ -300,8 +311,8 @@ def collect(repo: Path, jobs_root: Path | None) -> pd.DataFrame:
             if run_config and run_config.get("ema_of"):  # <run>-ema: the weight average of <run>, a row of it
                 continue
             job_dir = jobs.get(run)
-            if run_config is None and job_dir is not None:  # CAT writes no run_config.json
-                run_config = nest((_read_json(job_dir / "run.json") or {}).get("overrides", {}))
+            if run_config is None and job_dir is not None:  # CAT runs before 30 Sep wrote no run_config.json
+                run_config = hydra_config(job_dir) or nest((_read_json(job_dir / "run.json") or {}).get("overrides", {}))
             for ckpt in evaluated_checkpoints(repo, block, run):
                 model = attack_model(run, ckpt)
                 row = {"block": block, "run": run, "checkpoint": ckpt, "kind": kind, "model": model}

@@ -10,6 +10,6 @@ overrides:
   train_attacks: [pgd]
   out_dir: ${root_dir}/checkpoints_probe/RH3/${name}
 sweep:
-  model: [Q-bp-it50-gate0p25-s0-ema, R-noprobe-it50-s0-ema]
+  model: [Q-bp-it50-gate0p25-s0-ema, R-noprobe-it50-s0-ema, R-gate0p25-it50-kl256-s0-ema, R-gate0p25-it50-kl256-detpert-s0-ema]
 artifacts:
   - checkpoints_probe/RH3/{name}/final_reader.pt

@@ -166,7 +166,8 @@ def test_checkpoint_variants_judged_transfer_and_baseline_rows(tmp_path):
            {"per_attack": {"pair": {"asr_after_dual_at_128": 0.3}}, "benign_test_fpr_dual": 0.01})
     _write(repo / "outputs/eval/overrefusal/baselines/mixat/overrefusal.json", {"results": {"model": {"xs_test": 0.38}}})
     main(["--no-plots", "--jobs-root", str(jobs)], repo=repo)
-    df = pd.read_csv(repo / "outputs/eval/summary/all_runs.csv").set_index(["run", "checkpoint"])
+    df = pd.read_csv(repo / "outputs/eval/summary/all_runs.csv", dtype={"transfer_behaviors": str}).set_index(
+        ["run", "checkpoint"])
     assert set(df.index) == {("Q-a0.25-s0", "final"), ("Q-a0.25-s0", "ema"), ("Q-a0.25-s0", "step500"),
                              ("mixat", "-")}
     ema = df.loc[("Q-a0.25-s0", "ema")]

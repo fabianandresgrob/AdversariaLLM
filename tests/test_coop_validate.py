@@ -1,3 +1,4 @@
+import pytest
 import torch
 
 from adversariallm.training.coop_loop import _generate_from_embeds
@@ -89,6 +90,6 @@ def test_score_answers_marks_only_the_generated_tokens_and_caps_them():
 
     prefix = torch.zeros(3, 3)
     scores = _score_answers(Model(), Reader(), 0, [prefix, prefix], ["ab", "abcdef"], Tok(), max_tokens=4)
-    assert scores == [0.7, 0.7]
+    assert scores == pytest.approx([0.7, 0.7])
     assert seen[0] == (5, [0, 0, 0, 10, 11])          # prompt positions 0, answer tokens marked
     assert seen[1] == (7, [0, 0, 0, 10, 11, 12, 13])  # capped at 4 answer tokens

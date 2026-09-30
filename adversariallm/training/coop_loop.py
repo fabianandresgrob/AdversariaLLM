@@ -82,7 +82,7 @@ def _replay_loss(reader, replay, device):
 
 
 def _detector_step(model, reader, opt_det, layer, adv_embeds, adv_batch, easy_batch, device, feature_sink=None,
-                   replay=None, perturb_radius=None):
+                   replay=None, perturb_radius=None, refusal_negatives=False):
     """One detector update: model frozen, reader trainable. Mixed batch — attacked harmful
     (label 0) plus easy benign (label 1). Diverse benign is what stops the OOD over-firing.
     Model forwards under no_grad so only the reader trains. Label convention: harmful=0, benign=1.
@@ -90,6 +90,8 @@ def _detector_step(model, reader, opt_det, layer, adv_embeds, adv_batch, easy_ba
     feature_sink: optional dict {"harmful": list, "benign": list}; the step appends its readout
     features (detached) so validation can fit a fresh probe on many recent training examples.
     replay: optional (harmful, benign) buffered features; adds _replay_loss with equal weight.
+    refusal_negatives: also add the attacked harmful prompt + its refusal y_safe, labelled benign (an answer
+    probe must separate complying from refusing, not harmful requests from benign ones).
     perturb_radius: also add the benign batch with random noise of this norm on its user message, labelled
     benign. The harmful class is always perturbed (attacked) and the benign class never is, so without these
     the probe can separate the classes by "perturbed or not" instead of "harmful or not"."""
@@ -103,6 +105,15 @@ def _detector_step(model, reader, opt_det, layer, adv_embeds, adv_batch, easy_ba
         feature_sink["harmful"].append(reader.readout(h_hidden, adv_batch["h_targetids"], adv_batch["h_attn"]).detach())
     logits_parts.append(logits_h)
     labels_parts.append(torch.zeros(logits_h.size(0), dtype=torch.long, device=device))  # harmful = 0
+
+    if refusal_negatives:
+        with torch.no_grad():
+            s_embeds, s_attn, s_labels = _benign_under_adv_prompt(model, adv_embeds, adv_batch)
+            s_hidden, _ = _hidden_and_logits(model, layer, inputs_embeds=s_embeds, attention_mask=s_attn)
+        s_target = (s_labels != -100).long()  # nonzero on the refusal: where the reader's answer readout looks
+        logits_s = reader.logits(s_hidden, s_target, s_attn)
+        logits_parts.append(logits_s)
+        labels_parts.append(torch.ones(logits_s.size(0), dtype=torch.long, device=device))  # refusal = benign
 
     if easy_batch is not None:
         with torch.no_grad():
@@ -342,6 +353,12 @@ def _coop_validate(
     attacked_gens = _generate_from_embeds(model, tokenizer, adv_prompts, attack_gen_tokens) if adv_prompts else []
     comply = [not is_refusal(g) for g in attacked_gens]
 
+    # a probe that reads the answer scores what the model actually said under the attack
+    reads_answer = getattr(reader, "readout_mode", "prompt_last") != "prompt_last"
+    gen_scores = _score_answers(model, reader, layer, adv_prompts, attacked_gens, tokenizer) if reads_answer else None
+    if gen_scores is not None:
+        miss_flags = [s <= thr for s in gen_scores]
+
     n = len(comply)
     metrics = {
         "model/asr_gen": (sum(comply) / n) if n else float("nan"),
@@ -351,6 +368,8 @@ def _coop_validate(
         "pipeline/asr": (sum(c and m for c, m in zip(comply, miss_flags)) / n) if n else float("nan"),
         "pipeline/detector_saved": (sum(c and not m for c, m in zip(comply, miss_flags)) / n) if n else float("nan"),
     }
+    if gen_scores is not None and any(comply):  # of the answers the model did give, how many does the probe flag?
+        metrics["detector/flag_rate_complied_gen"] = sum(c and not m for c, m in zip(comply, miss_flags)) / sum(comply)
 
     if refit_train is not None and has_feats and h_feats and b_feats:
         tr_h, tr_b = refit_train
@@ -373,11 +392,20 @@ def _coop_validate(
     al_gens = _generate_from_prompts(model, tokenizer, alpaca_prompts, max_new_tokens)
     metrics["model/refusal_rate_xstest"] = refusal_rate(xs_gens)
     metrics["model/refusal_rate_alpaca"] = refusal_rate(al_gens)
+    if reads_answer and xs_gens:  # the probe's part of over-refusal: it flags the model's own safe answers
+        from .data import render_prompt
+
+        embed = model.get_input_embeddings()
+        xs_prefix = [embed(torch.tensor(tokenizer(render_prompt(tokenizer, p), add_special_tokens=False)["input_ids"],
+                                        device=device)).detach() for p in xstest_prompts]
+        xs_scores = _score_answers(model, reader, layer, xs_prefix, xs_gens, tokenizer)
+        metrics["detector/fpr_xstest_gen"] = sum(s > thr for s in xs_scores) / len(xs_scores)
 
     samples = {
         "step": step,
-        "attacked_harmful": [{"prompt": p, "generation": g, "complied": c, "probe_score": s}
-                             for p, g, c, s in zip(val_prompts, attacked_gens, comply, harmful_scores)],
+        "attacked_harmful": [{"prompt": p, "generation": g, "complied": c, "probe_score": s,
+                              **({"probe_score_gen": gen_scores[i]} if gen_scores is not None else {})}
+                             for i, (p, g, c, s) in enumerate(zip(val_prompts, attacked_gens, comply, harmful_scores))],
         "xstest_overrefusal": [{"prompt": p, "generation": g} for p, g in zip(xstest_prompts, xs_gens)],
         "alpaca_overrefusal": [{"prompt": p, "generation": g} for p, g in zip(alpaca_prompts, al_gens)],
     }
@@ -389,6 +417,23 @@ def _coop_validate(
     if was_training:
         model.train()
     return metrics
+
+
+def _score_answers(model, reader, layer, prefixes, texts, tokenizer, max_tokens=128):
+    """P(harmful) of the reader on each prefix (T_i, D prompt embeddings, attacked or clean) followed by the
+    generated text, for readers that read the answer. One sequence at a time (no padding subtleties)."""
+    embed = model.get_input_embeddings()
+    device = next(model.parameters()).device
+    scores = []
+    with torch.no_grad():
+        for prefix, text in zip(prefixes, texts):
+            ids = tokenizer(text, add_special_tokens=False, return_tensors="pt")["input_ids"][0, :max_tokens].to(device)
+            seq = torch.cat([prefix, embed(ids).to(prefix.dtype)], dim=0).unsqueeze(0)
+            target = torch.cat([torch.zeros(prefix.size(0), dtype=torch.long, device=device), ids]).unsqueeze(0)
+            attn = torch.ones_like(target)
+            hidden, _ = _hidden_and_logits(model, layer, inputs_embeds=seq, attention_mask=attn)
+            scores.append(float(reader.p_harmful(hidden, target, attn)[0]))
+    return scores
 
 
 def _adv_embeds(attack, model, adv_batch, reader=None, use_detector=False):
@@ -466,6 +511,7 @@ def run_coop_training(cfg):
         collate_benign,
         collate_util,
         generation_prefix,
+        load_answer_pool,
         load_dataset_prompts,
         split_adv_stream,
     )
@@ -518,6 +564,10 @@ def run_coop_training(cfg):
         tokenizer=tokenizer,
         model_name=template_id,
     )
+    answer_pool = cfg.data.get("answer_pool")
+    if answer_pool:  # harmful sequences = prompt + a real harmful answer starting with the target
+        n = adv_ds.attach_answers(load_answer_pool(answer_pool), int(cfg.data.get("answer_max_tokens", 128)))
+        log.info(f"answer pool {answer_pool}: {n} of {len(adv_ds.rows)} harmful tuples get a real answer")
     util_ds = build_kl_stream(
         cfg.datasets, cfg.data.kl_source, tokenizer, template_id,
         window=cfg.splits[cfg.data.kl_source].train, max_length=cfg.data.kl_max_length, seed=cfg.data.val_seed,
@@ -642,6 +692,7 @@ def run_coop_training(cfg):
     detector_replay = bool(cfg.training.get("detector_replay", False))
     # perturbed benign examples for the probe (same radius as the benign-perturbation term)
     det_perturb_radius = device_hp["benign_radius"] if cfg.training.get("detector_perturb_benign", False) else None
+    det_refusal_negatives = bool(cfg.training.get("detector_refusal_negatives", False))
     if detector_replay and not hasattr(reader, "linear"):
         raise ValueError("training.detector_replay needs a reader with a linear head over readout features")
 
@@ -671,6 +722,7 @@ def run_coop_training(cfg):
                 model, reader, opt_det, layer, adv_embeds, adv_batch,
                 _to_device(next(easy_benign_iter), device),
                 device, feature_sink=sink if i == 0 else None, replay=replay, perturb_radius=det_perturb_radius,
+                refusal_negatives=det_refusal_negatives,
             )
             for i in range(n_det)
         ]

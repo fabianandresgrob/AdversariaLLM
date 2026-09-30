@@ -145,7 +145,7 @@ class EmbeddingSpaceAttack:
         self.loss_exclude_ids = None
 
     def attack(self, model, input_ids, target_ids, attention_mask, detector, use_detector, global_step=0,
-               perturb_mask=None):
+               perturb_mask=None, elicit_mask=None):
         """
         Args:
             -model: target model
@@ -155,6 +155,8 @@ class EmbeddingSpaceAttack:
             -detector: detector model, if None no detector is used
             -perturb_mask: optional (B, T) bool; restricts the perturbation to these positions (within
              the prompt). None perturbs every prompt position, template tokens included.
+            -elicit_mask: optional (B, T) bool; restricts the target loss to these positions (e.g. the target
+             sentence at the start of a longer answer that the detector reads in full). None = every target token.
         """
         print(f"\n\n======================= Starting attack - Global Step {global_step} ========================")
         self.use_detector = use_detector
@@ -178,6 +180,8 @@ class EmbeddingSpaceAttack:
 
         # loss targets
         loss_mask = self.get_loss_mask(target_ids)
+        if elicit_mask is not None:
+            loss_mask = loss_mask & elicit_mask.bool()[:, 1:]
 
         # init opt
         opt = self.init_opt([adv_perturbation])

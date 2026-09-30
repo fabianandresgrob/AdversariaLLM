@@ -142,8 +142,27 @@ def load_dataset_prompts(datasets_cfg, name, window, seed=0):
     return prompts, responses
 
 
+def load_answer_pool(path, threshold=0.5):
+    """{(behavior, target): answer} from a build_answer_pool.py jsonl: the target-prefilled answers judged
+    harmful (p_harmful > threshold). Each answer starts with its target, then continues."""
+    import json
+
+    out = {}
+    with open(path) as fh:
+        for line in fh:
+            r = json.loads(line)
+            if r.get("prefill") == "target" and (r.get("p_harmful") or 0.0) > threshold:
+                out[(r["behavior"], r["target"])] = r["completion"]
+    return out
+
+
 class AdvTupleStream(Dataset):
-    """(x, y_harmful, y_benign) per behavior, tokenized for the model."""
+    """(x, y_harmful, y_benign) per behavior, tokenized for the model.
+
+    With attach_answers, the harmful sequence becomes prompt + a real harmful answer that starts with y_h
+    (capped at answer_max_tokens): a probe on the answer then reads real harm, while h_labels and
+    h_elicit_mask still cover only the y_h part, so the attack elicits the target and w_harm compares
+    y_h with y_safe as before. Rows without an answer keep y_h alone."""
 
     def __init__(self, data_dir, behaviors_csv, targets_json, safe_csv, tokenizer, model_name):
         beh = pd.read_csv(os.path.join(data_dir, behaviors_csv), usecols=["Behavior", "BehaviorID"])
@@ -165,6 +184,12 @@ class AdvTupleStream(Dataset):
             for tgt in _targets(r["target"])
         ]
         self.tokenizer, self.model_name = tokenizer, model_name
+        self.answers, self.answer_max_tokens = {}, None
+
+    def attach_answers(self, answers, max_tokens=128):
+        """Use answers[(behavior, target)] as the harmful continuation where present (load_answer_pool)."""
+        self.answers, self.answer_max_tokens = dict(answers), int(max_tokens)
+        return sum((x, y_h) in self.answers for x, y_h, _ in self.rows)
 
     def __len__(self):
         return len(self.rows)
@@ -172,10 +197,21 @@ class AdvTupleStream(Dataset):
     def __getitem__(self, i):
         x, y_h, y_b = self.rows[i]
         h_ids, h_lab, h_tgt, h_attn = build_example_full(x, y_h, self.tokenizer)
+        elicit = h_tgt > 0  # the attack's target span: all of y_h
+        answer = self.answers.get((x, y_h))
+        if answer is not None:
+            n_target = int(elicit.sum()) - 1  # y_h tokens without the closing end-of-turn
+            p_len = int(elicit.nonzero()[0])
+            h_ids, h_lab, h_tgt, h_attn = (t[: p_len + self.answer_max_tokens]
+                                           for t in build_example_full(x, answer, self.tokenizer))
+            elicit = torch.zeros_like(h_ids, dtype=torch.bool)
+            elicit[p_len: p_len + n_target] = True
+            h_lab = h_lab.masked_fill(~elicit, -100)  # w_harm and the refusal gate compare y_h with y_safe
         b_ids, b_lab, b_tgt, b_attn = build_example_full(x, y_b, self.tokenizer)
         return {
             "prompt": x,
             "h_perturb_mask": user_token_mask(self.tokenizer, x, h_ids.numel()),  # user message only
+            "h_elicit_mask": elicit,
             "h_ids": h_ids,
             "h_labels": h_lab,
             "h_targetids": h_tgt,
@@ -255,6 +291,7 @@ def collate_adv(batch):
         "h_targetids",
         "h_attn",
         "h_perturb_mask",
+        "h_elicit_mask",
         "b_ids",
         "b_labels",
         "b_targetids",

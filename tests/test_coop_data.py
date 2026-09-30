@@ -133,3 +133,30 @@ def test_utility_stream_mask_survives_truncation_into_the_prompt():
 
     item = UtilityStream(_FakeTok(), "m", rows=[("abcdef", "xy")], max_length=3)[0]
     assert item["perturb_mask"].tolist() == [False, True, True]
+
+
+def test_answer_pool_keeps_target_prefilled_harmful_answers(tmp_path):
+    from adversariallm.training.data import load_answer_pool
+
+    rows = [{"behavior": "promptA", "target": "A1", "prefill": "target", "completion": "A1 harm", "p_harmful": 0.9},
+            {"behavior": "promptA", "target": "A2", "prefill": "target", "completion": "A2 meh", "p_harmful": 0.2},
+            {"behavior": "promptA", "target": "", "prefill": "none", "completion": "harm", "p_harmful": 0.9}]
+    (tmp_path / "pool.jsonl").write_text("\n".join(json.dumps(r) for r in rows))
+    assert load_answer_pool(tmp_path / "pool.jsonl") == {("promptA", "A1"): "A1 harm"}
+
+
+def test_attached_answer_is_read_in_full_but_only_the_target_is_elicited(tmp_path):
+    ds = _write_adv_data(tmp_path, {"b1": ["A1", "A2"], "b2": ["B1"]})
+    assert ds.attach_answers({("promptA", "A1"): "A1 then harm follows"}, max_tokens=6) == 1
+    item = ds[0]  # promptA / A1: "UpromptA" + "R" + answer, answer capped at 6 tokens
+    prompt_len = len("UpromptAR")
+    assert item["h_ids"].tolist() == [ord(c) for c in "UpromptAR" + "A1 the"]
+    assert (item["h_targetids"][prompt_len:] > 0).all()  # the probe reads the whole (capped) answer
+    elicit = item["h_elicit_mask"]
+    assert elicit.nonzero().squeeze(-1).tolist() == [prompt_len, prompt_len + 1]  # "A1", no end-of-turn
+    assert (item["h_labels"] != -100).nonzero().squeeze(-1).tolist() == [prompt_len, prompt_len + 1]
+    plain = ds[1]  # promptA / A2 has no answer: unchanged, the whole target (with its end-of-turn) is elicited
+    assert plain["h_ids"].tolist() == [ord(c) for c in "UpromptAR" + "A2E"]
+    assert torch.equal(plain["h_elicit_mask"], plain["h_targetids"] > 0)
+    batch = collate_adv([item, plain])
+    assert batch["h_elicit_mask"].shape == batch["h_ids"].shape

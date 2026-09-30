@@ -73,6 +73,11 @@ data:
   # KL uses the kl_source train window. xs_test is NEVER a training source (held out for over-refusal + FPR).
   easy_benign_sources: [alpaca]     # detector easy-benign class (train windows); NOT xs_test
   calibration_benign: alpaca        # PINNED 1%-FPR threshold set (val window), frozen across runs
+  # Answer probe (reader.readout: response_mean): harmful sequences become prompt + a real harmful answer from
+  # this pool (build_answer_pool.py jsonl; the answer starts with the tuple's target), capped at
+  # answer_max_tokens. null = prompt + target only (all runs before 2026-10-01).
+  answer_pool: null
+  answer_max_tokens: 128
 
 training:
   model_lr: 5.0e-5
@@ -88,6 +93,7 @@ training:
   refit_buffer_steps: 100    # training steps of features the fresh-refit probe is fit on
   detector_replay: false     # true: detector steps also train on that buffer (more attacked prompts per update)
   detector_perturb_benign: false  # true: the probe also sees benign prompts with random user-message noise, as benign
+  detector_refusal_negatives: false  # true: the probe also sees attacked harmful prompt + refusal, as benign
   benign_val_max_new_tokens: 32
 
 output:

@@ -1,0 +1,43 @@
+# U variant: refusal-gate floor 0.05 instead of 0.25 -- with a probe that detects harm, does leaning on it split the work better (and stay stable, unlike with the prompt probe)?
+# U: coop with an answer probe instead of the prompt probe (planning/specs/2026-09-30-answer-probe-coop.md).
+# The probe reads only the answer (mean over up to 128 answer tokens, as Libon et al.), cold start with a 50-step
+# warmup. Harmful = attacked prompt + a real harmful answer from the heretic pool that starts with the tuple's
+# target (the attack still elicits only the target); benign = attacked prompt + refusal, and clean Alpaca.
+# Otherwise the current recipe (gate 0.25, detector-aware 50-iteration attack, benign perturbation, KL 1024, EMA).
+# Full length: 1000 steps, validated every 50.
+entrypoint: run_coop_train.py
+name: U-answer-gate0.05-s{seed}
+time_per_run: "08:00:00"
+overrides:
+  attack.enabled: true
+  attack.perturb: user
+  attack.target_eot: false
+  attack.eps: 0.1
+  attack.iters: 50
+  attack.use_detector: true
+  reader.readout: response_mean
+  reader.readout_k: 128
+  probe_init: random
+  data.answer_pool: ${root_dir}/outputs/eval/answer_pool/pool-heretic.jsonl
+  data.answer_max_tokens: 128
+  training.detector_refusal_negatives: true
+  training.rep_warmup_steps: 50
+  training.n_detector_steps: 6
+  training.n_steps: 1000
+  training.val_every: 50
+  training.checkpoint_every: 250
+  training.benign_gen_n: 40
+  training.ema_decay: 0.995
+  data.kl_source: magpie
+  data.kl_max_length: 1024
+  data.val_size: 24
+  data.val_targets: 6
+  data.val_batch_size: 16
+  lambda_benign_perturb: 1.0
+  epsilon: 0.05
+  output.checkpoint_path: ${root_dir}/checkpoints_coop/U
+sweep:
+  seed: [0]
+artifacts:
+  - checkpoints_coop/U/{name}/final_adapter
+  - checkpoints_coop/U/{name}/final_reader.pt

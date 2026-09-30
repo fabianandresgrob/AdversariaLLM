@@ -78,6 +78,8 @@ data:
   # answer_max_tokens. null = prompt + target only (all runs before 2026-10-01).
   answer_pool: null
   answer_max_tokens: 128
+  benign_answers: dataset           # model: the probe's benign answers and the threshold's are the model's own greedy
+                                    # answers to those Alpaca prompts (generated once before training), not the dataset's
 
 training:
   model_lr: 5.0e-5

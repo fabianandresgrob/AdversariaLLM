@@ -436,6 +436,20 @@ def _score_answers(model, reader, layer, prefixes, texts, tokenizer, max_tokens=
     return scores
 
 
+def _own_answers(model, tokenizer, prompts, max_new_tokens, batch_size=32):
+    """(prompt, the model's greedy answer) pairs, generated once before training (LoRA still at zero, so these
+    are the base model's answers)."""
+    from .generation import generate_responses
+
+    was_training = model.training
+    model.eval()
+    answers = generate_responses(model, tokenizer, prompts, max_new_tokens, batch_size)
+    if was_training:
+        model.train()
+    log.info(f"generated {len(answers)} benign answers with the model")
+    return list(zip(prompts, answers))
+
+
 def _adv_embeds(attack, model, adv_batch, reader=None, use_detector=False):
     """Stage B: perturbed embeddings from the continuous attack. Stage A (attack is None):
     clean prompt embeddings, so the whole machine runs with no attack cost. Stage C
@@ -583,6 +597,9 @@ def run_coop_training(cfg):
     for name in cfg.data.easy_benign_sources:
         ps, rs = load_dataset_prompts(cfg.datasets, name, window=cfg.splits[name].train, seed=cfg.data.val_seed)
         easy_rows += list(zip(ps, rs))
+    own_answers = cfg.data.get("benign_answers", "dataset") == "model"
+    if own_answers:  # the model's own greedy answers instead of the dataset's (Libon et al.'s negatives)
+        easy_rows = _own_answers(model, tokenizer, [p for p, _ in easy_rows], int(cfg.data.get("answer_max_tokens", 128)))
     easy_benign_ds = BenignStream(easy_rows, tokenizer, template_id)
     easy_benign_loader = DataLoader(
         easy_benign_ds, batch_size=cfg.data.harmful_batch_size, shuffle=True, collate_fn=collate_benign
@@ -599,6 +616,8 @@ def run_coop_training(cfg):
     calib_prompts, calib_resp = load_dataset_prompts(
         cfg.datasets, cfg.data.calibration_benign, window=cfg.splits[cfg.data.calibration_benign].val, seed=cfg.data.val_seed
     )
+    if own_answers:  # the threshold is then set on the same kind of answers the probe scores
+        calib_resp = [r for _, r in _own_answers(model, tokenizer, calib_prompts, int(cfg.data.get("answer_max_tokens", 128)))]
     calib_ds = BenignStream(list(zip(calib_prompts, calib_resp)), tokenizer, template_id)
     calib_benign_batches = [
         _to_device(b, device)

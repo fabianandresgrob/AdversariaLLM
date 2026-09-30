@@ -142,3 +142,37 @@ def test_cross_attack_results_are_averaged_over_attack_seeds(tree):
     assert row.xattack_asr_worst == pytest.approx(0.0625)  # worst condition, not the model-only one
     assert pd.isna(df[df.run == "A-eps0.05-s1"].iloc[0].xattack_asr_worst)  # no cross-attack run -> empty
     assert (repo / "outputs/eval/summary/plots/robustness.png").is_file()
+
+
+def test_checkpoint_variants_judged_transfer_and_baseline_rows(tmp_path):
+    repo, jobs = tmp_path / "repo", tmp_path / "runs"
+    _checkpoint(repo, jobs, "Q", "Q-a0.25-s0", 0.25, 0)
+    ema_dir = repo / "checkpoints_coop/Q/Q-a0.25-s0-ema"  # the EMA-as-checkpoint dir: not a row of its own
+    (ema_dir / "final_adapter").mkdir(parents=True)
+    _write(ema_dir / "run_config.json", {"name": "Q-a0.25-s0-ema", "ema_of": "checkpoints_coop/Q/Q-a0.25-s0"})
+    _write(ema_dir / "threshold_1pct_calib.json", {"threshold": 0.34})
+    for ckpt, refusal in (("ema", 0.168), ("step500", 0.3)):
+        _write(repo / f"outputs/eval/overrefusal/Q/Q-a0.25-s0-{ckpt}/overrefusal.json",
+               {"results": {"model": {"xs_test": refusal}}})
+    _write(repo / "outputs/eval/cross_attack/Q/Q-a0.25-s0-ema/seed0/cross_attack_eval.json",
+           {"model": {"model_only": {"comply": 0.2, "asr": 0.2, "recall": 1.0, "judged_asr_model": 0.0,
+                                     "judged_asr_pipeline": 0.0}}})
+    run = {"original_prompt": [{"role": "user", "content": "b"}],
+           "steps": [{"scores": {"strong_reject": {"p_harmful": [0.9]}}}]}
+    cfg = {"attack_params": {"judge_model": {"id": "lmsys/vicuna-13b-v1.5"}, "num_streams": 30, "num_steps": 3}}
+    for model, defense in (("Q-a0p25-s0-ema", "none"), ("Q-a0p25-s0-ema", "coop_probe"), ("mixat-llama31-8b", "none")):
+        _write(repo / f"outputs/pair__{defense}__{model}/2026-09-29/10-00-00/0/run.json", {"config": cfg, "runs": [run]})
+    _write(repo / "outputs/eval/response_head/RH3-Q-a0p25-s0-ema-emb.json",
+           {"per_attack": {"pair": {"asr_after_dual_at_128": 0.3}}, "benign_test_fpr_dual": 0.01})
+    _write(repo / "outputs/eval/overrefusal/baselines/mixat/overrefusal.json", {"results": {"model": {"xs_test": 0.38}}})
+    main(["--no-plots", "--jobs-root", str(jobs)], repo=repo)
+    df = pd.read_csv(repo / "outputs/eval/summary/all_runs.csv").set_index(["run", "checkpoint"])
+    assert set(df.index) == {("Q-a0.25-s0", "final"), ("Q-a0.25-s0", "ema"), ("Q-a0.25-s0", "step500"),
+                             ("mixat", "-")}
+    ema = df.loc[("Q-a0.25-s0", "ema")]
+    assert (ema.model, ema.xstest_refusal_string, ema.tau_calib) == ("Q-a0p25-s0-ema", 0.168, 0.34)
+    assert (ema.xattack_judged_asr_model_model_only, ema.pair_asr128, ema.pair_asr128_coop_probe) == (0.0, 1.0, 1.0)
+    assert (ema.rh_emb_pair_asr128, ema.transfer_behaviors) == (0.3, "1")
+    assert pd.isna(df.loc[("Q-a0.25-s0", "step500")].get("pair_asr128"))
+    mixat = df.loc[("mixat", "-")]
+    assert (mixat.kind, mixat.model, mixat.pair_asr128) == ("baseline", "mixat-llama31-8b", 1.0)

@@ -1,4 +1,4 @@
-"""Collect every evaluation of the coop checkpoints into one table (+ per-config means and plots).
+"""Collect every evaluation of the coop and CAT checkpoints and the baselines into one table (+ per-config means and plots).
 
     pixi run --frozen python collect_eval.py            # writes outputs/eval/summary/
     pixi run --frozen python collect_eval.py --no-plots
@@ -13,6 +13,15 @@ One row per checkpoint (checkpoints_coop/ and checkpoints_cat/<block>/<run>/) pl
   training   last "[step N] detector/..." metrics line of the jsc-jobs training log ($JOBS_ROOT) -- coop only
   cross-attack outputs/eval/cross_attack/<block>/<run>/seed*/cross_attack_eval.json, averaged over attack
              seeds: comply/asr/recall per attack condition (model_only, detaware_c*) -- where tier K ran
+
+One row per (checkpoint dir, evaluated checkpoint): the final adapter, and the weight average ("ema")
+and step-N adapters wherever they were evaluated (eval dirs <run>-<ckpt>; a plain <run> dir is the final
+one). Baseline rows come from outputs/eval/*/baselines/<name>, reference rows from .../reference/<name>.
+  judged     cross-attack judged_asr_model / judged_asr_pipeline per attack condition (judge.enabled)
+  transfer   outputs/<attack>__<defense>__<model>/ via collect_attacks: share of behaviors jailbroken
+             within 128 attempts, per attack, for the model alone and through its probe (defense=coop_probe)
+  answer probe  outputs/eval/response_head/RH*-<model>-<variant>.json: the same share after the
+             two-channel probe (prompt + answer channel), per training variant
 
 Outputs (outputs/eval/summary/): all_runs.csv/.json, by_config.csv (mean/std over seeds), missing.txt,
 plots/tradeoff.png (utility vs over-refusal per block) and plots/sweep_<block>.png (metrics vs swept knob).
@@ -47,6 +56,13 @@ CONFIG_KEYS = {
     "model_objective": ("model_objective",),  # CAT only
 }
 CHECKPOINT_ROOTS = {"coop": "checkpoints_coop", "cat": "checkpoints_cat"}
+CKPT_SUFFIX = re.compile(r"^(final|ema|step\d+)$")
+# outputs/eval/*/baselines/<dir> and .../reference/<dir> -> the models.yaml entry their attacks ran under
+EXTERNAL_MODELS = {"mixat": "mixat-llama31-8b", "cb": "cb-llama3-8b-rr", "base": "base-llama31-8b"}
+TRANSFER_ATTACKS = ("direct", "gcg", "gcg_adaptive", "inpainting", "pair")
+# the current protocol where a model was attacked under several: PAIR judged by vicuna, 128 inpainting samples
+PREFERRED_PROTOCOL = {"pair": "judge_model=vicuna-13b-v1.5", "inpainting": "num_samples_per_behavior=128"}
+ANSWER_PROBE_VARIANTS = ("emb", "attacks")
 TRAIN_METRICS = {
     "detector/recall@1fpr": "train_recall_1fpr",
     "detector/fpr_xstest": "train_fpr_xstest",
@@ -147,7 +163,7 @@ def cross_attack_columns(run_dir: Path) -> dict:
         for spec in data.values():  # one entry per evaluated checkpoint; single-checkpoint mode has one
             for condition, metrics in spec.items():
                 bucket = per_condition.setdefault(condition, {})
-                for metric in ("comply", "asr", "recall"):
+                for metric in ("comply", "asr", "recall", "judged_asr_model", "judged_asr_pipeline"):
                     if metrics.get(metric) is not None:
                         bucket.setdefault(metric, []).append(float(metrics[metric]))
     out: dict = {}
@@ -159,6 +175,71 @@ def cross_attack_columns(run_dir: Path) -> dict:
         asrs = [v for k, v in out.items() if k.startswith("xattack_asr_")]
         out["xattack_asr_worst"] = max(asrs) if asrs else None
     return out
+
+
+def entry_name(run: str) -> str:
+    """models.yaml entry of a checkpoint (gen_coop_models.py: dots become "p")."""
+    return run.replace(".", "p")
+
+
+def attack_model(run: str, ckpt: str) -> str | None:
+    """The models.yaml entry the transfer attacks ran under: <run> for the final adapter, <run>-ema for
+    the weight average (the <run>-ema checkpoint dir); other checkpoints were not attacked."""
+    return {"final": entry_name(run), "ema": entry_name(run) + "-ema"}.get(ckpt)
+
+
+def transfer_columns(attacks: pd.DataFrame, model: str | None) -> dict:
+    """<attack>_asr128 (model alone) and <attack>_asr128_<defense> per attack, plus the behavior counts
+    they rest on (transfer_behaviors; 20 = JBB 0-19, 100 = the older full protocol)."""
+    if model is None or attacks.empty:
+        return {}
+    out, counts = {}, set()
+    for (attack, defense), cells in attacks[attacks["model"] == model].groupby(["attack", "defense"]):
+        if attack not in TRANSFER_ATTACKS:
+            continue
+        preferred = cells[cells["protocol"].str.contains(PREFERRED_PROTOCOL.get(attack, ""), regex=False)]
+        cell = (preferred if len(preferred) else cells).sort_values("n_behaviors").iloc[0]
+        out[f"{attack}_asr128" + ("" if defense == "none" else f"_{defense}")] = cell["asr_at_128"]
+        counts.add(int(cell["n_behaviors"]))
+    if counts:
+        out["transfer_behaviors"] = "/".join(str(c) for c in sorted(counts))
+    return out
+
+
+def answer_probe_columns(repo: Path, model: str | None) -> dict:
+    """rh_<variant>_<attack>_asr128: share jailbroken within 128 attempts after the two-channel probe."""
+    out = {}
+    if model is None:
+        return out
+    for path in sorted((repo / "outputs/eval/response_head").glob(f"RH*-{model}-*.json")):
+        variant = path.stem[path.stem.index(model) + len(model) + 1:]
+        if variant not in ANSWER_PROBE_VARIANTS:
+            continue
+        data = _read_json(path) or {}
+        for attack, m in (data.get("per_attack") or {}).items():
+            out[f"rh_{variant}_{attack}_asr128"] = m.get("asr_after_dual_at_128")
+        out[f"rh_{variant}_benign_fpr"] = data.get("benign_test_fpr_dual")
+    return out
+
+
+def _eval_path(repo: Path, kind: str, block: str, run: str, ckpt: str, filename: str | None) -> Path:
+    """outputs/eval/<kind>/<block>/<run>-<ckpt>[/filename], falling back to the plain <run> dir for final."""
+    base = repo / "outputs/eval" / kind / block
+    candidates = [base / f"{run}-{ckpt}"] + ([base / run] if ckpt == "final" else [])
+    for d in candidates:
+        if d.is_dir():
+            return d / filename if filename else d
+    return candidates[0] / filename if filename else candidates[0]
+
+
+def evaluated_checkpoints(repo: Path, block: str, run: str) -> list[str]:
+    ckpts = {"final"}
+    for kind in ("overrefusal", "utility", "cross_attack"):
+        for d in (repo / "outputs/eval" / kind / block).glob(f"{run}-*"):
+            suffix = d.name[len(run) + 1:]
+            if CKPT_SUFFIX.match(suffix):
+                ckpts.add(suffix)
+    return sorted(ckpts, key=lambda c: (c != "final", c != "ema", c))
 
 
 def training_columns(log_path: Path) -> dict:
@@ -205,39 +286,52 @@ def jobs_index(jobs_root: Path | None) -> dict[str, Path]:
 
 
 def collect(repo: Path, jobs_root: Path | None) -> pd.DataFrame:
+    from collect_attacks import collect as collect_attack_cells
+
+    attacks = collect_attack_cells(repo)
     rows = []
     jobs = jobs_index(jobs_root)
     for kind, root in CHECKPOINT_ROOTS.items():
-        for ckpt in sorted((repo / root).glob("*/*")):
-            if not (ckpt / "final_adapter").is_dir():
+        for ckpt_dir in sorted((repo / root).glob("*/*")):
+            if not (ckpt_dir / "final_adapter").is_dir():
                 continue
-            block, run = ckpt.parent.name, ckpt.name
+            block, run = ckpt_dir.parent.name, ckpt_dir.name
+            run_config = _read_json(ckpt_dir / "run_config.json")
+            if run_config and run_config.get("ema_of"):  # <run>-ema: the weight average of <run>, a row of it
+                continue
             job_dir = jobs.get(run)
-            run_config = _read_json(ckpt / "run_config.json")
             if run_config is None and job_dir is not None:  # CAT writes no run_config.json
                 run_config = nest((_read_json(job_dir / "run.json") or {}).get("overrides", {}))
-            row = {"block": block, "run": run, "kind": kind}
-            row.update(config_columns(run_config or {}))
-            if kind == "coop":
-                row.update(threshold_columns(ckpt))
-            row.update(overrefusal_columns(repo / "outputs/eval/overrefusal" / block / run / "overrefusal.json"))
-            row.update(utility_columns(repo / "outputs/eval/utility" / block / run / "utility.json"))
-            row.update(cross_attack_columns(repo / "outputs/eval/cross_attack" / block / run))
-            if job_dir is not None:
-                row.update(training_columns(job_dir / "stdout.log"))
+            for ckpt in evaluated_checkpoints(repo, block, run):
+                model = attack_model(run, ckpt)
+                row = {"block": block, "run": run, "checkpoint": ckpt, "kind": kind, "model": model}
+                row.update(config_columns(run_config or {}))
+                if kind == "coop":
+                    sibling = ckpt_dir.parent / f"{run}-{ckpt}"
+                    row.update(threshold_columns(ckpt_dir if ckpt == "final" else sibling))
+                row.update(overrefusal_columns(_eval_path(repo, "overrefusal", block, run, ckpt, "overrefusal.json")))
+                row.update(utility_columns(_eval_path(repo, "utility", block, run, ckpt, "utility.json")))
+                row.update(cross_attack_columns(_eval_path(repo, "cross_attack", block, run, ckpt, None)))
+                row.update(transfer_columns(attacks, model))
+                row.update(answer_probe_columns(repo, model))
+                if job_dir is not None and ckpt == "final":
+                    row.update(training_columns(job_dir / "stdout.log"))
+                rows.append(row)
+    for kind, folder in (("baseline", "baselines"), ("reference", "reference")):
+        names = {p.name for e in ("overrefusal", "utility") for p in (repo / "outputs/eval" / e / folder).glob("*")}
+        for name in sorted(names):
+            model = EXTERNAL_MODELS.get(name)
+            row = {"block": folder, "run": name, "checkpoint": "-", "kind": kind, "model": model}
+            row.update(overrefusal_columns(repo / "outputs/eval/overrefusal" / folder / name / "overrefusal.json"))
+            row.update(utility_columns(repo / "outputs/eval/utility" / folder / name / "utility.json"))
+            row.update(transfer_columns(attacks, model))
             rows.append(row)
-    references = {p.name for kind in ("overrefusal", "utility") for p in (repo / "outputs/eval" / kind / "reference").glob("*")}
-    for name in sorted(references):
-        row = {"block": "reference", "run": name, "kind": "reference"}
-        row.update(overrefusal_columns(repo / "outputs/eval/overrefusal/reference" / name / "overrefusal.json"))
-        row.update(utility_columns(repo / "outputs/eval/utility/reference" / name / "utility.json"))
-        rows.append(row)
     return pd.DataFrame(rows)
 
 
 def missing_report(df: pd.DataFrame) -> list[str]:
     lines = []
-    for _, row in df[df["kind"].isin(EVAL_COLUMNS)].iterrows():
+    for _, row in df[df["kind"].isin(EVAL_COLUMNS) & (df.get("checkpoint", "final") == "final")].iterrows():
         for evaluation, cols in EVAL_COLUMNS[row["kind"]].items():
             if any(c not in df.columns or pd.isna(row.get(c)) for c in cols):
                 lines.append(f"{row['block']}/{row['run']}: no {evaluation}")
@@ -252,9 +346,9 @@ def swept_knobs(block_df: pd.DataFrame) -> list[str]:
 def by_config(df: pd.DataFrame) -> pd.DataFrame:
     trained = df[df["kind"].isin(CHECKPOINT_ROOTS)]
     config_cols = [c for c in CONFIG_KEYS if c != "seed" and c in trained]
-    metric_cols = [c for c in trained.columns if c not in config_cols + ["block", "run", "kind", "seed"]
+    metric_cols = [c for c in trained.columns if c not in config_cols + ["block", "run", "kind", "seed", "checkpoint", "model"]
                    and pd.api.types.is_numeric_dtype(trained[c])]
-    keys = ["block"] + config_cols
+    keys = ["block", "checkpoint"] + config_cols
     grouped = trained.assign(**{c: trained[c].astype(str) for c in config_cols}).groupby(keys, sort=True)
     agg = grouped[metric_cols].agg(["mean", "std"])
     agg.columns = [f"{m}_{stat}" for m, stat in agg.columns]
@@ -280,9 +374,9 @@ def main(argv=None, repo: Path = REPO) -> int:
     if not args.no_plots:
         from plot_eval import plot_all
 
-        plot_all(df, out / "plots")
+        plot_all(df[df["checkpoint"].isin(["final", "-"])], out / "plots")
     counts = df["kind"].value_counts().to_dict() if len(df) else {}
-    kinds = ", ".join(f"{counts.get(k, 0)} {k}" for k in list(CHECKPOINT_ROOTS) + ["reference"])
+    kinds = ", ".join(f"{counts.get(k, 0)} {k}" for k in list(CHECKPOINT_ROOTS) + ["baseline", "reference"])
     print(f"{kinds} rows, {len(missing)} missing evals -> {out}")
     return 0
 

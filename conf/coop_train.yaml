@@ -87,6 +87,7 @@ training:
   val_attack_gen_tokens: 96  # continuation length under the val attack (model/asr_gen)
   refit_buffer_steps: 100    # training steps of features the fresh-refit probe is fit on
   detector_replay: false     # true: detector steps also train on that buffer (more attacked prompts per update)
+  detector_perturb_benign: false  # true: the probe also sees benign prompts with random user-message noise, as benign
   benign_val_max_new_tokens: 32
 
 output:

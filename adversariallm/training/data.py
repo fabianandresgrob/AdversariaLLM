@@ -287,10 +287,12 @@ class BenignStream(Dataset):
     def __getitem__(self, i):
         x, y = self.rows[i]
         ids, _, tgt, attn = build_example_full(x, y, self.tokenizer)
-        return {"d_ids": ids, "d_targetids": tgt, "d_attn": attn, "prompt": x}
+        # the user message's tokens, for the probe's perturbed-benign examples (training.detector_perturb_benign)
+        user = user_token_mask(self.tokenizer, x, ids.numel())
+        return {"d_ids": ids, "d_targetids": tgt, "d_attn": attn, "d_perturb_mask": user, "prompt": x}
 
 
 def collate_benign(batch):
-    out = pad_collate(batch, ["d_ids", "d_targetids", "d_attn"], pad_id=0)
+    out = pad_collate(batch, ["d_ids", "d_targetids", "d_attn", "d_perturb_mask"], pad_id=0)
     out["prompt"] = [b["prompt"] for b in batch]
     return out

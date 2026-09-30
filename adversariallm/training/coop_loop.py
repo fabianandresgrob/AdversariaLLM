@@ -82,14 +82,17 @@ def _replay_loss(reader, replay, device):
 
 
 def _detector_step(model, reader, opt_det, layer, adv_embeds, adv_batch, easy_batch, device, feature_sink=None,
-                   replay=None):
+                   replay=None, perturb_radius=None):
     """One detector update: model frozen, reader trainable. Mixed batch — attacked harmful
     (label 0) plus easy benign (label 1). Diverse benign is what stops the OOD over-firing.
     Model forwards under no_grad so only the reader trains. Label convention: harmful=0, benign=1.
 
     feature_sink: optional dict {"harmful": list, "benign": list}; the step appends its readout
     features (detached) so validation can fit a fresh probe on many recent training examples.
-    replay: optional (harmful, benign) buffered features; adds _replay_loss with equal weight."""
+    replay: optional (harmful, benign) buffered features; adds _replay_loss with equal weight.
+    perturb_radius: also add the benign batch with random noise of this norm on its user message, labelled
+    benign. The harmful class is always perturbed (attacked) and the benign class never is, so without these
+    the probe can separate the classes by "perturbed or not" instead of "harmful or not"."""
     opt_det.zero_grad(set_to_none=True)
     logits_parts, labels_parts = [], []
 
@@ -109,6 +112,14 @@ def _detector_step(model, reader, opt_det, layer, adv_embeds, adv_batch, easy_ba
             feature_sink["benign"].append(reader.readout(b_hidden, easy_batch["d_targetids"], easy_batch["d_attn"]).detach())
         logits_parts.append(logits_b)
         labels_parts.append(torch.ones(logits_b.size(0), dtype=torch.long, device=device))  # benign = 1
+        if perturb_radius is not None:
+            with torch.no_grad():
+                emb = _perturb_user(model.get_input_embeddings()(easy_batch["d_ids"]), easy_batch["d_perturb_mask"],
+                                    perturb_radius)
+                p_hidden, _ = _hidden_and_logits(model, layer, inputs_embeds=emb, attention_mask=easy_batch["d_attn"])
+            logits_p = reader.logits(p_hidden, easy_batch["d_targetids"], easy_batch["d_attn"])
+            logits_parts.append(logits_p)
+            labels_parts.append(torch.ones(logits_p.size(0), dtype=torch.long, device=device))  # still benign
 
     logits = torch.cat(logits_parts, dim=0)
     labels = torch.cat(labels_parts, dim=0)
@@ -137,6 +148,13 @@ def _head_kl(model_logits, ref_logits, head):
     return utility_kl(model_logits[head].unsqueeze(0), ref_logits[head].unsqueeze(0))
 
 
+def _perturb_user(emb, mask, radius):
+    """emb + d, d random with norm `radius` on every token where mask is set (the user message), 0 elsewhere."""
+    noise = torch.randn_like(emb)
+    noise = noise / noise.norm(dim=-1, keepdim=True).clamp_min(1e-6) * radius
+    return emb + noise * mask.unsqueeze(-1).to(emb.dtype)
+
+
 def _benign_perturb_kl(model, ref, easy_batch, hp):
     """KL(model(x + d) || ref(x)) on the first kl_head_tokens answer tokens of benign examples, with d
     a random perturbation of norm hp["benign_radius"] on each user-message token. Runs only up to
@@ -148,10 +166,8 @@ def _benign_perturb_kl(model, ref, easy_batch, hp):
     ids, attn = easy_batch["input_ids"][:, :width], easy_batch["attn"][:, :width]
     emb = model.get_input_embeddings()(ids)
     r_logits = ref.logits(inputs_embeds=emb.detach(), attention_mask=attn)
-    noise = torch.randn_like(emb)
-    noise = noise / noise.norm(dim=-1, keepdim=True).clamp_min(1e-6) * hp["benign_radius"]
-    mask = easy_batch["perturb_mask"][:, :width].unsqueeze(-1).to(emb.dtype)
-    p_logits = model(inputs_embeds=emb + noise * mask, attention_mask=attn).logits
+    perturbed = _perturb_user(emb, easy_batch["perturb_mask"][:, :width], hp["benign_radius"])
+    p_logits = model(inputs_embeds=perturbed, attention_mask=attn).logits
     return _head_kl(p_logits[:, :-1], r_logits[:, :-1], head[:, : width - 1])
 
 
@@ -624,6 +640,8 @@ def run_coop_training(cfg):
     # detector replay: each detector step also trains on the refit buffer (refit_buffer_steps of features); the
     # fresh-refit recall then reads data the probe trained on and stops being an independent ceiling
     detector_replay = bool(cfg.training.get("detector_replay", False))
+    # perturbed benign examples for the probe (same radius as the benign-perturbation term)
+    det_perturb_radius = device_hp["benign_radius"] if cfg.training.get("detector_perturb_benign", False) else None
     if detector_replay and not hasattr(reader, "linear"):
         raise ValueError("training.detector_replay needs a reader with a linear head over readout features")
 
@@ -652,7 +670,7 @@ def run_coop_training(cfg):
             _detector_step(
                 model, reader, opt_det, layer, adv_embeds, adv_batch,
                 _to_device(next(easy_benign_iter), device),
-                device, feature_sink=sink if i == 0 else None, replay=replay,
+                device, feature_sink=sink if i == 0 else None, replay=replay, perturb_radius=det_perturb_radius,
             )
             for i in range(n_det)
         ]

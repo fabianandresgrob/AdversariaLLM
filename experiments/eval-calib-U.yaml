@@ -1,0 +1,16 @@
+# 1%-FPR calibration (2000 held-out alpaca) of the final answer probes of the two U runs that get transfer
+# attacks. An answer probe reads the model's own answers, so calibration generates them first.
+entrypoint: run_calibrate_probe.py
+name: calib-{+run}
+time_per_run: 01:30:00
+overrides:
+  +block: U
+  adapter_path: ${root_dir}/checkpoints_coop/${block}/${run}/final_adapter
+  checkpoint_path: ${root_dir}/checkpoints_coop/${block}/${run}/final_reader.pt
+  calibration_window: calib
+artifacts:
+- checkpoints_coop/{+block}/{+run}/threshold_1pct_calib.json
+sweep:
+  +run:
+  - U-answer-perturb-s0
+  - U-answer-gate0.05-s0

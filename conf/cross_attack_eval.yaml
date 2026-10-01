@@ -73,6 +73,8 @@ harmful:
   val_size: 16
   val_seed: 0
   val_targets: 1       # targets kept per val behavior (coop data.val_targets); the Q runs validate on 6
+  answer_pool: null    # answer-probe checkpoints: the build_answer_pool.py jsonl they trained with (prompt + real answer)
+  answer_max_tokens: 128
   batch_size: 4
 
 attack:

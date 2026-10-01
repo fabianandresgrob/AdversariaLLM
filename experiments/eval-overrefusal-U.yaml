@@ -1,0 +1,15 @@
+# U: the answer-probe coop runs (checkpoints_coop/U), final and EMA checkpoints; as eval-overrefusal-Q2.
+entrypoint: run_overrefusal_eval.py
+name: overrefusal-{+run}-{+ckpt}
+time_per_run: 02:00:00
+overrides:
+  +block: U
+  ~checkpoints.base: base
+  +checkpoints.model: ${root_dir}/checkpoints_coop/${block}/${run}/${ckpt}_adapter
+  out: ${root_dir}/outputs/eval/overrefusal/${block}/${run}-${ckpt}
+  judge.enabled: true
+artifacts:
+- outputs/eval/overrefusal/{+block}/{+run}-{+ckpt}/overrefusal.json
+sweep:
+  +run: [U-answer-s0, U-answer-ownbenign-s0, U-answer-gate0.05-s0, U-answer-perturb-s0]
+  +ckpt: [final, ema]

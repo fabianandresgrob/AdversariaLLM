@@ -1,0 +1,13 @@
+# U: the answer-probe coop runs (checkpoints_coop/U), final and EMA checkpoints; as eval-utility-Q2.
+entrypoint: run_utility_eval.py
+name: utility-{+run}-{+ckpt}
+time_per_run: 02:00:00
+overrides:
+  +block: U
+  adapter_path: ${root_dir}/checkpoints_coop/${block}/${run}/${ckpt}_adapter
+  out: ${root_dir}/outputs/eval/utility/${block}/${run}-${ckpt}
+artifacts:
+- outputs/eval/utility/{+block}/{+run}-{+ckpt}/utility.json
+sweep:
+  +run: [U-answer-s0, U-answer-ownbenign-s0, U-answer-gate0.05-s0, U-answer-perturb-s0]
+  +ckpt: [final, ema]

@@ -184,8 +184,8 @@ def _benign_perturb_kl(model, ref, easy_batch, hp):
 
 def _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch,
                 easy_batch, hp, use_rep, warming, device):
-    """One model update: reader frozen, model trainable. Two disjoint example types summed
-    with per-subset normalizers into one backward:
+    """One model update: reader frozen, model trainable. Two disjoint example types, each
+    backpropagated on its own (gradients add up, the graphs' memory does not):
 
         harmful      : lambda_beh * [eps+(1-eps)*w_D] * CE(y_safe)
                      + lambda_rep * [delta+(1-delta)*w_M] * detector_ce(reader(h), harmful=0)
@@ -213,11 +213,13 @@ def _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch,
         del kl_pert
 
     # ---- harmful: gated refusal teaching + gated representation ----
-    h_hidden, logits_h = _hidden_and_logits(model, layer, inputs_embeds=adv_embeds, attention_mask=adv_batch["h_attn"])
+    with torch.set_grad_enabled(use_rep):  # only the representation term backpropagates through it
+        h_hidden, logits_h = _hidden_and_logits(model, layer, inputs_embeds=adv_embeds, attention_mask=adv_batch["h_attn"])
+    lp_h = avg_logprob(logits_h[:, :-1].detach(), adv_batch["h_labels"][:, 1:])  # gate input only
+    del logits_h
     be, b_attn, b_labels = _benign_under_adv_prompt(model, adv_embeds, adv_batch)
     logits_s = model(inputs_embeds=be, attention_mask=b_attn).logits
-    lp_h = avg_logprob(logits_h[:, :-1], adv_batch["h_labels"][:, 1:])
-    lp_s = avg_logprob(logits_s[:, :-1], b_labels[:, 1:])
+    lp_s = avg_logprob(logits_s[:, :-1].detach(), b_labels[:, 1:])
     wh = w_harm(lp_h, lp_s, tau=hp["tau"])
     wm = w_miss(reader.p_harmful(h_hidden, adv_batch["h_targetids"], adv_batch["h_attn"]))
     eps_eff = 1.0 if warming else hp["epsilon"]
@@ -234,7 +236,12 @@ def _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch,
         total = total + hp["lambda_rep"] * rep
         logs["rep"] = rep.item()
 
+    total.backward()
+    logs["total"] = total.item()
+    del h_hidden, logits_s, total
+
     # ---- easy benign: KL leash (UltraChat), + optional easy-CE ablation hook ----
+    total = torch.zeros((), device=device)
     if easy_batch is not None:
         u_ids = easy_batch["input_ids"]
         u_logits = model(input_ids=u_ids, attention_mask=easy_batch["attn"]).logits
@@ -250,9 +257,10 @@ def _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch,
             total = total + lam_head * kl_head
             logs["kl_head"] = kl_head.item()
 
-    total.backward()
+    if total.requires_grad:
+        total.backward()
     opt_model.step()
-    logs["total"] = total.item() + lam_pert * logs.get("kl_benign_perturb", 0.0)
+    logs["total"] += total.item() + lam_pert * logs.get("kl_benign_perturb", 0.0)
     return logs, wh.detach(), wm.detach()
 
 

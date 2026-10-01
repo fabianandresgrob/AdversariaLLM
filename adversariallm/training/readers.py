@@ -11,6 +11,10 @@ any response position scores prompt *and* response. `readout` picks between them
 
     prompt_last     last prompt token (default; the original v1 behaviour)
     stream_last     last real token of the sequence — prompt + the whole response
+    response_window max over windows of `window` consecutive tokens within the first `readout_k`
+                    response tokens: each window's mean activation is scored, the most harmful window
+                    counts. A long harmless frame (role-play, disclaimers) cannot dilute a harmful middle
+                    the way it dilutes response_mean
     response_mean   mean over the first `readout_k` response tokens — prompt + the
                     opening of the response. Training targets run 15-34 tokens, so this
                     window covers the whole target; note that it therefore cannot learn
@@ -38,7 +42,7 @@ from torch import nn
 HARMFUL_COL = 0  # logits column convention (see module docstring): 0 = harmful, 1 = benign
 BENIGN_COL = 1
 
-READOUT_MODES = ("prompt_last", "stream_last", "response_mean")
+READOUT_MODES = ("prompt_last", "stream_last", "response_mean", "response_window")
 DEFAULT_READOUT = "prompt_last"
 # p90 of the adv_training target lengths (median 18, max 34), so the window covers the whole
 # teacher-forced target for ~90% of rows instead of truncating it mid-target.
@@ -165,6 +169,7 @@ class LinearProbe(Reader, nn.Module):
         eps: float = 1e-6,
         readout: str = DEFAULT_READOUT,
         readout_k: int = DEFAULT_READOUT_K,
+        window: int = DEFAULT_RESPONSE_WINDOW,
     ):
         nn.Module.__init__(self)
         if readout not in READOUT_MODES:
@@ -172,12 +177,43 @@ class LinearProbe(Reader, nn.Module):
         self.eps = eps
         self.readout_mode = readout
         self.readout_k = int(readout_k)
+        self.window = int(window)  # response_window only
         self.linear = nn.Linear(input_dim, 2)  # fp32 params
 
+    def _windows(self, hidden, target_ids, attention_mask):
+        """Unit-normed mean activation of every window of `window` consecutive answer tokens (within the first
+        readout_k), and which windows are valid: (B, T, D) features, (B, T) mask. A window ends at each answer
+        position; answers shorter than `window` get one window over the whole answer."""
+        mask = response_mean_mask(target_ids, attention_mask, self.readout_k)  # prompt-only row: its last token
+        h = hidden.float() * mask.unsqueeze(-1)
+        zero = torch.zeros_like(h[:, :1])
+        cs = torch.cat([zero, h.cumsum(dim=1)], dim=1)  # (B, T+1, D)
+        cn = torch.cat([torch.zeros_like(mask[:, :1], dtype=torch.float), mask.float().cumsum(dim=1)], dim=1)
+        end = torch.arange(1, h.size(1) + 1, device=h.device)
+        start = (end - self.window).clamp_min(0)
+        n = cn[:, end] - cn[:, start]  # (B, T)
+        feats = (cs[:, end] - cs[:, start]) / n.clamp_min(1).unsqueeze(-1)
+        need = torch.minimum(mask.float().sum(dim=1, keepdim=True), torch.tensor(float(self.window), device=h.device))
+        valid = mask & (n >= need) & (n > 0)
+        return feats / feats.norm(dim=-1, keepdim=True).clamp_min(self.eps), valid
+
+    def _top_window(self, hidden, target_ids, attention_mask):
+        """Per row, the logits and feature of the window the probe finds most harmful."""
+        feats, valid = self._windows(hidden, target_ids, attention_mask)
+        logits = self.linear(feats)  # (B, T, 2)
+        margin = (logits[..., 0] - logits[..., 1]).masked_fill(~valid, float("-inf"))
+        idx = margin.argmax(dim=1)
+        rows = torch.arange(hidden.size(0), device=hidden.device)
+        return logits[rows, idx], feats[rows, idx]
+
     def readout(self, hidden: torch.Tensor, target_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+        if self.readout_mode == "response_window":
+            return self._top_window(hidden, target_ids, attention_mask)[1]
         return probe_readout(hidden, target_ids, attention_mask, self.eps, self.readout_mode, self.readout_k)
 
     def logits(self, hidden: torch.Tensor, target_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+        if self.readout_mode == "response_window":
+            return self._top_window(hidden, target_ids, attention_mask)[0]
         return self.linear(self.readout(hidden, target_ids, attention_mask))
 
 
@@ -259,7 +295,8 @@ class DualProbe(Reader, nn.Module):
         return out if HARMFUL_COL == 0 else out.flip(-1)
 
 
-def load_reader(checkpoint_path: str, readout: str | None = None, readout_k: int | None = None) -> Reader:
+def load_reader(checkpoint_path: str, readout: str | None = None, readout_k: int | None = None,
+                window: int | None = None) -> Reader:
     """Build a reader from a pair checkpoint ({"reader", "cfg"}) or a bare LinearProbe state_dict.
 
     The type and readout come from the checkpoint's cfg.reader, so a probe is scored where it was
@@ -281,6 +318,7 @@ def load_reader(checkpoint_path: str, readout: str | None = None, readout_k: int
             state["linear.weight"].shape[1],
             readout=readout or trained.get("readout") or DEFAULT_READOUT,
             readout_k=readout_k or trained.get("readout_k") or DEFAULT_READOUT_K,
+            window=window or trained.get("window") or DEFAULT_RESPONSE_WINDOW,
         )
     reader.load_state_dict(state)
     return reader.eval()
@@ -298,6 +336,7 @@ def build_reader(cfg: dict | None, input_dim: int) -> Reader:
             input_dim,
             readout=cfg.get("readout") or DEFAULT_READOUT,
             readout_k=cfg.get("readout_k") or DEFAULT_READOUT_K,
+            window=cfg.get("window") or DEFAULT_RESPONSE_WINDOW,
         )
     if kind == "dual":
         return DualProbe(input_dim, response_window=cfg.get("response_window") or DEFAULT_RESPONSE_WINDOW)

@@ -201,3 +201,35 @@ def test_monitor_reports_whether_its_readout_needs_a_response(tmp_path):
         monitor = LinearProbeMonitor(checkpoint_path=str(path), target_model_id="x")
         modes[mode] = monitor.reads_response(target)
     assert modes == {"prompt_last": False, "stream_last": True, "response_mean": True}
+
+
+def test_response_window_finds_the_harmful_window_that_a_mean_dilutes():
+    from adversariallm.training.readers import LinearProbe
+
+    torch.manual_seed(0)
+    D, T = 8, 40
+    harm = torch.zeros(D); harm[0] = 1.0
+    benign = torch.zeros(D); benign[1] = 1.0
+    hidden = benign.repeat(1, T, 1).clone()
+    hidden[0, 30:34] = harm  # a short harmful stretch late in a long benign answer
+    target = torch.zeros(1, T, dtype=torch.long); target[0, 5:] = 7  # answer starts at 5
+    attn = torch.ones(1, T, dtype=torch.long)
+    probe_w = LinearProbe(D, readout="response_window", readout_k=64, window=4)
+    probe_m = LinearProbe(D, readout="response_mean", readout_k=64)
+    with torch.no_grad():
+        for p in (probe_w, probe_m):
+            p.linear.weight.zero_(); p.linear.bias.zero_()
+            p.linear.weight[0, 0] = 5.0  # harmful logit reads dimension 0
+    assert probe_w.p_harmful(hidden, target, attn) > 0.99
+    assert probe_m.p_harmful(hidden, target, attn) < 0.9
+    assert torch.allclose(probe_w.readout(hidden, target, attn)[0], harm, atol=1e-5)
+
+
+def test_response_window_on_a_prompt_only_row_reads_the_last_token():
+    from adversariallm.training.readers import LinearProbe
+
+    hidden = torch.randn(1, 6, 8)
+    target = torch.zeros(1, 6, dtype=torch.long)
+    attn = torch.ones(1, 6, dtype=torch.long)
+    feat = LinearProbe(8, readout="response_window", window=4).readout(hidden, target, attn)
+    assert torch.allclose(feat[0], hidden[0, -1] / hidden[0, -1].norm(), atol=1e-5)

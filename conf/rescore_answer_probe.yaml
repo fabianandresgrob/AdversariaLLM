@@ -1,0 +1,23 @@
+defaults:
+  - models: models
+  - datasets: datasets
+  - splits
+  - paths
+  - _self_
+
+# rescore_answer_probe.py: an answer probe's trained weights under other readouts, on the model's existing
+# (undefended, judged) attack answers. No new attacks.
+model: null            # models.yaml entry with adapter_path + reader_path (an answer-probe coop checkpoint)
+attacks: [pair, inpainting]
+layer: -1
+readouts:              # name, mode (response_mean | response_window), k = answer tokens read, window
+  - {name: mean128, mode: response_mean, k: 128}
+  - {name: mean512, mode: response_mean, k: 512}
+  - {name: window16_512, mode: response_window, k: 512, window: 16}
+  - {name: window32_512, mode: response_window, k: 512, window: 32}
+  - {name: window64_512, mode: response_window, k: 512, window: 64}
+calib_n: 500           # own greedy answers to alpaca calib prompts: each readout's 1%-false-positive threshold
+gen_batch_size: 32
+batch_size: 8
+xstest_gens: null      # gens_model_xs_test.json of the model's over-refusal eval: the probe's xs_test false positives
+name: null             # jobs injects the run name

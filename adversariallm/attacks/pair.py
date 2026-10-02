@@ -201,26 +201,40 @@ class PAIRAttack(Attack):
                     if stream_idx < len(per_stream_extras):
                         reordered.extend(per_stream_extras[stream_idx])
                 completions[step_idx] = reordered
-        steps = []
-        for i in range(self.config.num_steps):
-            step = AttackStepResult(
-                step=i,
-                model_completions=completions[i],
-                model_completions_raw=completions_raw[i],
-                time_taken=times[i],
-                loss=None,
-                flops=flops_list[i],
-                model_input=attacks[i],
-                model_input_tokens=token_list[i].tolist(),
-                defense_metadata=completion_defense_meta[i],
-            )
-            steps.append(step)
+        steps = stream_steps(attacks, token_list, completions, completions_raw, completion_defense_meta,
+                             times, flops_list, self.config.num_streams)
         run = SingleAttackRunResult(
             original_prompt=conversation,
             steps=steps,
             total_time=t1 - t0
         )
         return run
+
+
+def stream_steps(attacks, token_list, completions, completions_raw, defense_meta, times, flops_list, num_streams):
+    """One AttackStepResult per (iteration, stream), in iteration-major order, each with its own prompt.
+
+    `attacks` and `token_list` are flat (iteration-major, one entry per stream); the per-iteration lists
+    hold all streams' completions, each stream's extra samples right after its first one. Time and FLOPs
+    are split evenly over the iteration's streams. Completion order is unchanged, so ASR@k is too."""
+    steps = []
+    for i, step_completions in enumerate(completions):
+        per_stream = len(step_completions) // num_streams
+        raw, meta = completions_raw[i], defense_meta[i]
+        for s in range(num_streams):
+            k = i * num_streams + s
+            steps.append(AttackStepResult(
+                step=k,
+                model_completions=step_completions[s * per_stream:(s + 1) * per_stream],
+                model_completions_raw=raw[s:s + 1] if raw is not None else None,
+                time_taken=times[i] / num_streams,
+                loss=None,
+                flops=flops_list[i] // num_streams,
+                model_input=attacks[k],
+                model_input_tokens=token_list[k].tolist(),
+                defense_metadata=meta[s:s + 1] if meta is not None else None,
+            ))
+    return steps
 
 
 def fix_llama2_tokens(inputs):

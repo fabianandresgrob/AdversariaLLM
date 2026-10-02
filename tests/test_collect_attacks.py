@@ -10,14 +10,15 @@ import pandas as pd  # noqa: E402
 from collect_attacks import collect, main, parse_dir_name, run_scores  # noqa: E402
 
 
-def _write_run(repo, attack, defense, model, behaviors, scored=True, config=None, date="2026-09-19"):
+def _write_run(repo, attack, defense, model, behaviors, scored=True, config=None, date="2026-09-19", names=None):
     path = repo / "outputs" / f"{attack}__{defense}__{model}" / date / "10-00-00" / "0" / "run.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     runs = []
-    for scores in behaviors:
+    for i, scores in enumerate(behaviors):
         steps = [{"model_completions": ["x"],
                   "scores": {"strong_reject": {"p_harmful": [s]}} if scored else {}} for s in scores]
-        runs.append({"original_prompt": [{"role": "user", "content": "b"}], "steps": steps})
+        name = names[i] if names else f"b{i}"
+        runs.append({"original_prompt": [{"role": "user", "content": name}], "steps": steps})
     path.write_text(json.dumps({"config": config or {}, "runs": runs}))
 
 
@@ -135,3 +136,24 @@ def test_replay_is_labelled_with_the_run_it_replays(tmp_path):
                config={"attack_params": {"source": "/p/project1/x/y/AdversariaLLM/outputs/"
                                                    "gcg__none__E-nd6-s0/2026-09-19/10-00-00"}})
     assert collect(tmp_path).iloc[0]["protocol"] == "source=gcg__none__E-nd6-s0"
+
+
+def test_a_rerun_replaces_the_older_run_of_the_same_behavior_and_shards_add_up(tmp_path):
+    _write_run(tmp_path, "pair", "none", "m", [[0.9], [0.9]], names=["a", "b"], date="2026-10-01")
+    _write_run(tmp_path, "pair", "none", "m", [[0.0]], names=["a"], date="2026-10-02")   # rerun of a
+    _write_run(tmp_path, "pair", "none", "m", [[0.9]], names=["c"], date="2026-10-03")   # another shard
+    row = collect(tmp_path).iloc[0]
+    assert row.n_behaviors == 3                       # a once, b, c
+    assert row.asr_behavior == pytest.approx(2 / 3)   # a's newest run failed
+
+
+def test_final_suffix_asr_only_for_optimisers(tmp_path):
+    # GCG: behavior 1 succeeds mid-run but its final suffix fails; behavior 2 ends on a success
+    _write_run(tmp_path, "gcg", "none", "m", [[0.1, 0.9, 0.2], [0.1, 0.1, 0.8]])
+    _write_run(tmp_path, "replay", "coop_probe", "m", [[0.1, 0.9]])
+    _write_run(tmp_path, "pair", "none", "m", [[0.1, 0.9]])
+    df = collect(tmp_path).set_index("attack")
+    assert df.loc["gcg", "asr_behavior"] == 1.0 and df.loc["gcg", "asr_final"] == 0.5
+    assert df.loc["replay", "asr_final"] == 1.0
+    assert pd.isna(df.loc["pair", "asr_final"])
+    assert "asr_at_90" in df.columns

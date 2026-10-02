@@ -23,12 +23,16 @@ def test_collect_answers_defended_reads_raw_answers_and_recorded_scores(tmp_path
     assert [r["answer"] for r in plain] == ["Sorry", "ok"] and plain[0]["recorded"] is None
 
 
-def test_collect_answers_reads_only_the_newest_run_of_an_attack(tmp_path):
-    step = {"model_input": [{"role": "user", "content": "p"}], "model_completions": ["old"],
-            "scores": {"strong_reject": {"p_harmful": [0.9]}}}
-    _write(tmp_path, "none", step)
-    newer = tmp_path / "outputs" / "pair__none__m" / "2026-10-02" / "00-00-00" / "0"
-    newer.mkdir(parents=True)
-    run = {"original_prompt": [{"role": "user", "content": "b"}], "steps": [{**step, "model_completions": ["new"]}]}
-    (newer / "run.json").write_text(json.dumps({"runs": [run]}))
-    assert [r["answer"] for r in collect_answers(tmp_path, "m", ["pair"])] == ["new"]
+def test_collect_answers_reads_every_behavior_of_only_the_newest_run(tmp_path):
+    def write(day, idx, answer):
+        d = tmp_path / "outputs" / "pair__none__m" / day / "00-00-00" / str(idx)
+        d.mkdir(parents=True)
+        step = {"model_input": [{"role": "user", "content": "p"}], "model_completions": [answer],
+                "scores": {"strong_reject": {"p_harmful": [0.9]}}}
+        run = {"original_prompt": [{"role": "user", "content": f"b{idx}"}], "steps": [step]}
+        (d / "run.json").write_text(json.dumps({"runs": [run]}))
+
+    for idx in (0, 1, 10, 2):
+        write("2026-10-01", idx, f"old{idx}")
+        write("2026-10-02", idx, f"new{idx}")
+    assert [r["answer"] for r in collect_answers(tmp_path, "m", ["pair"])] == ["new0", "new1", "new2", "new10"]

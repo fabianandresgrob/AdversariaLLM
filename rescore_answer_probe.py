@@ -41,13 +41,17 @@ def collect_answers(repo: Path, model: str, attacks: list[str], classifier: str 
     """Every judged answer of the model's runs under `defense`, in the order the attack produced them.
     For a defended run the answer is the model's raw answer (before the defense replaced it) and
     `recorded` / `applied` are the defense's score and decision for it."""
-    latest = {}  # a rerun lands next to the older run: read only the newest run of each attack
+    # <attack>__<defense>__<model>/<date>/<time>/<behavior>/run.json: a rerun gets a new <date>/<time>
+    # next to the older one, so read only the newest <date>/<time> of each attack (all its behaviors)
+    newest = {}
     for run_json in sorted((repo / "outputs").glob(f"*__{defense}__*/*/*/*/run.json")):
         parsed = parse_dir_name(run_json.parents[3].name)
         if parsed is not None and parsed[0] in attacks and parsed[2] == model:
-            latest[parsed[0]] = run_json
+            newest[parsed[0]] = max(newest.get(parsed[0], run_json.parents[1]), run_json.parents[1])
+    files = [(attack, f) for attack, stamp in sorted(newest.items())
+             for f in sorted(stamp.glob("*/run.json"), key=lambda f: int(f.parent.name))]
     out = []
-    for attack, run_json in sorted(latest.items()):
+    for attack, run_json in files:
         data = json.loads(run_json.read_text())
         for run in data.get("runs", []):
             behavior, order = last_user(run.get("original_prompt")), 0

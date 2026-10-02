@@ -1,0 +1,13 @@
+# Post-hoc probe scores for every PAIR answer: PAIR run on the model alone (undefended, stores each stream's prompt),
+# then each (prompt, answer) pair scored by the model's own answer probe under every readout, thresholds at 1% false
+# positives on its own Alpaca answers. Writes <model>_answers.jsonl for the clearly-harmful vs borderline split.
+entrypoint: rescore_answer_probe.py
+name: answers-pair-{model}
+time_per_run: "01:30:00"
+overrides:
+  attack_names: [pair]
+  save_answer_scores: true
+sweep:
+  model: [U-answer-gate0p05-s0, U2-win512-w32-s0-ema750, U2-win512-s0-ema750]
+artifacts:
+  - outputs/eval/answer_probe_rescore/{model}_answers.jsonl

@@ -20,7 +20,8 @@ With `defended` (e.g. coop_probe), also a consistency check: the raw answers of 
 compared with the score the defense recorded for each. If they agree, a defended ASR well above the offline
 estimate comes from the attack adapting to the probe, not from the defense scoring differently.
 
-Writes outputs/eval/answer_probe_rescore/<model>.json.
+Writes outputs/eval/answer_probe_rescore/<model>.json, and with `save_answer_scores` also <model>_answers.jsonl
+(every answer with its judge score and probe score under each readout).
 """
 
 import json
@@ -167,6 +168,13 @@ def main(cfg: DictConfig) -> None:
     out = repo / "outputs" / "eval" / "answer_probe_rescore"
     out.mkdir(parents=True, exist_ok=True)
     (out / f"{cfg.model}.json").write_text(json.dumps(results, indent=2))
+    if cfg.save_answer_scores:  # one line per answer, with its threshold-free score under every readout
+        thresholds = {name: res["threshold"] for name, res in results.items() if name != "consistency"}
+        with open(out / f"{cfg.model}_answers.jsonl", "w") as fh:
+            for i, r in enumerate(rows):
+                scores = {name: attack_scores[name][i] for name in readers}
+                fh.write(json.dumps({**{k: r[k] for k in ("attack", "behavior", "order", "prompt", "answer", "p_harmful")},
+                                     "probe": scores, "flagged": {n: scores[n] > thresholds[n] for n in readers}}) + "\n")
     lines = [f"\n{cfg.model}: thresholds at 1% false positives on {len(calib_prompts)} own Alpaca answers"]
     for name, res in results.items():
         if name == "consistency":

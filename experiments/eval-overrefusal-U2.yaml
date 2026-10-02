@@ -1,0 +1,14 @@
+# U2: step-750 weight-averaged checkpoints of two U2 runs; as eval-overrefusal-U.
+entrypoint: run_overrefusal_eval.py
+name: overrefusal-{+run}-ema750
+time_per_run: 02:00:00
+overrides:
+  +block: U2
+  ~checkpoints.base: base
+  +checkpoints.model: ${root_dir}/checkpoints_coop/${block}/${run}/ema_step750_adapter
+  out: ${root_dir}/outputs/eval/overrefusal/${block}/${run}-ema750
+  judge.enabled: true
+artifacts:
+- outputs/eval/overrefusal/{+block}/{+run}-ema750/overrefusal.json
+sweep:
+  +run: [U2-win512-w32-s0, U2-win512-s0]

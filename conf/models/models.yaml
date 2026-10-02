@@ -1626,4 +1626,26 @@ U-answer-gate0p05-s0:
   trust_remote_code: true
   adapter_path: ${root_dir}/checkpoints_coop/U/U-answer-gate0.05-s0/final_adapter
   reader_path: ${root_dir}/checkpoints_coop/U/U-answer-gate0.05-s0/final_reader.pt
+U2-win512-w32-s0-ema750:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/U2/U2-win512-w32-s0/ema_step750_adapter
+  reader_path: ${root_dir}/checkpoints_coop/U2/U2-win512-w32-s0/ema_step750_reader.pt
+U2-win512-s0-ema750:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/U2/U2-win512-s0/ema_step750_adapter
+  reader_path: ${root_dir}/checkpoints_coop/U2/U2-win512-s0/ema_step750_reader.pt
 # <<< generated coop checkpoints <<<

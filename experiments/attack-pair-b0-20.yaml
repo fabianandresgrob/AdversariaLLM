@@ -11,5 +11,6 @@ overrides:
   attacks.pair.judge_model.tokenizer_id: lmsys/vicuna-13b-v1.5
 sweep:
   model:
-  - U-answer-perturb-s0
   - U-answer-gate0p05-s0
+  - U2-win512-w32-s0-ema750
+  - U2-win512-s0-ema750

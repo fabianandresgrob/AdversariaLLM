@@ -12,5 +12,5 @@ overrides:
   defense: coop_probe
 sweep:
   model:
-  - U-answer-perturb-s0
-  - U-answer-gate0p05-s0
+  - U2-win512-w32-s0-ema750
+  - U2-win512-s0-ema750

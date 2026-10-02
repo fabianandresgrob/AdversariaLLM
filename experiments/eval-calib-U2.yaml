@@ -1,0 +1,14 @@
+# 1%-FPR calibration (2000 held-out alpaca) of the step-750 weight-averaged answer probes of two U2 runs (the runs hit
+# their time limit at ~step 850, so there is no final checkpoint). Needed before PAIR runs against coop_probe.
+entrypoint: run_calibrate_probe.py
+name: calib-{+run}-ema750
+time_per_run: 01:30:00
+overrides:
+  +block: U2
+  adapter_path: ${root_dir}/checkpoints_coop/${block}/${run}/ema_step750_adapter
+  checkpoint_path: ${root_dir}/checkpoints_coop/${block}/${run}/ema_step750_reader.pt
+  calibration_window: calib
+artifacts:
+- checkpoints_coop/{+block}/{+run}/threshold_1pct_calib.json
+sweep:
+  +run: [U2-win512-w32-s0, U2-win512-s0]

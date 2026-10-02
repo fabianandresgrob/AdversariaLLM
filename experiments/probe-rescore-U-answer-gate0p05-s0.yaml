@@ -1,12 +1,12 @@
 # Rescore U-answer-gate0.05-s0's trained answer probe on its existing PAIR / inpainting answers with longer reading and window-max
 # (rescore_answer_probe.py); thresholds at 1% false positives on its own Alpaca answers; xs_test false positives
 # on its over-refusal eval answers. No new attacks. Consistency check: its defended (coop_probe) runs' raw answers rescored
-# offline vs the scores the defense recorded.
+# offline vs the scores the defense recorded. Now PAIR only, on the rerun that stores each stream's prompt.
 entrypoint: rescore_answer_probe.py
 name: rescore-U-answer-gate0p05-s0
 time_per_run: "02:00:00"
 overrides:
-  defended: coop_probe
+  attacks: [pair]
   model: U-answer-gate0p05-s0
   xstest_gens: ${root_dir}/outputs/eval/overrefusal/U/U-answer-gate0.05-s0-final/gens_model_xs_test.json
 artifacts:

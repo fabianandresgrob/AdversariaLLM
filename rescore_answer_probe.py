@@ -41,11 +41,13 @@ def collect_answers(repo: Path, model: str, attacks: list[str], classifier: str 
     """Every judged answer of the model's runs under `defense`, in the order the attack produced them.
     For a defended run the answer is the model's raw answer (before the defense replaced it) and
     `recorded` / `applied` are the defense's score and decision for it."""
-    out = []
+    latest = {}  # a rerun lands next to the older run: read only the newest run of each attack
     for run_json in sorted((repo / "outputs").glob(f"*__{defense}__*/*/*/*/run.json")):
         parsed = parse_dir_name(run_json.parents[3].name)
-        if parsed is None or parsed[0] not in attacks or parsed[2] != model:
-            continue
+        if parsed is not None and parsed[0] in attacks and parsed[2] == model:
+            latest[parsed[0]] = run_json
+    out = []
+    for attack, run_json in sorted(latest.items()):
         data = json.loads(run_json.read_text())
         for run in data.get("runs", []):
             behavior, order = last_user(run.get("original_prompt")), 0
@@ -54,7 +56,7 @@ def collect_answers(repo: Path, model: str, attacks: list[str], classifier: str 
                 answers = step.get("model_completions_raw" if defense != "none" else "model_completions") or []
                 meta = step.get("defense_metadata") or [{}] * len(answers)
                 for score, answer, m in zip(scores, answers, meta):
-                    out.append({"attack": parsed[0], "behavior": behavior, "order": order,
+                    out.append({"attack": attack, "behavior": behavior, "order": order,
                                 "prompt": last_user(step.get("model_input")), "answer": answer,
                                 "p_harmful": float(score), "recorded": m.get("score"), "applied": m.get("applied")})
                     order += 1

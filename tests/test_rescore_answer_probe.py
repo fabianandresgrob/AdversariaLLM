@@ -21,3 +21,14 @@ def test_collect_answers_defended_reads_raw_answers_and_recorded_scores(tmp_path
     assert [(r["recorded"], r["applied"]) for r in rows] == [(0.9, True), (0.1, False)]
     plain = collect_answers(tmp_path, "m", ["pair"])
     assert [r["answer"] for r in plain] == ["Sorry", "ok"] and plain[0]["recorded"] is None
+
+
+def test_collect_answers_reads_only_the_newest_run_of_an_attack(tmp_path):
+    step = {"model_input": [{"role": "user", "content": "p"}], "model_completions": ["old"],
+            "scores": {"strong_reject": {"p_harmful": [0.9]}}}
+    _write(tmp_path, "none", step)
+    newer = tmp_path / "outputs" / "pair__none__m" / "2026-10-02" / "00-00-00" / "0"
+    newer.mkdir(parents=True)
+    run = {"original_prompt": [{"role": "user", "content": "b"}], "steps": [{**step, "model_completions": ["new"]}]}
+    (newer / "run.json").write_text(json.dumps({"runs": [run]}))
+    assert [r["answer"] for r in collect_answers(tmp_path, "m", ["pair"])] == ["new"]

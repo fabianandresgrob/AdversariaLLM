@@ -131,7 +131,10 @@ def attack_family(attack: str, replay_source: str = REPLAY_SOURCE) -> str:
 
 def collect(repo: Path, classifier: str = "strong_reject", threshold: float = 0.5,
             replay_source: str = REPLAY_SOURCE, models: list[str] | None = None,
-            attacks: list[str] | None = None, defenses: list[str] | None = None) -> pd.DataFrame:
+            attacks: list[str] | None = None, defenses: list[str] | None = None,
+            behaviors: tuple[int, int] | None = None) -> pd.DataFrame:
+    """behaviors=(start, stop) keeps only runs of dataset indices start..stop-1 (dataset_params.idx), so an
+    older run over a larger behavior set in the same dir does not leak into a smaller protocol's cells."""
     latest: dict[tuple, dict] = {}  # (cell key, behavior) -> its newest run; paths sort by <date>/<time>
     for run_json in sorted((repo / "outputs").glob("*__*__*/*/*/*/run.json")):
         parsed = parse_dir_name(run_json.parents[3].name)
@@ -146,7 +149,13 @@ def collect(repo: Path, classifier: str = "strong_reject", threshold: float = 0.
         except (OSError, ValueError):
             continue
         key = (*parsed, protocol(attack, data.get("config") or {}))
-        for run in data.get("runs", []):
+        runs = data.get("runs", [])
+        if behaviors:
+            idx = ((data.get("config") or {}).get("dataset_params") or {}).get("idx") or []
+            if len(idx) != len(runs):
+                continue  # cannot tell which behaviors these are
+            runs = [run for i, run in zip(idx, runs) if behaviors[0] <= i < behaviors[1]]
+        for run in runs:
             if run_scores(run, classifier):  # not scored yet: a missing judge pass must not read as zero ASR
                 latest[(key, json.dumps(run.get("original_prompt"), sort_keys=True))] = run
 
@@ -187,13 +196,15 @@ def main(argv=None, repo: Path = REPO) -> int:
     parser.add_argument("--models", nargs="+", default=None, help="restrict to these models.yaml names")
     parser.add_argument("--attacks", nargs="+", default=None, help="restrict to these attacks")
     parser.add_argument("--defenses", nargs="+", default=None, help="restrict to these defenses ('none' = raw model)")
+    parser.add_argument("--behaviors", nargs=2, type=int, default=None, metavar=("START", "STOP"),
+                        help="only dataset indices START..STOP-1 (e.g. 0 20 for the 20-behavior protocol)")
     parser.add_argument("--no-plots", action="store_true")
     args = parser.parse_args(argv)
 
     out = args.out or repo / "outputs" / "eval" / "attacks"
     out.mkdir(parents=True, exist_ok=True)
     df = collect(repo, args.classifier, args.threshold, args.replay_source,
-                 args.models, args.attacks, args.defenses)
+                 args.models, args.attacks, args.defenses, tuple(args.behaviors) if args.behaviors else None)
     df.to_csv(out / "attacks.csv", index=False)
     df.to_json(out / "attacks.json", orient="records", indent=2)
     if not args.no_plots and len(df):

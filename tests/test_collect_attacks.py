@@ -166,3 +166,15 @@ def test_final_asr_uses_the_lowest_loss_step_like_replay(tmp_path):
              for loss, score in [(2.0, 0.1), (0.5, 0.9), (1.0, 0.2)]]   # best suffix succeeds, last does not
     path.write_text(json.dumps({"runs": [{"original_prompt": [{"role": "user", "content": "b"}], "steps": steps}]}))
     assert collect(tmp_path).iloc[0].asr_final == 1.0
+
+
+def test_behavior_window_drops_runs_outside_it(tmp_path):
+    for i, score in [(3, 0.9), (40, 0.9), (7, 0.0)]:
+        path = tmp_path / "outputs" / "gcg__none__m" / "2026-10-02" / "10-00-00" / str(i) / "run.json"
+        path.parent.mkdir(parents=True)
+        run = {"original_prompt": [{"role": "user", "content": f"b{i}"}],
+               "steps": [{"scores": {"strong_reject": {"p_harmful": [score]}}}]}
+        path.write_text(json.dumps({"config": {"dataset_params": {"idx": [i]}}, "runs": [run]}))
+    assert collect(tmp_path).iloc[0].n_behaviors == 3
+    row = collect(tmp_path, behaviors=(0, 20)).iloc[0]
+    assert (row.n_behaviors, row.asr_behavior) == (2, 0.5)

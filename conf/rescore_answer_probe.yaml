@@ -8,7 +8,7 @@ defaults:
 # rescore_answer_probe.py: an answer probe's trained weights under other readouts, on the model's existing
 # (undefended, judged) attack answers. No new attacks.
 model: null            # models.yaml entry with adapter_path + reader_path (an answer-probe coop checkpoint)
-attacks: [pair, inpainting]
+attack_names: [pair, inpainting]  # not "attacks": that name is the conf/attacks config group, so it cannot be overridden
 layer: -1
 readouts:              # name, mode (response_mean | response_window), k = answer tokens read, window
   - {name: mean128, mode: response_mean, k: 128}

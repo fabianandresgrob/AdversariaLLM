@@ -6,7 +6,7 @@ entrypoint: rescore_answer_probe.py
 name: rescore-U-answer-gate0p05-s0
 time_per_run: "02:00:00"
 overrides:
-  attacks: [pair]
+  attack_names: [pair]
   model: U-answer-gate0p05-s0
   xstest_gens: ${root_dir}/outputs/eval/overrefusal/U/U-answer-gate0.05-s0-final/gens_model_xs_test.json
 artifacts:

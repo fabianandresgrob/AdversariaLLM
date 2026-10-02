@@ -144,7 +144,7 @@ def test_a_rerun_replaces_the_older_run_of_the_same_behavior_and_shards_add_up(t
     _write_run(tmp_path, "pair", "none", "m", [[0.9]], names=["c"], date="2026-10-03")   # another shard
     row = collect(tmp_path).iloc[0]
     assert row.n_behaviors == 3                       # a once, b, c
-    assert row.asr_behavior == pytest.approx(2 / 3)   # a's newest run failed
+    assert row.asr_behavior == 0.667                  # a's newest run failed
 
 
 def test_final_suffix_asr_only_for_optimisers(tmp_path):

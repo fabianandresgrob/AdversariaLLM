@@ -157,3 +157,12 @@ def test_final_suffix_asr_only_for_optimisers(tmp_path):
     assert df.loc["replay", "asr_final"] == 1.0
     assert pd.isna(df.loc["pair", "asr_final"])
     assert "asr_at_90" in df.columns
+
+
+def test_final_asr_uses_the_lowest_loss_step_like_replay(tmp_path):
+    path = tmp_path / "outputs" / "gcg__none__m" / "2026-10-02" / "10-00-00" / "0" / "run.json"
+    path.parent.mkdir(parents=True)
+    steps = [{"loss": loss, "scores": {"strong_reject": {"p_harmful": [score]}}}
+             for loss, score in [(2.0, 0.1), (0.5, 0.9), (1.0, 0.2)]]   # best suffix succeeds, last does not
+    path.write_text(json.dumps({"runs": [{"original_prompt": [{"role": "user", "content": "b"}], "steps": steps}]}))
+    assert collect(tmp_path).iloc[0].asr_final == 1.0

@@ -1,0 +1,13 @@
+defaults:
+  - models: models
+  - paths
+  - _self_
+
+# generate_safe_responses.py: Llama-2-7b-chat refusals for behaviors without one, like the existing y_safe file.
+name: null                     # required: output prefix, data/safe_responses/<name>_safe_responses.csv
+generator: meta-llama/Llama-2-7b-chat-hf
+data_dir: ${root_dir}/data
+behaviors: behavior_datasets/extra_behavior_datasets/adv_training_varied_behaviors.csv
+existing: safe_responses/adv_training_behaviors_safe_responses_longer.csv
+max_new_tokens: 192            # existing refusals: median ~380 characters, at most 640
+batch_size: 32

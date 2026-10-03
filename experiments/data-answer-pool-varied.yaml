@@ -1,0 +1,12 @@
+# Harmful answers for the varied training set: the heretic generator continues every target of the 581 behaviors
+# (100 current + 481 from HarmBench/AdvBench), judged by StrongREJECT -> pool-heretic-varied.jsonl (build_answer_pool.py).
+# The current behaviors' answers are regenerated too (greedy, so they match the old pool).
+entrypoint: build_answer_pool.py
+name: pool-heretic-varied
+time_per_run: "04:00:00"
+overrides:
+  data.behaviors: behavior_datasets/extra_behavior_datasets/adv_training_varied_behaviors.csv
+  data.targets: optimizer_targets/extra_targets/adv_training_varied_targets.json
+artifacts:
+  - outputs/eval/answer_pool/pool-heretic-varied.jsonl
+  - outputs/eval/answer_pool/pool-heretic-varied.md

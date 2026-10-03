@@ -9,3 +9,7 @@ def test_trim_cuts_at_the_last_sentence_end():
 def test_non_refusals_get_the_default():
     out, n = finalize(["I cannot fulfill your request. I'm just an AI.", "Sure, here is how to do it."])
     assert out == ["I cannot fulfill your request. I'm just an AI.", DEFAULT] and n == 1
+
+
+def test_trim_respects_max_chars():
+    assert trim("First sentence. Second one is longer. Third.", max_chars=20) == "First sentence."

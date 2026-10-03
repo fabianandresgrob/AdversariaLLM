@@ -10,4 +10,5 @@ data_dir: ${root_dir}/data
 behaviors: behavior_datasets/extra_behavior_datasets/adv_training_varied_behaviors.csv
 existing: safe_responses/adv_training_behaviors_safe_responses_longer.csv
 max_new_tokens: 192            # existing refusals: median ~380 characters, at most 640
+max_chars: 640                 # cut at the last sentence end within this, like the existing refusals
 batch_size: 32

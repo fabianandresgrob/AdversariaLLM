@@ -4,7 +4,8 @@
 
 The current behaviors' refusals (safe_responses/adv_training_behaviors_safe_responses_longer.csv) are
 Llama-2-7b-chat's own answers ("I cannot fulfill your request. I'm just an AI, ..."). New behaviors get theirs the
-same way: greedy, no system prompt, trimmed to the last complete sentence. An answer that is not a refusal falls
+same way: greedy, no system prompt, trimmed to the last complete sentence within max_chars (the existing
+refusals are at most 640 characters, median ~380). An answer that is not a refusal falls
 back to the loader's default ("I can't help with that."), so no compliance ever becomes a y_safe target.
 
 Writes data/safe_responses/<name>_safe_responses.csv: the existing rows, then one row per new behavior.
@@ -24,16 +25,16 @@ REFUSAL = re.compile(r"^\s*(I cannot|I can't|I can not|I apologize|I'm sorry|I a
 DEFAULT = "I can't help with that."
 
 
-def trim(text: str) -> str:
-    """Cut at the last sentence end, so a length-capped answer does not stop mid-sentence."""
+def trim(text: str, max_chars: int | None = None) -> str:
+    """Cut at the last sentence end (within max_chars if given), so an answer does not stop mid-sentence."""
     text = text.strip()
-    ends = [m.end() for m in re.finditer(r"[.!?](\s|$)", text)]
+    ends = [m.end() for m in re.finditer(r"[.!?](\s|$)", text) if max_chars is None or m.end() <= max_chars]
     return text[: ends[-1]].strip() if ends else text
 
 
-def finalize(answers: list[str]) -> tuple[list[str], int]:
+def finalize(answers: list[str], max_chars: int | None = None) -> tuple[list[str], int]:
     """Trimmed refusals; non-refusals replaced by DEFAULT. Returns (responses, number replaced)."""
-    out = [trim(a) if REFUSAL.match(a) else DEFAULT for a in answers]
+    out = [trim(a, max_chars) if REFUSAL.match(a) else DEFAULT for a in answers]
     return out, sum(o == DEFAULT for o in out)
 
 
@@ -54,7 +55,8 @@ def main(cfg: DictConfig) -> None:
     entry = OmegaConf.to_container(cfg.models[cfg.generator], resolve=True)
     model, tok = load_model_and_tokenizer(entry)
     model.eval()
-    responses, n_default = finalize(generate_responses(model, tok, missing, int(cfg.max_new_tokens), int(cfg.batch_size)))
+    answers = generate_responses(model, tok, missing, int(cfg.max_new_tokens), int(cfg.batch_size))
+    responses, n_default = finalize(answers, cfg.get("max_chars"))
     log.info(f"{n_default} of {len(missing)} answers were not refusals and got the default")
 
     out = data / "safe_responses" / f"{cfg.name}_safe_responses.csv"

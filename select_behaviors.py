@@ -7,7 +7,8 @@ string-matched (difflib ratio, as in train_response_head.py) against all 100 JBB
 
   1. candidates   HarmBench standard text behaviors (contextual ones need a context, copyright is out of
                   scope) + AdvBench, each with its dataset's one target
-  2. drop         ratio > --drop to any JBB goal or behavior, or to a current training behavior
+  2. drop         ratio > --jbb-drop to any JBB goal or behavior (default --drop), or > --drop to a current
+                  training behavior
   3. dedup        ratio > --drop to a candidate kept earlier (AdvBench repeats itself)
   4. review       ratio in (--review, --drop] to a JBB goal: a person decides keep/drop in the review csv; the
                   script stops until every such row has a decision, so the filter is reproducible from the csv
@@ -43,15 +44,16 @@ def closest(text: str, pool: list[str]) -> tuple[float, str]:
 
 
 def select(candidates: list[dict], jbb: list[str], current: list[str], drop: float, review: float,
-           decisions: dict[str, str]) -> tuple[list[dict], list[dict], list[dict]]:
+           decisions: dict[str, str], jbb_drop: float | None = None) -> tuple[list[dict], list[dict], list[dict]]:
     """candidates: dicts with id, behavior, target, source, category. Returns (kept, dropped, pending): dropped
     rows carry a reason; pending rows are in the review band without a decision yet."""
+    jbb_drop = drop if jbb_drop is None else jbb_drop
     kept, dropped, pending, seen = [], [], [], []
     for c in candidates:
         r_jbb, near_jbb = closest(c["behavior"], jbb)
         r_cur, near_cur = closest(c["behavior"], current)
         r_seen, near_seen = closest(c["behavior"], seen)
-        if r_jbb > drop:
+        if r_jbb > jbb_drop:
             dropped.append({**c, "reason": "near JBB", "ratio": round(r_jbb, 3), "match": near_jbb})
         elif r_cur > drop:
             dropped.append({**c, "reason": "near current training behavior", "ratio": round(r_cur, 3), "match": near_cur})
@@ -89,6 +91,8 @@ def main(argv=None, repo: Path = REPO) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--drop", type=float, default=0.8, help="ratio above which a candidate is dropped")
     parser.add_argument("--review", type=float, default=0.6, help="ratio above which a person decides")
+    parser.add_argument("--jbb-drop", type=float, default=None,
+                        help="separate drop threshold against JBB (e.g. 0.6: drop the whole review band, no review)")
     args = parser.parse_args(argv)
     data = repo / "data"
 
@@ -104,7 +108,7 @@ def main(argv=None, repo: Path = REPO) -> int:
     reviewed = read_csv(review_path) if review_path.exists() else []
     decisions = {r["candidate_id"]: r["decision"].strip().lower() for r in reviewed}
     kept, dropped, pending = select(candidates, jbb_texts, [r["Behavior"] for r in current], args.drop,
-                                    args.review, decisions)
+                                    args.review, decisions, args.jbb_drop)
 
     if pending:  # add the undecided rows to the review csv and stop
         rows = reviewed + [{"candidate_id": p["id"], "candidate": p["behavior"], "closest_jbb": p["match"],
@@ -125,7 +129,7 @@ def main(argv=None, repo: Path = REPO) -> int:
         w.writerows([{k: r.get(k, "") for k in w.fieldnames} for r in current] + new_rows)
     targets = {**current_targets, **{c["id"]: [c["target"]] for c in kept}}
     (data / "optimizer_targets/extra_targets/adv_training_varied_targets.json").write_text(json.dumps(targets, indent=1))
-    summary = {"thresholds": {"drop": args.drop, "review": args.review},
+    summary = {"thresholds": {"drop": args.drop, "review": args.review, "jbb_drop": args.jbb_drop},
                "counts": {"candidates": len(candidates), "kept": len(kept), "dropped": len(dropped),
                           "current": len(current), "total": len(current) + len(kept)},
                "dropped_by_reason": {r: sum(d["reason"] == r for d in dropped) for r in sorted({d["reason"] for d in dropped})},

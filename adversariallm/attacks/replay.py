@@ -32,6 +32,10 @@ class ReplayConfig:
     seed: int = 0
     source: str = "???"  # phase-1 attack results dir, searched recursively for run.json
     source_dataset: Optional[str] = None  # only load runs from this dataset (the dir name omits it)
+    # True: replay every step's prompt (e.g. all 250 GCG suffixes), one result step each, in order, so the
+    # defended run is scored like the undefended one (jailbroken if any step succeeds). False: only the
+    # committed suffix (lowest loss, else last).
+    all_steps: bool = False
 
 
 def _user_content(conv):
@@ -49,8 +53,14 @@ def _pick_adv_prompt(steps):
     return _user_content(best["model_input"])
 
 
-def _load_adv_prompts(source, source_dataset=None):
-    """behavior text -> adversarial prompt, from a prior attack's per-run run.json files.
+def _step_prompts(steps):
+    """User prompt of every step that has a model_input, in order."""
+    return [_user_content(s["model_input"]) for s in steps if s.get("model_input")]
+
+
+def _load_adv_prompts(source, source_dataset=None, all_steps=False):
+    """behavior text -> adversarial prompt (with all_steps: -> list of every step's prompt), from a prior
+    attack's per-run run.json files.
 
     Recursive: chunked array jobs write one <date>/<time> dir per task, so `source` is
     normally the whole <attack>__<defense>__<model> dir. Oldest-first, so a rerun of the
@@ -65,7 +75,7 @@ def _load_adv_prompts(source, source_dataset=None):
             continue
         for run in data.get("runs", []):
             behavior = _user_content(run.get("original_prompt", []))
-            adv = _pick_adv_prompt(run.get("steps", []))
+            adv = _step_prompts(run.get("steps", [])) if all_steps else _pick_adv_prompt(run.get("steps", []))
             if behavior and adv:
                 mapping[behavior] = adv
     return mapping
@@ -78,31 +88,38 @@ class ReplayAttack(Attack):
     @torch.no_grad
     def run(self, target: TargetSystem, dataset) -> AttackResult:
         t0 = time.time()
-        adv = _load_adv_prompts(self.config.source, getattr(self.config, "source_dataset", None))
+        all_steps = getattr(self.config, "all_steps", False)
+        adv = _load_adv_prompts(self.config.source, getattr(self.config, "source_dataset", None), all_steps)
 
         original_conversations: list[Conversation] = []
         generation_conversations: list[Conversation] = []
+        owner: list[int] = []  # generation_conversations[j] belongs to original_conversations[owner[j]]
         n_hit = 0
         for conversation in dataset:
             behavior = _user_content(conversation)
-            adv_prompt = adv.get(behavior)
-            n_hit += adv_prompt is not None
-            adv_prompt = adv_prompt if adv_prompt is not None else behavior  # fall back to clean behavior
+            adv_prompts = adv.get(behavior)
+            n_hit += adv_prompts is not None
+            if adv_prompts is None:
+                adv_prompts = behavior  # fall back to clean behavior
+            if not isinstance(adv_prompts, list):
+                adv_prompts = [adv_prompts]
             original_conversations.append(conversation)
-            gen_conv = copy.deepcopy(conversation)
-            for m in gen_conv:
-                if m["role"] == "user":
-                    m["content"] = adv_prompt
-                elif m["role"] == "assistant":
-                    m["content"] = ""
-            generation_conversations.append(gen_conv)
+            for adv_prompt in adv_prompts:
+                gen_conv = copy.deepcopy(conversation)
+                for m in gen_conv:
+                    if m["role"] == "user":
+                        m["content"] = adv_prompt
+                    elif m["role"] == "assistant":
+                        m["content"] = ""
+                generation_conversations.append(gen_conv)
+                owner.append(len(original_conversations) - 1)
 
         logging.info(
             f"Replay: matched {n_hit}/{len(original_conversations)} behaviors to adversarial "
             f"prompts from {self.config.source}"
         )
 
-        B = len(original_conversations)
+        B = len(generation_conversations)
         result = target.generate(
             generation_conversations,
             max_new_tokens=self.config.generation_config.max_new_tokens,
@@ -116,10 +133,10 @@ class ReplayAttack(Attack):
         input_ids = result.require_input_ids("Replay", expected_len=B)
         t1 = time.time()
 
-        runs = []
+        steps_by_run: list[list[AttackStepResult]] = [[] for _ in original_conversations]
         for i in range(B):
             step = AttackStepResult(
-                step=0,
+                step=len(steps_by_run[owner[i]]),
                 model_completions=completions[i],
                 model_completions_raw=result.raw_for(i),
                 time_taken=(t1 - t0) / B,
@@ -129,12 +146,14 @@ class ReplayAttack(Attack):
                 model_input_tokens=input_ids[i],
                 defense_metadata=result.defense_metadata_for(i),  # probe score + fired?
             )
-            runs.append(
-                SingleAttackRunResult(
-                    original_prompt=original_conversations[i],  # clean behavior -> judge scores the true goal
-                    steps=[step],
-                    total_time=t1 - t0,
-                )
+            steps_by_run[owner[i]].append(step)
+        runs = [
+            SingleAttackRunResult(
+                original_prompt=conversation,  # clean behavior -> judge scores the true goal
+                steps=steps,
+                total_time=t1 - t0,
             )
+            for conversation, steps in zip(original_conversations, steps_by_run)
+        ]
         logging.info(f"Replay attack completed. Total time: {t1 - t0:.2f}s")
         return AttackResult(runs=runs)

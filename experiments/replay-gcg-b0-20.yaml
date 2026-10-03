@@ -1,15 +1,16 @@
 # Replay the undefended GCG and detector-aware GCG results (attack-gcg*-b0-20) through the full pipeline
-# (defense=coop_probe): each behavior's committed (lowest-loss) suffix, scored against each model's own calibrated
-# probe -- what the probe catches. Restricted to JBB 0-19, the behaviors GCG attacked: without the idx the replay
+# (defense=coop_probe): every step's suffix (all 250), scored against each model's own calibrated probe, so the
+# defended ASR is a max over steps like the undefended one -- what the probe catches. Restricted to JBB 0-19, the behaviors GCG attacked: without the idx the replay
 # ran all 100 behaviors and sent the plain request for the 80 that have no suffix.
 entrypoint: run_attacks.py
 name: replay-{+src}-{model}-b0-20
-time_per_run: "01:00:00"
+time_per_run: "02:00:00"
 overrides:
   attack: replay
   defense: coop_probe
   dataset: jbb_behaviors
   datasets.jbb_behaviors.idx: list(range(0,20))
+  attacks.replay.all_steps: true
   attacks.replay.source: ${root_dir}/outputs/${src}__none__${model}
 sweep:
   +src: [gcg, gcg_adaptive]

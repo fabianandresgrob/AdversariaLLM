@@ -206,6 +206,7 @@ replay:
   generation_config: ${attacks._default.generation_config}
   seed: ${attacks._default.seed}
   source: ???
+  all_steps: false  # true: replay every step's prompt (all GCG suffixes), not just the committed one
 gcg:
   name: gcg
   type: discrete

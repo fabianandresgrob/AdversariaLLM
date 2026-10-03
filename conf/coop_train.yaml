@@ -68,6 +68,7 @@ data:
   val_targets: 4                    # targets per val behavior -> 64 attacked val prompts
   val_batch_size: null              # val attack/generation batch; null = harmful_batch_size (4)
   val_seed: 0
+  val_pool: null                    # behaviors csv to draw val from (null = all); the original file keeps an extended set's val identical
   # Benign split: easy = detector class + PINNED calibration.
   kl_source: ultrachat              # KL-leash dataset; any registered source (e.g. magpie) or ultrachat
   kl_max_length: null               # truncate leash examples to N tokens (magpie responses run ~90k chars)

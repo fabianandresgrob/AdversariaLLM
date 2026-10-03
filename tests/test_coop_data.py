@@ -160,3 +160,18 @@ def test_attached_answer_is_read_in_full_but_only_the_target_is_elicited(tmp_pat
     assert torch.equal(plain["h_elicit_mask"], plain["h_targetids"] > 0)
     batch = collate_adv([item, plain])
     assert batch["h_elicit_mask"].shape == batch["h_ids"].shape
+
+
+def test_val_pool_keeps_the_original_held_out_behaviors_when_the_set_grows():
+    from types import SimpleNamespace
+
+    from adversariallm.training.data import split_adv_stream
+
+    original = [(f"b{i}", f"t{i}", "s") for i in range(10)]
+    extended = original + [(f"new{i}", f"n{i}", "s") for i in range(30)]
+    _, val_orig = split_adv_stream(SimpleNamespace(rows=original), val_size=3, seed=0)
+    train_ext, val_ext = split_adv_stream(SimpleNamespace(rows=extended), val_size=3, seed=0,
+                                          val_pool={p for p, _, _ in original})
+    held_out = lambda ds: {ds.dataset.rows[i][0] for i in ds.indices}
+    assert held_out(val_ext) == held_out(val_orig)
+    assert {f"new{i}" for i in range(30)} <= held_out(train_ext)

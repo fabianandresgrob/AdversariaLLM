@@ -60,15 +60,19 @@ def _encode(tokenizer, text):
     return tokenizer(text, add_special_tokens=False)["input_ids"]
 
 
-def split_adv_stream(dataset, val_size, seed=0, val_targets=1):
+def split_adv_stream(dataset, val_size, seed=0, val_targets=1, val_pool=None):
     """Split adversarial behaviors into disjoint (train, val) subsets.
 
     Behavior-level (not row-level): a behavior's multiple targets never straddle the
     split. Seeded, so the held-out behaviors stay fixed across runs. Val keeps the first
     `val_targets` rows (targets) per behavior, so validation cost is independent of how many
     targets a behavior has; more than one gives the val metrics more than val_size samples.
+    `val_pool` (a set of behaviors) restricts where val is drawn from: with the original behaviors as the pool,
+    an extended file holds out exactly the same behaviors as the original one, and every added behavior trains.
     """
     behaviors = list(dict.fromkeys(p for p, _, _ in dataset.rows))  # unique, first-appearance order
+    if val_pool is not None:
+        behaviors = [b for b in behaviors if b in val_pool]
     if not 0 < val_size < len(behaviors):
         raise ValueError(f"val_size must be in (0, {len(behaviors)}), got {val_size}")
     g = torch.Generator().manual_seed(seed)

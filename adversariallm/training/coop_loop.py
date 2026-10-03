@@ -13,6 +13,7 @@ apply the incremental-backward pattern from loop.py:train_step).
 from __future__ import annotations
 
 import contextlib
+import csv
 import json
 import logging
 import os
@@ -595,8 +596,12 @@ def run_coop_training(cfg):
         window=cfg.splits[cfg.data.kl_source].train, max_length=cfg.data.kl_max_length, seed=cfg.data.val_seed,
     )
 
+    val_pool = None
+    if cfg.data.get("val_pool"):  # hold out the same behaviors as with the original file (see split_adv_stream)
+        with open(os.path.join(cfg.data.dir, cfg.data.val_pool), newline="") as fh:
+            val_pool = {r["Behavior"] for r in csv.DictReader(fh)}
     adv_train_ds, adv_val_ds = split_adv_stream(adv_ds, val_size=cfg.data.val_size, seed=cfg.data.val_seed,
-                                                val_targets=int(cfg.data.get("val_targets", 1)))
+                                                val_targets=int(cfg.data.get("val_targets", 1)), val_pool=val_pool)
     adv_loader = DataLoader(adv_train_ds, batch_size=cfg.data.harmful_batch_size, shuffle=True, collate_fn=collate_adv)
     util_loader = DataLoader(util_ds, batch_size=cfg.data.utility_batch_size, shuffle=True, collate_fn=collate_util)
 

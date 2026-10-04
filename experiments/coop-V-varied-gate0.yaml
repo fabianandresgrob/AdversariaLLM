@@ -1,0 +1,48 @@
+# V-varied with refusal-gate floor 0 instead of 0.05: no refusal pressure on attacks the probe already catches -- the pure
+# division of labor between model and probe that coop is about. Otherwise identical to coop-V-varied.
+# V: U2-win512-w32 (answer probe reading 512 answer tokens, max over 32-token windows, gate floor 0.05) on the varied
+# behavior set (planning/specs/2026-10-03-varied-harmful-answers.md): the 100 current behaviors + 481 from HarmBench and
+# AdvBench (select_behaviors.py, JBB matches above 0.6 dropped), their Llama-2-chat refusals, and the heretic answers
+# (pool-heretic-varied). Validation holds out the same 24 behaviors as all earlier runs (data.val_pool), so the
+# embedding-attack eval never sees a training behavior. Embedding attack only. 12 h: U2 hit 8 h at step ~850.
+entrypoint: run_coop_train.py
+name: V-varied-gate0-s{seed}
+time_per_run: "12:00:00"
+overrides:
+  attack.enabled: true
+  attack.perturb: user
+  attack.target_eot: false
+  attack.eps: 0.1
+  attack.iters: 50
+  attack.use_detector: true
+  reader.readout: response_window
+  reader.readout_k: 512
+  reader.window: 32
+  probe_init: random
+  data.behaviors: behavior_datasets/extra_behavior_datasets/adv_training_varied_behaviors.csv
+  data.targets: optimizer_targets/extra_targets/adv_training_varied_targets.json
+  data.safe: safe_responses/adv_training_varied_safe_responses.csv
+  data.val_pool: behavior_datasets/extra_behavior_datasets/adv_training_behaviors.csv
+  data.answer_pool: ${root_dir}/outputs/eval/answer_pool/pool-heretic-varied.jsonl
+  data.answer_max_tokens: 512
+  training.detector_refusal_negatives: true
+  training.rep_warmup_steps: 50
+  training.n_detector_steps: 6
+  training.n_steps: 1000
+  training.val_every: 50
+  training.checkpoint_every: 250
+  training.benign_gen_n: 40
+  training.ema_decay: 0.995
+  data.kl_source: magpie
+  data.kl_max_length: 1024
+  data.val_size: 24
+  data.val_targets: 6
+  data.val_batch_size: 16
+  lambda_benign_perturb: 1.0
+  epsilon: 0.0
+  output.checkpoint_path: ${root_dir}/checkpoints_coop/V
+sweep:
+  seed: [0]
+artifacts:
+  - checkpoints_coop/V/{name}/final_adapter
+  - checkpoints_coop/V/{name}/final_reader.pt

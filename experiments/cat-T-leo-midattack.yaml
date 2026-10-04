@@ -1,0 +1,18 @@
+# T: CAT following Leo's recipe (conf/cat_recipe/leo.yaml) at a medium attack strength: coop's attack type (user message,
+# Adam lr 0.01, radius 0.1) with Leo's 10 iterations instead of coop's 50. Between Leo's attack (too weak once the bugs
+# are fixed: 18% of our embedding attacks still succeed) and ours (zero, but more over-refusal or a broken GSM8K).
+entrypoint: run_train.py
+name: T-cat-leo-midattack-s{seed}
+time_per_run: "08:00:00"
+overrides:
+  +cat_recipe: leo
+  attack.eps: 0.1
+  attack.iters: 10
+  attack.lr: 0.01
+  attack.optimizer: adam
+  training.checkpoint_every: 50
+  output.checkpoint_path: ${root_dir}/checkpoints_cat/T-cat
+sweep:
+  seed: [0]
+artifacts:
+  - checkpoints_cat/T-cat/{name}/final_adapter

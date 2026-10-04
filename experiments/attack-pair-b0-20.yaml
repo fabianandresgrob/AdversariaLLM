@@ -11,4 +11,4 @@ overrides:
   attacks.pair.judge_model.tokenizer_id: lmsys/vicuna-13b-v1.5
 sweep:
   model:
-  - U2-mean512-s0-ema750
+  - T-cat-leo-midattack-s0

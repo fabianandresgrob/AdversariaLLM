@@ -8,4 +8,4 @@ overrides:
   datasets.jbb_behaviors.idx: list(range(0,20))
 sweep:
   model:
-  - U2-mean512-s0-ema750
+  - T-cat-leo-midattack-s0

@@ -24,6 +24,7 @@ sweep:
   - T-cat-leo-magpie-s0
   - T-cat-leo-magpie-coopattack-s0
   - T-cat-leo-magpie-kl-coopattack-s0
+  - T-cat-leo-midattack-s0
   seed: [0]
 artifacts:
   - outputs/eval/cross_attack/{+block}/{+run}/seed{seed}/cross_attack_eval.json

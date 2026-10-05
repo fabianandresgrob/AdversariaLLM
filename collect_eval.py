@@ -56,10 +56,11 @@ CONFIG_KEYS = {
     "model_objective": ("model_objective",),  # CAT only
 }
 CHECKPOINT_ROOTS = {"coop": "checkpoints_coop", "cat": "checkpoints_cat"}
-CKPT_SUFFIX = re.compile(r"^(final|ema|step\d+)$")
+CKPT_SUFFIX = re.compile(r"^(final|ema|ema\d+|step\d+)$")
 # outputs/eval/*/baselines/<dir> and .../reference/<dir> -> the models.yaml entry their attacks ran under
 EXTERNAL_MODELS = {"mixat": "mixat-llama31-8b", "cb": "cb-llama3-8b-rr", "base": "base-llama31-8b"}
 TRANSFER_ATTACKS = ("direct", "gcg", "gcg_adaptive", "inpainting", "pair")
+TRANSFER_BEHAVIORS = (0, 20)  # the suite's behavior window (JBB 0-19); older 100-behavior runs do not leak in
 # the current protocol where a model was attacked under several: PAIR judged by vicuna, 128 inpainting samples
 PREFERRED_PROTOCOL = {"pair": "judge_model=vicuna-13b-v1.5", "inpainting": "num_samples_per_behavior=128"}
 ANSWER_PROBE_VARIANTS = ("emb", "attacks")
@@ -115,8 +116,14 @@ def config_columns(run_config: dict) -> dict:
     return {col: _dig(run_config, keys) for col, keys in CONFIG_KEYS.items()}
 
 
-def threshold_columns(ckpt_dir: Path) -> dict:
-    val, calib = _read_json(ckpt_dir / "threshold_1pct.json"), _read_json(ckpt_dir / "threshold_1pct_calib.json")
+def threshold_columns(ckpt_dir: Path, reader: str | None = None) -> dict:
+    """The calibrated thresholds in ckpt_dir; with `reader` (e.g. "ema_step750_reader.pt") only those calibrated
+    for that reader, since one dir can hold several checkpoints but only one calibration file."""
+    def own(data):
+        if data and reader and data.get("checkpoint_path") and not str(data["checkpoint_path"]).endswith(reader):
+            return None
+        return data
+    val, calib = (own(_read_json(ckpt_dir / f)) for f in ("threshold_1pct.json", "threshold_1pct_calib.json"))
     return {"tau_val": val and val["threshold"], "tau_calib": calib and calib["threshold"]}
 
 
@@ -185,23 +192,37 @@ def entry_name(run: str) -> str:
 def attack_model(run: str, ckpt: str) -> str | None:
     """The models.yaml entry the transfer attacks ran under: <run> for the final adapter, <run>-ema for
     the weight average (the <run>-ema checkpoint dir); other checkpoints were not attacked."""
+    if re.fullmatch(r"ema\d+", ckpt):  # a weight average saved inside the run's dir (ema_step<N>_adapter)
+        return f"{entry_name(run)}-{ckpt}"
     return {"final": entry_name(run), "ema": entry_name(run) + "-ema"}.get(ckpt)
 
 
 def transfer_columns(attacks: pd.DataFrame, model: str | None) -> dict:
-    """<attack>_asr128 (model alone) and <attack>_asr128_<defense> per attack, plus the behavior counts
-    they rest on (transfer_behaviors; 20 = JBB 0-19, 100 = the older full protocol)."""
+    """<attack>_asr: share of behaviors jailbroken at any point of the attack's budget (250 GCG steps, 90 PAIR
+    attempts), <attack>_asr_prompt: share of single attempts that work; suffixed _<defense> for the pipeline. GCG's
+    pipeline numbers come from replaying all its steps through the probe (attack=replay). transfer_behaviors: the
+    behavior counts they rest on."""
     if model is None or attacks.empty:
         return {}
     out, counts = {}, set()
     for (attack, defense), cells in attacks[attacks["model"] == model].groupby(["attack", "defense"]):
+        if attack == "replay":  # the protocol names the replayed run: source=<attack>__none__<model>
+            for _, cell in cells.iterrows():
+                family = str(cell["protocol"]).split("source=")[-1].split("__")[0]
+                if family in TRANSFER_ATTACKS:
+                    out[f"{family}_asr_{defense}"] = cell["asr_behavior"]
+                    out[f"{family}_asr_prompt_{defense}"] = cell["asr_per_sample"]
+                    counts.add(int(cell["n_behaviors"]))
+            continue
         if attack not in TRANSFER_ATTACKS:
             continue
         preferred = cells[cells["protocol"].str.contains(PREFERRED_PROTOCOL.get(attack, ""), regex=False)]
         # the current protocol where it exists, else the most complete cell (never a small smoke test)
-        cell = preferred.sort_values("n_behaviors").iloc[0] if len(preferred) else \
+        cell = preferred.sort_values("n_behaviors").iloc[-1] if len(preferred) else \
             cells.sort_values("n_behaviors").iloc[-1]
-        out[f"{attack}_asr128" + ("" if defense == "none" else f"_{defense}")] = cell["asr_at_128"]
+        suffix = "" if defense == "none" else f"_{defense}"
+        out[f"{attack}_asr{suffix}"] = cell["asr_behavior"]
+        out[f"{attack}_asr_prompt{suffix}"] = cell["asr_per_sample"]
         counts.add(int(cell["n_behaviors"]))
     if counts:
         out["transfer_behaviors"] = "/".join(str(c) for c in sorted(counts))
@@ -234,8 +255,8 @@ def _eval_path(repo: Path, kind: str, block: str, run: str, ckpt: str, filename:
     return candidates[0] / filename if filename else candidates[0]
 
 
-def evaluated_checkpoints(repo: Path, block: str, run: str) -> list[str]:
-    ckpts = {"final"}
+def evaluated_checkpoints(repo: Path, block: str, run: str, has_final: bool = True) -> list[str]:
+    ckpts = {"final"} if has_final else set()
     for kind in ("overrefusal", "utility", "cross_attack"):
         for d in (repo / "outputs/eval" / kind / block).glob(f"{run}-*"):
             suffix = d.name[len(run) + 1:]
@@ -301,12 +322,12 @@ def jobs_index(jobs_root: Path | None) -> dict[str, Path]:
 def collect(repo: Path, jobs_root: Path | None) -> pd.DataFrame:
     from collect_attacks import collect as collect_attack_cells
 
-    attacks = collect_attack_cells(repo)
+    attacks = collect_attack_cells(repo, behaviors=TRANSFER_BEHAVIORS)
     rows = []
     jobs = jobs_index(jobs_root)
     for kind, root in CHECKPOINT_ROOTS.items():
         for ckpt_dir in sorted((repo / root).glob("*/*")):
-            if not (ckpt_dir / "final_adapter").is_dir():
+            if not any(ckpt_dir.glob("*_adapter")):  # runs stopped by the time limit have only ema_step<N>_adapter
                 continue
             block, run = ckpt_dir.parent.name, ckpt_dir.name
             run_config = _read_json(ckpt_dir / "run_config.json")
@@ -315,13 +336,17 @@ def collect(repo: Path, jobs_root: Path | None) -> pd.DataFrame:
             job_dir = jobs.get(run)
             if run_config is None and job_dir is not None:  # CAT runs before 30 Sep wrote no run_config.json
                 run_config = hydra_config(job_dir) or nest((_read_json(job_dir / "run.json") or {}).get("overrides", {}))
-            for ckpt in evaluated_checkpoints(repo, block, run):
+            for ckpt in evaluated_checkpoints(repo, block, run, (ckpt_dir / "final_adapter").is_dir()):
                 model = attack_model(run, ckpt)
                 row = {"block": block, "run": run, "checkpoint": ckpt, "kind": kind, "model": model}
                 row.update(config_columns(run_config or {}))
                 if kind == "coop":
-                    sibling = ckpt_dir.parent / f"{run}-{ckpt}"
-                    row.update(threshold_columns(ckpt_dir if ckpt == "final" else sibling))
+                    if ckpt == "final":
+                        row.update(threshold_columns(ckpt_dir, "final_reader.pt"))
+                    elif re.fullmatch(r"ema\d+", ckpt):
+                        row.update(threshold_columns(ckpt_dir, f"ema_step{ckpt[3:]}_reader.pt"))
+                    else:  # <run>-ema: the weight average copied into a sibling dir
+                        row.update(threshold_columns(ckpt_dir.parent / f"{run}-{ckpt}"))
                 row.update(overrefusal_columns(_eval_path(repo, "overrefusal", block, run, ckpt, "overrefusal.json")))
                 row.update(utility_columns(_eval_path(repo, "utility", block, run, ckpt, "utility.json")))
                 row.update(cross_attack_columns(_eval_path(repo, "cross_attack", block, run, ckpt, None)))

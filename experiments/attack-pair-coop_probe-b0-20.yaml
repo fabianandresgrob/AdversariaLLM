@@ -12,5 +12,5 @@ overrides:
   defense: coop_probe
 sweep:
   model:
-  - V-varied-s0-ema
-  - V-varied-gate0-s0-ema
+  - V-varied-s0-ema1000
+  - V-varied-gate0-s0-ema1000

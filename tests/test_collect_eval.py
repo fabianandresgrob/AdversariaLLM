@@ -159,7 +159,8 @@ def test_checkpoint_variants_judged_transfer_and_baseline_rows(tmp_path):
                                      "judged_asr_pipeline": 0.0}}})
     run = {"original_prompt": [{"role": "user", "content": "b"}],
            "steps": [{"scores": {"strong_reject": {"p_harmful": [0.9]}}}]}
-    cfg = {"attack_params": {"judge_model": {"id": "lmsys/vicuna-13b-v1.5"}, "num_streams": 30, "num_steps": 3}}
+    cfg = {"attack_params": {"judge_model": {"id": "lmsys/vicuna-13b-v1.5"}, "num_streams": 30, "num_steps": 3},
+           "dataset_params": {"idx": [0]}}
     for model, defense in (("Q-a0p25-s0-ema", "none"), ("Q-a0p25-s0-ema", "coop_probe"), ("mixat-llama31-8b", "none")):
         _write(repo / f"outputs/pair__{defense}__{model}/2026-09-29/10-00-00/0/run.json", {"config": cfg, "runs": [run]})
     _write(repo / "outputs/eval/response_head/RH3-Q-a0p25-s0-ema-emb.json",
@@ -172,11 +173,12 @@ def test_checkpoint_variants_judged_transfer_and_baseline_rows(tmp_path):
                              ("mixat", "-")}
     ema = df.loc[("Q-a0.25-s0", "ema")]
     assert (ema.model, ema.xstest_refusal_string, ema.tau_calib) == ("Q-a0p25-s0-ema", 0.168, 0.34)
-    assert (ema.xattack_judged_asr_model_model_only, ema.pair_asr128, ema.pair_asr128_coop_probe) == (0.0, 1.0, 1.0)
+    assert (ema.xattack_judged_asr_model_model_only, ema.pair_asr, ema.pair_asr_coop_probe) == (0.0, 1.0, 1.0)
+    assert ema.pair_asr_prompt == 1.0
     assert (ema.rh_emb_pair_asr128, ema.transfer_behaviors) == (0.3, "1")
-    assert pd.isna(df.loc[("Q-a0.25-s0", "step500")].get("pair_asr128"))
+    assert pd.isna(df.loc[("Q-a0.25-s0", "step500")].get("pair_asr"))
     mixat = df.loc[("mixat", "-")]
-    assert (mixat.kind, mixat.model, mixat.pair_asr128) == ("baseline", "mixat-llama31-8b", 1.0)
+    assert (mixat.kind, mixat.model, mixat.pair_asr) == ("baseline", "mixat-llama31-8b", 1.0)
 
 
 def test_cat_config_comes_from_hydras_saved_config_when_there_is_no_run_config(tmp_path):
@@ -191,3 +193,24 @@ def test_cat_config_comes_from_hydras_saved_config_when_there_is_no_run_config(t
     main(["--no-plots", "--jobs-root", str(jobs)], repo=repo)
     row = pd.read_csv(repo / "outputs/eval/summary/all_runs.csv").iloc[0]
     assert (row.lambda_away, row.kl_source, row.model_objective) == (0.5, "ultrachat", "ce")
+
+
+def test_time_limited_run_rows_come_from_its_ema_checkpoint_with_gcg_replay(tmp_path):
+    repo, jobs = tmp_path / "repo", tmp_path / "runs"
+    ckpt = repo / "checkpoints_coop/U2/U2-w-s0"
+    (ckpt / "ema_step750_adapter").mkdir(parents=True)  # no final_adapter: stopped by the time limit
+    _write(ckpt / "run_config.json", {"name": "U2-w-s0"})
+    _write(ckpt / "threshold_1pct_calib.json", {"threshold": 0.26, "checkpoint_path": "/x/U2-w-s0/ema_step750_reader.pt"})
+    _write(repo / "outputs/eval/overrefusal/U2/U2-w-s0-ema750/overrefusal.json", {"results": {"model": {"xs_test": 0.2}}})
+    steps = lambda scores: [{"scores": {"strong_reject": {"p_harmful": [x]}}} for x in scores]
+    for attack, defense, params, scores in (("gcg", "none", {"num_steps": 250}, [0.1, 0.9, 0.1, 0.1]),
+                                            ("replay", "coop_probe", {"source": "/o/gcg__none__U2-w-s0-ema750"}, [0.1, 0.1])):
+        _write(repo / f"outputs/{attack}__{defense}__U2-w-s0-ema750/2026-10-02/10-00-00/0/run.json",
+               {"config": {"attack_params": params, "dataset_params": {"idx": [0]}},
+                "runs": [{"original_prompt": [{"role": "user", "content": "b"}], "steps": steps(scores)}]})
+    main(["--no-plots", "--jobs-root", str(jobs)], repo=repo)
+    df = pd.read_csv(repo / "outputs/eval/summary/all_runs.csv").set_index(["run", "checkpoint"])
+    assert list(df.index) == [("U2-w-s0", "ema750")]  # no empty "final" row
+    row = df.loc[("U2-w-s0", "ema750")]
+    assert (row.model, row.tau_calib, row.xstest_refusal_string) == ("U2-w-s0-ema750", 0.26, 0.2)
+    assert (row.gcg_asr, row.gcg_asr_prompt, row.gcg_asr_coop_probe) == (1.0, 0.25, 0.0)

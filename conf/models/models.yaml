@@ -1669,7 +1669,7 @@ U2-mean512-s0-ema750:
   trust_remote_code: true
   adapter_path: ${root_dir}/checkpoints_coop/U2/U2-mean512-s0/ema_step750_adapter
   reader_path: ${root_dir}/checkpoints_coop/U2/U2-mean512-s0/ema_step750_reader.pt
-V-varied-s0-ema:
+V-varied-s0-ema1000:
   id: meta-llama/Meta-Llama-3.1-8B-Instruct
   tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
   short_name: Llama
@@ -1680,7 +1680,7 @@ V-varied-s0-ema:
   trust_remote_code: true
   adapter_path: ${root_dir}/checkpoints_coop/V/V-varied-s0/ema_step1000_adapter
   reader_path: ${root_dir}/checkpoints_coop/V/V-varied-s0/ema_step1000_reader.pt
-V-varied-gate0-s0-ema:
+V-varied-gate0-s0-ema1000:
   id: meta-llama/Meta-Llama-3.1-8B-Instruct
   tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
   short_name: Llama

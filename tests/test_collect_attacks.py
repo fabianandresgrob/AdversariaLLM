@@ -135,7 +135,7 @@ def test_replay_is_labelled_with_the_run_it_replays(tmp_path):
     _write_run(tmp_path, "replay", "coop_probe", "E-nd6-s0", [[0.0]],
                config={"attack_params": {"source": "/p/project1/x/y/AdversariaLLM/outputs/"
                                                    "gcg__none__E-nd6-s0/2026-09-19/10-00-00"}})
-    assert collect(tmp_path).iloc[0]["protocol"] == "source=gcg__none__E-nd6-s0"
+    assert collect(tmp_path).iloc[0]["protocol"] == "source=gcg__none__E-nd6-s0,all_steps=None"
 
 
 def test_a_rerun_replaces_the_older_run_of_the_same_behavior_and_shards_add_up(tmp_path):

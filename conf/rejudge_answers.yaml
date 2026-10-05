@@ -1,0 +1,8 @@
+defaults:
+  - paths
+  - _self_
+
+# rejudge_answers.py: a second judge on <model>_answers.jsonl (rescore_answer_probe.py, save_answer_scores=true).
+model: null       # required
+judge: harmbench  # judgezoo name; harmbench = cais/HarmBench-Llama-2-13b-cls
+name: null        # jobs injects the run name

@@ -1,0 +1,12 @@
+# Second judge on the post-hoc PAIR answers (probe-answers-pair): the HarmBench classifier, which asks whether an
+# answer is an instance of the behavior, next to StrongREJECT -- how much of what the answer probes flag, or miss,
+# is actual harm.
+entrypoint: rejudge_answers.py
+name: rejudge-pair-{model}
+time_per_run: "01:00:00"
+overrides:
+  judge: harmbench
+sweep:
+  model: [V-varied-s0-ema1000, V-varied-gate0-s0-ema1000, U2-win512-w32-s0-ema750, U2-win512-s0-ema750]
+artifacts:
+  - outputs/eval/answer_probe_rescore/{model}_answers.harmbench.jsonl

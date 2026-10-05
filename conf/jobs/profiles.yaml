@@ -49,6 +49,9 @@ rescore_answer_probe.py:
 generate_safe_responses.py:
   config_name: generate_safe_responses
   name_key: name
+rejudge_answers.py:
+  config_name: rejudge_answers
+  name_key: name
 run_utility_eval.py:
   config_name: utility_eval
 run_gate_diagnostics.py:

@@ -1,0 +1,14 @@
+# Cross-scoring: each V model + its answer probe scores both V models' post-hoc PAIR answers (fixed text, its own
+# activations), at its own pipeline threshold. Separates "the gate-0 probe is weaker" from "the gate-0 model writes
+# answers that look harmless to it". The two same-model cells repeat probe-answers-pair as a check.
+entrypoint: rescore_answer_probe.py
+name: cross-pair-{model}-on-{answers_from}
+time_per_run: "01:30:00"
+overrides:
+  attack_names: [pair]
+  save_answer_scores: true
+sweep:
+  model: [V-varied-s0-ema1000, V-varied-gate0-s0-ema1000]
+  answers_from: [V-varied-s0-ema1000, V-varied-gate0-s0-ema1000]
+artifacts:
+  - outputs/eval/answer_probe_rescore/{model}_on_{answers_from}_answers.jsonl

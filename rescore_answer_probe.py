@@ -22,6 +22,9 @@ With `defended` (e.g. coop_probe), also a consistency check: the raw answers of 
 compared with the score the defense recorded for each. If they agree, a defended ASR well above the offline
 estimate comes from the attack adapting to the probe, not from the defense scoring differently.
 
+With `answers_from` (another model's name) the model + probe score THAT model's attack answers instead
+(teacher forcing: the text is fixed, the activations are this model's), written as <model>_on_<other>.
+
 Writes outputs/eval/answer_probe_rescore/<model>.json, and with `save_answer_scores` also <model>_answers.jsonl
 (every answer with its judge score and probe score under each readout).
 """
@@ -127,7 +130,9 @@ def main(cfg: DictConfig) -> None:
                     out[name] += reader.p_harmful(hidden, batch["tgt"], batch["attn"]).tolist()
         return out
 
-    rows = collect_answers(repo, cfg.model, list(cfg.attack_names))
+    source = cfg.get("answers_from") or cfg.model  # whose attack answers to score (cross-scoring: another model's)
+    tag = cfg.model if source == cfg.model else f"{cfg.model}_on_{source}"
+    rows = collect_answers(repo, source, list(cfg.attack_names))
     log.info(f"{len(rows)} judged answers of {cfg.model}")
     calib_prompts, _ = load_dataset_prompts(cfg.datasets, "alpaca", window=cfg.splits.alpaca.calib, seed=0)
     calib_prompts = calib_prompts[: int(cfg.calib_n)]
@@ -176,15 +181,15 @@ def main(cfg: DictConfig) -> None:
 
     out = repo / "outputs" / "eval" / "answer_probe_rescore"
     out.mkdir(parents=True, exist_ok=True)
-    (out / f"{cfg.model}.json").write_text(json.dumps(results, indent=2))
+    (out / f"{tag}.json").write_text(json.dumps(results, indent=2))
     if cfg.save_answer_scores:  # one line per answer, with its threshold-free score under every readout
         thresholds = {name: res["threshold"] for name, res in results.items() if name != "consistency"}
-        with open(out / f"{cfg.model}_answers.jsonl", "w") as fh:
+        with open(out / f"{tag}_answers.jsonl", "w") as fh:
             for i, r in enumerate(rows):
                 scores = {name: attack_scores[name][i] for name in readers}
                 fh.write(json.dumps({**{k: r[k] for k in ("attack", "behavior", "order", "prompt", "answer", "p_harmful")},
                                      "probe": scores, "flagged": {n: scores[n] > thresholds[n] for n in readers}}) + "\n")
-    lines = [f"\n{cfg.model}: thresholds at 1% false positives on {len(calib_prompts)} own Alpaca answers"]
+    lines = [f"\n{tag}: thresholds at 1% false positives on {len(calib_prompts)} own Alpaca answers"]
     for name, res in results.items():
         if name == "consistency":
             continue

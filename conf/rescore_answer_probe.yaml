@@ -22,5 +22,6 @@ batch_size: 8
 xstest_gens: null      # gens_model_xs_test.json of the model's over-refusal eval: the probe's xs_test false positives
 defended: null         # e.g. coop_probe: also rescore the defended runs' raw answers and compare with the defense's recorded scores
 defended_readout: mean128  # the readout the defense uses (the one the probe trained with)
+answers_from: null         # another model's name: score its attack answers with this model + probe
 save_answer_scores: false  # also write <model>_answers.jsonl: every answer with its probe scores
 name: null             # jobs injects the run name

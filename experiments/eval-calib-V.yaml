@@ -1,0 +1,13 @@
+# 1%-FPR calibration (2000 held-out alpaca) of the V runs' weight-averaged step-1000 answer probes; needed before PAIR runs against coop_probe.
+entrypoint: run_calibrate_probe.py
+name: calib-{+run}-ema1000
+time_per_run: 01:30:00
+overrides:
+  +block: V
+  adapter_path: ${root_dir}/checkpoints_coop/${block}/${run}/ema_step1000_adapter
+  checkpoint_path: ${root_dir}/checkpoints_coop/${block}/${run}/ema_step1000_reader.pt
+  calibration_window: calib
+artifacts:
+- checkpoints_coop/{+block}/{+run}/threshold_1pct_calib.json
+sweep:
+  +run: [V-varied-s0, V-varied-gate0-s0]

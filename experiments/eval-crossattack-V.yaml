@@ -1,0 +1,26 @@
+# V: weight-averaged step-1000 checkpoints of the two V runs; as eval-crossattack-U2 (probe reads up to 512 answer tokens).
+entrypoint: run_cross_attack_eval.py
+name: xattack-{+run}-ema1000-a{seed}
+time_per_run: "02:00:00"
+overrides:
+  +block: V
+  adapter_path: ${root_dir}/checkpoints_coop/${block}/${run}/ema_step1000_adapter
+  eval_use_detector: [true, false]
+  eval_detector_coeffs: [0.5]
+  attack.iters: 100
+  attack.eps: 0.1
+  attack.target_eot: false
+  attack.perturb: user
+  harmful.val_size: 24
+  harmful.val_targets: 6
+  harmful.batch_size: 16
+  benign.benign_gen_n: 40
+  judge.enabled: true
+  harmful.answer_pool: ${root_dir}/outputs/eval/answer_pool/pool-heretic.jsonl
+  harmful.answer_max_tokens: 512
+  out: ${root_dir}/outputs/eval/cross_attack/${block}/${run}-ema1000/seed${seed}
+sweep:
+  +run: [V-varied-s0, V-varied-gate0-s0]
+  seed: [0]
+artifacts:
+  - outputs/eval/cross_attack/{+block}/{+run}-ema1000/seed{seed}/cross_attack_eval.json

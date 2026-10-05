@@ -1,0 +1,14 @@
+# V: weight-averaged step-1000 checkpoints of the two V runs; as eval-overrefusal-U2.
+entrypoint: run_overrefusal_eval.py
+name: overrefusal-{+run}-ema1000
+time_per_run: 02:00:00
+overrides:
+  +block: V
+  ~checkpoints.base: base
+  +checkpoints.model: ${root_dir}/checkpoints_coop/${block}/${run}/ema_step1000_adapter
+  out: ${root_dir}/outputs/eval/overrefusal/${block}/${run}-ema1000
+  judge.enabled: true
+artifacts:
+- outputs/eval/overrefusal/{+block}/{+run}-ema1000/overrefusal.json
+sweep:
+  +run: [V-varied-s0, V-varied-gate0-s0]

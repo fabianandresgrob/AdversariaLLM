@@ -131,7 +131,7 @@ def main(cfg: DictConfig) -> None:
         return out
 
     source = cfg.get("answers_from") or cfg.model  # whose attack answers to score (cross-scoring: another model's)
-    tag = cfg.model if source == cfg.model else f"{cfg.model}_on_{source}"
+    tag = f"{cfg.model}_on_{source}" if cfg.get("answers_from") else cfg.model
     rows = collect_answers(repo, source, list(cfg.attack_names))
     log.info(f"{len(rows)} judged answers of {cfg.model}")
     calib_prompts, _ = load_dataset_prompts(cfg.datasets, "alpaca", window=cfg.splits.alpaca.calib, seed=0)

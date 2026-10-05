@@ -204,7 +204,7 @@ def test_time_limited_run_rows_come_from_its_ema_checkpoint_with_gcg_replay(tmp_
     _write(repo / "outputs/eval/overrefusal/U2/U2-w-s0-ema750/overrefusal.json", {"results": {"model": {"xs_test": 0.2}}})
     steps = lambda scores: [{"scores": {"strong_reject": {"p_harmful": [x]}}} for x in scores]
     for attack, defense, params, scores in (("gcg", "none", {"num_steps": 250}, [0.1, 0.9, 0.1, 0.1]),
-                                            ("replay", "coop_probe", {"source": "/o/gcg__none__U2-w-s0-ema750"}, [0.1, 0.1])):
+                                            ("replay", "coop_probe", {"source": "/o/gcg__none__U2-w-s0-ema750", "all_steps": True}, [0.1, 0.1])):
         _write(repo / f"outputs/{attack}__{defense}__U2-w-s0-ema750/2026-10-02/10-00-00/0/run.json",
                {"config": {"attack_params": params, "dataset_params": {"idx": [0]}},
                 "runs": [{"original_prompt": [{"role": "user", "content": "b"}], "steps": steps(scores)}]})
@@ -214,3 +214,16 @@ def test_time_limited_run_rows_come_from_its_ema_checkpoint_with_gcg_replay(tmp_
     row = df.loc[("U2-w-s0", "ema750")]
     assert (row.model, row.tau_calib, row.xstest_refusal_string) == ("U2-w-s0-ema750", 0.26, 0.2)
     assert (row.gcg_asr, row.gcg_asr_prompt, row.gcg_asr_coop_probe) == (1.0, 0.25, 0.0)
+
+
+def test_attack_results_alone_make_a_checkpoint_row_and_old_replays_are_ignored(tmp_path):
+    repo, jobs = tmp_path / "repo", tmp_path / "runs"
+    (repo / "checkpoints_coop/U2/U2-m-s0/ema_step750_adapter").mkdir(parents=True)
+    run = {"original_prompt": [{"role": "user", "content": "b"}], "steps": [{"scores": {"strong_reject": {"p_harmful": [0.9]}}}]}
+    for attack, defense, params in (("gcg", "none", {}), ("replay", "coop_probe", {"source": "/o/gcg__none__U2-m-s0-ema750"})):
+        _write(repo / f"outputs/{attack}__{defense}__U2-m-s0-ema750/2026-10-02/10-00-00/0/run.json",
+               {"config": {"attack_params": params, "dataset_params": {"idx": [0]}}, "runs": [run]})
+    main(["--no-plots", "--jobs-root", str(jobs)], repo=repo)
+    row = pd.read_csv(repo / "outputs/eval/summary/all_runs.csv").set_index(["run", "checkpoint"]).loc[("U2-m-s0", "ema750")]
+    assert row.gcg_asr == 1.0
+    assert pd.isna(row.get("gcg_asr_coop_probe"))  # a replay of the committed suffix only is not this number

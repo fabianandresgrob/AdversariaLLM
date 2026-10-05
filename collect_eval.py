@@ -207,7 +207,7 @@ def transfer_columns(attacks: pd.DataFrame, model: str | None) -> dict:
     out, counts = {}, set()
     for (attack, defense), cells in attacks[attacks["model"] == model].groupby(["attack", "defense"]):
         if attack == "replay":  # the protocol names the replayed run: source=<attack>__none__<model>
-            for _, cell in cells.iterrows():
+            for _, cell in cells[cells["protocol"].str.contains("all_steps=True", regex=False)].iterrows():
                 family = str(cell["protocol"]).split("source=")[-1].split("__")[0]
                 if family in TRANSFER_ATTACKS:
                     out[f"{family}_asr_{defense}"] = cell["asr_behavior"]
@@ -255,8 +255,14 @@ def _eval_path(repo: Path, kind: str, block: str, run: str, ckpt: str, filename:
     return candidates[0] / filename if filename else candidates[0]
 
 
-def evaluated_checkpoints(repo: Path, block: str, run: str, has_final: bool = True) -> list[str]:
+def evaluated_checkpoints(repo: Path, block: str, run: str, has_final: bool = True,
+                          attacked: set[str] = frozenset()) -> list[str]:
+    """Checkpoints with any eval: the eval dirs <run>-<ckpt>, and attack models <entry>-<ckpt> (attacked)."""
     ckpts = {"final"} if has_final else set()
+    for model in attacked:
+        suffix = model[len(entry_name(run)) + 1:] if model.startswith(entry_name(run) + "-") else ""
+        if CKPT_SUFFIX.match(suffix) and suffix != "final":
+            ckpts.add(suffix)
     for kind in ("overrefusal", "utility", "cross_attack"):
         for d in (repo / "outputs/eval" / kind / block).glob(f"{run}-*"):
             suffix = d.name[len(run) + 1:]
@@ -323,6 +329,7 @@ def collect(repo: Path, jobs_root: Path | None) -> pd.DataFrame:
     from collect_attacks import collect as collect_attack_cells
 
     attacks = collect_attack_cells(repo, behaviors=TRANSFER_BEHAVIORS)
+    attacked = set(attacks["model"]) if len(attacks) else set()
     rows = []
     jobs = jobs_index(jobs_root)
     for kind, root in CHECKPOINT_ROOTS.items():
@@ -336,7 +343,7 @@ def collect(repo: Path, jobs_root: Path | None) -> pd.DataFrame:
             job_dir = jobs.get(run)
             if run_config is None and job_dir is not None:  # CAT runs before 30 Sep wrote no run_config.json
                 run_config = hydra_config(job_dir) or nest((_read_json(job_dir / "run.json") or {}).get("overrides", {}))
-            for ckpt in evaluated_checkpoints(repo, block, run, (ckpt_dir / "final_adapter").is_dir()):
+            for ckpt in evaluated_checkpoints(repo, block, run, (ckpt_dir / "final_adapter").is_dir(), attacked):
                 model = attack_model(run, ckpt)
                 row = {"block": block, "run": run, "checkpoint": ckpt, "kind": kind, "model": model}
                 row.update(config_columns(run_config or {}))

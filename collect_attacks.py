@@ -55,7 +55,7 @@ PROTOCOL_KEYS: dict[str, tuple[str, ...]] = {
     "inpainting": ("num_samples_per_behavior",),
     "gcg": ("num_steps", "detector_loss_coeff"),
     "gcg_adaptive": ("num_steps", "detector_loss_coeff"),
-    "replay": ("source",),
+    "replay": ("source", "all_steps"),  # all_steps unset: only the committed suffix was replayed, not every step
 }
 
 

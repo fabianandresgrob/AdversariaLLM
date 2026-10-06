@@ -1,0 +1,30 @@
+# W: the CAT arm of the final comparison (planning/specs/2026-10-06-coop-vs-noncoop.md). CAT's loss as in Leo's paper
+# (conf/cat_recipe/leo.yaml: toward + away, cutoffs 0.5 / -7.5, LoRA 64, AdamW 2e-4 cosine, 1 harmful + 7 utility per
+# micro-batch), with everything that is not the method matched to coop: coop's training attack (user message, eps 0.1,
+# 50 Adam steps of 0.01), the same 1000 steps x 4 attacked examples (4 micro-batches per step instead of 2 epochs x 8),
+# coop's utility term (KL to the base model on Magpie, 1024 tokens), and EMA 0.995. Calibration on seed 0: the KL weight
+# that brings xs_test refusal to <= 0.20 at the lowest attack success is then run on seeds 1 and 2.
+entrypoint: run_train.py
+name: W-cat-kl{lambda_kl}-s{seed}
+time_per_run: "06:00:00"
+overrides:
+  +cat_recipe: leo
+  attack.eps: 0.1
+  attack.iters: 50
+  attack.lr: 0.01
+  attack.optimizer: adam
+  utility_objective: kl
+  data.kl_source: magpie
+  data.kl_max_length: 1024
+  training.n_epochs: null
+  training.n_steps: 1000
+  training.grad_accum: 4
+  training.ema_decay: 0.995
+  training.checkpoint_every: 250
+  output.checkpoint_path: ${root_dir}/checkpoints_cat/W
+sweep:
+  lambda_kl: [1.0, 2.0, 4.0]
+  seed: [0]
+artifacts:
+  - checkpoints_cat/W/{name}/final_adapter
+  - checkpoints_cat/W/{name}/ema_adapter

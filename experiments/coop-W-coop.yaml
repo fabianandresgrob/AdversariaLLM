@@ -1,0 +1,40 @@
+# W: the coop arm of the final comparison (coop vs non-coop at the same trade-off, planning/specs/2026-10-06-coop-vs-noncoop.md).
+# Exactly U2-win512 (answer probe, 512 tokens, max over 16-token windows, gate floor 0.05, detector-aware attack, cold
+# probe), three seeds, 12 h so the runs reach step 1000 (U2 stopped at ~850 after 8 h).
+entrypoint: run_coop_train.py
+name: W-coop-s{seed}
+time_per_run: "12:00:00"
+overrides:
+  attack.enabled: true
+  attack.perturb: user
+  attack.target_eot: false
+  attack.eps: 0.1
+  attack.iters: 50
+  attack.use_detector: true
+  reader.readout: response_window
+  reader.readout_k: 512
+  reader.window: 16
+  probe_init: random
+  data.answer_pool: ${root_dir}/outputs/eval/answer_pool/pool-heretic.jsonl
+  data.answer_max_tokens: 512
+  training.detector_refusal_negatives: true
+  training.rep_warmup_steps: 50
+  training.n_detector_steps: 6
+  training.n_steps: 1000
+  training.val_every: 50
+  training.checkpoint_every: 250
+  training.benign_gen_n: 40
+  training.ema_decay: 0.995
+  data.kl_source: magpie
+  data.kl_max_length: 1024
+  data.val_size: 24
+  data.val_targets: 6
+  data.val_batch_size: 16
+  lambda_benign_perturb: 1.0
+  epsilon: 0.05
+  output.checkpoint_path: ${root_dir}/checkpoints_coop/W
+sweep:
+  seed: [0, 1, 2]
+artifacts:
+  - checkpoints_coop/W/{name}/final_adapter
+  - checkpoints_coop/W/{name}/final_reader.pt

@@ -124,9 +124,11 @@ def _benign_under_adv_prompt(model, adv_embeds, adv_batch):
     return embeds, attn, labels
 
 
-def train_step(model, ref, attack, objective, adv_batch, util_batch, scale=1.0):
+def train_step(model, ref, attack, objective, adv_batch, util_batch, scale=1.0, utility_chunk=None):
     """One model-CAT step. Populates .grad; the caller steps the optimizer. scale multiplies every
     term's gradient (1 / grad_accum when several micro-batches make one optimizer step).
+    utility_chunk: the KL term runs over this many utility examples at a time (same gradient, less
+    memory; None = the whole utility batch at once).
 
     Each active loss term is backpropagated the moment it is computed, freeing its
     graph before the next term runs. Grads accumulate in .grad, so this is identical
@@ -185,10 +187,20 @@ def train_step(model, ref, attack, objective, adv_batch, util_batch, scale=1.0):
         _backward(ipo_preference(pi_b, pi_h, ref_b, ref_h, beta=objective.beta), 1.0, "ipo")
 
     if "kl" in objective.active_terms:
-        u_ids = util_batch["input_ids"]
-        u_logits = model(input_ids=u_ids, attention_mask=util_batch["attn"]).logits
-        r_logits = ref.logits(inputs_embeds=model.get_input_embeddings()(u_ids), attention_mask=util_batch["attn"])
-        _backward(utility_kl(u_logits, r_logits, attention_mask=util_batch["attn"]), objective.lambda_kl, "kl")
+        u_ids, u_attn = util_batch["input_ids"], util_batch["attn"]
+        n_tokens = u_attn.sum()  # every chunk divides by the whole batch's tokens, so the chunks sum to its KL
+        chunk = int(utility_chunk or u_ids.size(0))
+        kl = 0.0
+        for s in range(0, u_ids.size(0), chunk):
+            ids, attn = u_ids[s:s + chunk], u_attn[s:s + chunk]
+            u_logits = model(input_ids=ids, attention_mask=attn).logits
+            r_logits = ref.logits(inputs_embeds=model.get_input_embeddings()(ids), attention_mask=attn)
+            part = utility_kl(u_logits, r_logits, attention_mask=attn, n_tokens=n_tokens)
+            (scale * objective.lambda_kl * part).backward()
+            kl += part.item()
+            del u_logits, r_logits, part
+        logs["kl"] = kl
+        total += objective.lambda_kl * kl
 
     if "sft" in objective.active_terms:
         u_logits = model(input_ids=util_batch["input_ids"], attention_mask=util_batch["attn"]).logits
@@ -396,7 +408,8 @@ def run_training(cfg):
     model.train()
     for step in range(n_steps):
         micro = [train_step(model, ref, attack, objective, _to_device(next(adv_iter), device),
-                            _to_device(next(util_iter), device), scale=1.0 / accum)
+                            _to_device(next(util_iter), device), scale=1.0 / accum,
+                            utility_chunk=cfg.data.get("utility_chunk"))
                  for _ in range(accum)]
         logs = {k: sum(m[k] for m in micro) / accum for k in micro[0]}
         if max_grad_norm:

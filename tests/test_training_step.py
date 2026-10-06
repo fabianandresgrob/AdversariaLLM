@@ -118,3 +118,28 @@ def test_accumulated_micro_steps_average_the_objective_and_keep_earlier_grads():
     expected = _grads(model)
     for name in expected:
         assert torch.allclose(actual[name], expected[name], atol=1e-6), name
+
+
+def test_chunked_utility_kl_gives_the_same_loss_and_gradient_as_the_whole_batch():
+    """utility_chunk only saves memory: with padding (examples of different length), the chunks must still
+    weight every token like the whole batch does."""
+    from adversariallm.training.reference import FrozenModelReference
+
+    torch.manual_seed(0)
+    ref_model = _TinyLM()
+    util = {"input_ids": torch.randint(0, 7, (3, 5)),
+            "attn": torch.tensor([[1, 1, 1, 1, 1], [1, 1, 0, 0, 0], [1, 1, 1, 0, 0]])}
+    objective = Objective(active_terms={"kl"}, lambda_kl=2.0)
+    results = []
+    for chunk in (None, 1, 2):
+        torch.manual_seed(1)
+        model = _TinyLM()
+        logs = train_step(model, FrozenModelReference(ref_model), _PollutingAttack(torch.zeros(1, 2, 4)), objective,
+                          {"h_attn": torch.ones(1, 2, dtype=torch.long)}, util, scale=0.5, utility_chunk=chunk)
+        results.append((logs["kl"], _grads(model)))
+    (kl_full, g_full), *chunked = results
+    for kl, grads in chunked:
+        assert abs(kl - kl_full) < 1e-6
+        for name in g_full:
+            assert torch.allclose(grads[name], g_full[name], atol=1e-6), name
+    assert any(g.abs().sum() > 0 for g in g_full.values())

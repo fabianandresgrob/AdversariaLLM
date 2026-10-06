@@ -16,6 +16,7 @@ overrides:
   utility_objective: kl
   data.kl_source: magpie
   data.kl_max_length: 1024
+  data.utility_chunk: 1      # 7 x 1024-token KL examples at once ran out of memory; same gradient one at a time
   training.n_epochs: null
   training.n_steps: 1000
   training.grad_accum: 4

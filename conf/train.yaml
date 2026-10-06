@@ -55,6 +55,7 @@ data:
   kl_max_length: null               # truncate leash examples to N tokens (magpie responses run ~90k chars)
   harmful_batch_size: 8
   utility_batch_size: 8
+  utility_chunk: null               # KL over this many utility examples at a time (same gradient, less memory)
   # Behaviors held out from training for best-checkpoint selection.
   val_size: 16
   val_seed: 0

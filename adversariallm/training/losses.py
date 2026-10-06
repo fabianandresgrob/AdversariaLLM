@@ -52,18 +52,20 @@ def away_from_harmful(
 
 
 def utility_kl(
-    model_logits: torch.Tensor, ref_logits: torch.Tensor, attention_mask: torch.Tensor | None = None
+    model_logits: torch.Tensor, ref_logits: torch.Tensor, attention_mask: torch.Tensor | None = None,
+    n_tokens: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """KL(model || ref) averaged over tokens. Both (B,T,V).
     If attention_mask (B,T) is given, only attended positions are averaged so
-    right-padding doesn't leak into the utility term."""
+    right-padding doesn't leak into the utility term. n_tokens: divide by this (the whole batch's
+    attended tokens) instead, so the parts of a batch split into chunks sum to the batch's KL."""
     logp = F.log_softmax(model_logits, dim=-1)
     logq = F.log_softmax(ref_logits, dim=-1)
     p = logp.exp()
     kl_tok = (p * (logp - logq)).sum(-1)  # (B, T)
     if attention_mask is not None:
         m = attention_mask.to(kl_tok.dtype)
-        return (kl_tok * m).sum() / m.sum().clamp_min(1)
+        return (kl_tok * m).sum() / (m.sum() if n_tokens is None else n_tokens).clamp_min(1)
     return kl_tok.mean()
 
 

@@ -6,7 +6,7 @@
 # that brings xs_test refusal to <= 0.20 at the lowest attack success is then run on seeds 1 and 2.
 entrypoint: run_train.py
 name: W-cat-kl{lambda_kl}-s{seed}
-time_per_run: "06:00:00"
+time_per_run: "10:00:00"  # ~23 s per step with the chunked 1024-token KL: 1000 steps ~6.5 h
 overrides:
   +cat_recipe: leo
   attack.eps: 0.1

@@ -141,6 +141,11 @@ def overrefusal_columns(path: Path) -> dict:
             "xstest_comply_judge": judged["degeneration_adjusted_compliance_rate"],
             "xstest_degenerate": judged["degeneration_rate"],
         })
+    pipeline = _dig(data, ("pipeline", name, "xs_test"))
+    if pipeline:  # model refuses OR its probe flags the answer
+        out.update({"xstest_probe_flagged": pipeline["probe_flagged"],
+                    "xstest_refusal_pipeline_string": pipeline["pipeline_refusal_string"],
+                    "xstest_refusal_pipeline_judge": pipeline.get("pipeline_refusal_judge")})
     return out
 
 

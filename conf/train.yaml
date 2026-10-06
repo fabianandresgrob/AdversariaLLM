@@ -73,6 +73,7 @@ training:
   # Optional diagnostics (both off by default; enable to hunt the robustness/utility tradeoff):
   checkpoint_every: 0             # >0: also save a step-tagged checkpoint every N steps
   benign_val_n: 0                 # >0: free-generate on N UltraChat prompts at each val step, log refusal rate
+  ema_decay: null                 # e.g. 0.995: also save an EMA of the trainable weights (ema, ema_step<N>), as coop
   benign_val_max_new_tokens: 32   # short generation is enough to see whether it opens with a refusal
 
 output:

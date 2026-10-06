@@ -505,6 +505,25 @@ class ParamEMA:
                 p.copy_(b)
 
 
+LORA_TARGETS = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+
+
+def _attach_adapter(model, init_adapter=None, train_model=True):
+    """Wrap the base model with LoRA: a fresh rank-8 adapter (coop's), or a finished one from `init_adapter` (e.g. a
+    non-coop model, for a probe trained afterwards). train_model=False freezes every weight, so only the probe trains."""
+    import peft
+    from peft import LoraConfig
+
+    if init_adapter:
+        model = peft.PeftModel.from_pretrained(model, init_adapter, is_trainable=train_model)
+    else:
+        model = peft.get_peft_model(model, LoraConfig(r=8, lora_alpha=32, target_modules=LORA_TARGETS,
+                                                      lora_dropout=0.05, task_type="CAUSAL_LM"))
+    if not train_model:
+        model.requires_grad_(False)
+    return model
+
+
 def _seed_everything(seed):
     """Seed training randomness (LoRA init, random probe init, loader shuffle order) so a seed
     sweep is real. Eval splits stay on data.val_seed (fixed) — held-out data is not reseeded."""
@@ -519,9 +538,7 @@ def _seed_everything(seed):
 
 
 def run_coop_training(cfg):
-    import peft
     from omegaconf import OmegaConf
-    from peft import LoraConfig
     from torch.utils.data import DataLoader
 
     from ..io_utils import load_model_and_tokenizer
@@ -556,16 +573,9 @@ def run_coop_training(cfg):
 
     _seed_everything(int(cfg.get("seed", 0)))  # governs LoRA init, probe init, loader shuffles
 
-    model = peft.get_peft_model(
-        model,
-        LoraConfig(
-            r=8,
-            lora_alpha=32,
-            target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
-            lora_dropout=0.05,
-            task_type="CAUSAL_LM",
-        ),
-    )
+    # train_model=false + init_adapter: the probe is trained afterwards on a finished, frozen model (non-coop baseline)
+    train_model = bool(cfg.training.get("train_model", True))
+    model = _attach_adapter(model, container.get("init_adapter"), train_model)
     ref = LoRADisableReference(model)
     model_trainable = [p for p in model.parameters() if p.requires_grad]
 
@@ -672,7 +682,7 @@ def run_coop_training(cfg):
             perturb=str(cfg.attack.get("perturb", "all")),
         )
 
-    opt_model = torch.optim.Adam(model_trainable, lr=cfg.training.model_lr)
+    opt_model = torch.optim.Adam(model_trainable, lr=cfg.training.model_lr) if train_model else None
     opt_det = torch.optim.Adam(reader_params, lr=cfg.training.detector_lr)
     n_det = int(cfg.training.n_detector_steps)
     warmup = int(cfg.training.rep_warmup_steps)
@@ -732,7 +742,7 @@ def run_coop_training(cfg):
     ema_decay = cfg.training.get("ema_decay")
     ema = ParamEMA(model_trainable + reader_params, ema_decay) if ema_decay else None
 
-    model.train()
+    model.train(train_model)  # a frozen model reads in eval mode (no LoRA dropout), as it is deployed
     for step in range(cfg.training.n_steps):
         adv_batch = _to_device(next(adv_iter), device)
         util_batch = _to_device(next(util_iter), device)
@@ -761,18 +771,20 @@ def run_coop_training(cfg):
         for kind in ("harmful", "benign"):  # one batch per kind per step, the last refit_steps kept
             feature_buf[kind] = (feature_buf[kind] + [f.cpu() for f in sink[kind]])[-refit_steps:]
 
-        # ---- model phase: reader frozen, model trainable ----
+        # ---- model phase: reader frozen, model trainable (skipped when the model is frozen) ----
         _set_requires_grad(reader_params, False)
-        _set_requires_grad(model_trainable, True)
-        _assert_grad(reader_params, False, "reader(model phase)")
-        _assert_grad(model_trainable, True, "model(model phase)")
-        use_rep = step >= warmup
-        warming = step < warmup
-        logs, _, _ = _model_step(
-            model, reader, ref, opt_model, layer, adv_embeds, adv_batch,
-            util_batch,
-            device_hp, use_rep, warming, device,
-        )
+        logs = {}
+        if train_model:
+            _set_requires_grad(model_trainable, True)
+            _assert_grad(reader_params, False, "reader(model phase)")
+            _assert_grad(model_trainable, True, "model(model phase)")
+            use_rep = step >= warmup
+            warming = step < warmup
+            logs, _, _ = _model_step(
+                model, reader, ref, opt_model, layer, adv_embeds, adv_batch,
+                util_batch,
+                device_hp, use_rep, warming, device,
+            )
         logs["det"] = sum(det_losses) / len(det_losses)
         if ema is not None:
             ema.update()

@@ -26,6 +26,9 @@ reader:
   window: 16            # response_window only: tokens per window (the max over windows counts)
 # "random" or a pretrained probe.pt from run_pretrain_probe (fixes the OOD-benign collapse).
 probe_init: ${root_dir}/checkpoints_probe/probe_v3/probe.pt
+# null = a fresh LoRA adapter; or a finished adapter dir (e.g. a non-coop model) to start from. With
+# training.train_model=false the model stays frozen and only the probe trains (a probe trained afterwards).
+init_adapter: null
 
 # Gating / objective (design doc §3-§6). Floors default to the decoupled (1,1) control.
 tau: 1.0
@@ -87,6 +90,7 @@ training:
   model_lr: 5.0e-5
   detector_lr: 1.0e-3        # detector is cheap/fast (§8): higher lr than the model
   n_steps: 450
+  train_model: true          # false: skip the model phase, only the probe trains (model frozen, eval mode)
   n_detector_steps: 1        # spec default (tunable ablation; δ=0/N=3 is a valid alt)
   rep_warmup_steps: 0        # default off (prefitted probe); >0 for the cold-probe ablation
   checkpoint_every: 250      # 4 step-tagged adapters/run (~180MB); enough to inspect the oscillation

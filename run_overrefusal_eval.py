@@ -129,6 +129,52 @@ def _judge_all(cfg, prompts, gens_by, datasets):
     return out
 
 
+def _judge_refused(jd):
+    """Per answer, as degeneration_adjusted_refusal_rate counts it: a full refusal, or a degenerate answer."""
+    return [j == "2_full_refusal" or bool(r) for j, r in zip(jd["judgments"], jd["degeneration_reasons"])]
+
+
+def _pipeline_refusal(cfg, prompts, gens_by, datasets, judged):
+    """The pipeline's over-refusal for the checkpoints in cfg.readers (name -> reader .pt): an answer counts as refused
+    if the model refused it OR the probe flags it, at the coop_probe defense's threshold (threshold_1pct_calib.json).
+    Writes probe_<name>_<ds>.json with every answer's probe score."""
+    from adversariallm.io_utils import load_model_and_tokenizer
+    from adversariallm.training.coop_metrics import is_refusal
+    from adversariallm.training.probe_scoring import calibrated_threshold, pipeline_refusals, score_pairs
+    from adversariallm.training.readers import load_reader
+
+    out = {}
+    for name, reader_path in cfg.readers.items():
+        if name not in cfg.checkpoints:
+            raise KeyError(f"readers.{name} has no checkpoints.{name}")
+        thr = calibrated_threshold(reader_path)
+        model_params = OmegaConf.to_container(cfg.models[cfg.model], resolve=True)
+        if cfg.checkpoints[name] != "base":
+            model_params["adapter_path"] = cfg.checkpoints[name]
+        model, tok = load_model_and_tokenizer(model_params)
+        model.eval()
+        reader = load_reader(reader_path).to(next(model.parameters()).device)
+        out[name] = {}
+        for ds in datasets:
+            gens = gens_by[(name, ds)]
+            scores = score_pairs(model, tok, {"probe": reader}, list(zip(prompts[ds], gens)),
+                                 max_answer_tokens=int(cfg.probe_max_answer_tokens),
+                                 batch_size=int(cfg.probe_batch_size))["probe"]
+            res = {"threshold": thr, "probe_flagged": sum(s > thr for s in scores) / len(scores),
+                   "pipeline_refusal_string": sum(pipeline_refusals([is_refusal(g) for g in gens], scores, thr)) / len(gens)}
+            if judged:
+                res["pipeline_refusal_judge"] = sum(pipeline_refusals(_judge_refused(judged[name][ds]), scores, thr)) / len(gens)
+            out[name][ds] = res
+            log.info(f"  [pipeline] {name:16s} {ds}: probe flags {res['probe_flagged']:.3f}, "
+                     + ", ".join(f"{k} {v:.3f}" for k, v in res.items() if k.startswith("pipeline")))
+            with open(os.path.join(cfg.out, f"probe_{name}_{ds}.json"), "w") as f:
+                json.dump([{"prompt": p, "generation": g, "probe": s, "flagged": s > thr}
+                           for p, g, s in zip(prompts[ds], gens, scores)], f, indent=2)
+        del model, reader
+        torch.cuda.empty_cache()
+    return out
+
+
 @hydra.main(version_base=None, config_path="conf", config_name="overrefusal")
 def main(cfg: DictConfig) -> None:
     from adversariallm.io_utils import load_model_and_tokenizer
@@ -173,6 +219,7 @@ def main(cfg: DictConfig) -> None:
             torch.cuda.empty_cache()
 
     judged = _judge_all(cfg, prompts, gens_by, datasets) if cfg.judge.enabled else {}
+    pipeline = _pipeline_refusal(cfg, prompts, gens_by, datasets, judged) if cfg.get("readers") else {}
 
     lines = ["", f"# string-match refusal rate ({cfg.window} window; lower = more helpful)",
              f"{'checkpoint':16s} " + " ".join(f"{ds:>10s}" for ds in datasets)]
@@ -186,6 +233,10 @@ def main(cfg: DictConfig) -> None:
                 m = judged[name][ds]["metrics"]
                 lines.append(f"{name:16s} {results[name][ds]:>12.3f} {m['degeneration_adjusted_refusal_rate']:>12.3f} "
                              f"{m['coherent_compliance_rate']:>12.3f} {m['coherent_partial_rate']:>12.3f} {m['degeneration_rate']:>12.3f}")
+    for name, by_ds in pipeline.items():
+        for ds, res in by_ds.items():
+            lines.append(f"# pipeline {name} on {ds}: probe flags {res['probe_flagged']:.3f} at thr {res['threshold']:.3f}; "
+                         + ", ".join(f"{k} {v:.3f}" for k, v in res.items() if k.startswith("pipeline")))
     print("\n".join(lines))
 
     with open(os.path.join(cfg.out, "overrefusal.csv"), "w", newline="") as f:
@@ -207,6 +258,8 @@ def main(cfg: DictConfig) -> None:
         if judged:
             payload["judge"] = {"model": cfg.judge.model, "prompt_mode": cfg.judge.prompt_mode,
                                 "metrics": {n: {ds: judged[n][ds]["metrics"] for ds in datasets} for n in cfg.checkpoints}}
+        if pipeline:
+            payload["pipeline"] = pipeline
         json.dump(payload, f, indent=2)
     if judged:                                         # per-example judgments for manual inspection
         for name in cfg.checkpoints:

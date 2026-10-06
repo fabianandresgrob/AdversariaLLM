@@ -386,6 +386,12 @@ def run_training(cfg):
     benign_prompts = [x for x, _ in util_ds.rows[:benign_val_n]] if benign_val_n else []
     checkpoint_every = int(cfg.training.get("checkpoint_every", 0))
 
+    # off by default; an EMA of the trainable weights is saved as ema (+ ema_step<N>), training unchanged
+    from .coop_loop import ParamEMA
+
+    ema_decay = tr.get("ema_decay")
+    ema = ParamEMA(trainable, ema_decay) if ema_decay else None
+
     best_val = float("inf")
     model.train()
     for step in range(n_steps):
@@ -400,6 +406,8 @@ def run_training(cfg):
             sched.step()
             logs["lr"] = sched.get_last_lr()[0]
         opt.zero_grad()
+        if ema is not None:
+            ema.update()
 
         log.info(f"[step {step}] " + " ".join(f"{k}={v:.4f}" for k, v in logs.items()))
         if wandb_run is not None:
@@ -427,8 +435,14 @@ def run_training(cfg):
 
         if checkpoint_every and (step + 1) % checkpoint_every == 0:
             _save_checkpoint(model, container, step, out_dir, update_mode, tag=f"step{step + 1}")
+            if ema is not None:
+                with ema.swapped_in():
+                    _save_checkpoint(model, container, step, out_dir, update_mode, tag=f"ema_step{step + 1}")
 
     _save_checkpoint(model, container, n_steps, out_dir, update_mode, tag="final")
+    if ema is not None:
+        with ema.swapped_in():
+            _save_checkpoint(model, container, n_steps, out_dir, update_mode, tag="ema")
     if wandb_run is not None:
         wandb_run.finish()
     return out_dir

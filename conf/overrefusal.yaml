@@ -15,6 +15,12 @@ chat_template_id: meta-llama/Llama-3.1-8B-Instruct
 checkpoints:
   base: base
 
+# Pipeline over-refusal (off when empty): checkpoint name -> its probe's reader .pt (+readers.<name>=...). An answer then
+# counts as refused if the model refuses OR the probe flags it, at threshold_1pct_calib.json next to the reader.
+readers: {}
+probe_max_answer_tokens: 512
+probe_batch_size: 8
+
 datasets_eval: [xs_test]   # the over-refusal benchmark; add more (e.g. [xs_test, or_bench]) if wanted
 window: all           # xs_test is held out entirely -> eval all of it. Use window=test for or_bench/alpaca (avoids trained rows)
 max_new_tokens: 256   # judge needs full responses (>=128); 32 was too short to tell full vs partial

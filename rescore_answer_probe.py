@@ -88,8 +88,9 @@ def main(cfg: DictConfig) -> None:
 
     from adversariallm.io_utils import load_model_and_tokenizer
     from adversariallm.training.coop_metrics import threshold_at_fpr
-    from adversariallm.training.data import build_example_full, load_dataset_prompts, pad_collate
+    from adversariallm.training.data import load_dataset_prompts
     from adversariallm.training.generation import generate_responses
+    from adversariallm.training.probe_scoring import score_pairs
     from adversariallm.training.readers import LinearProbe, load_reader
 
     repo = Path(cfg.root_dir)
@@ -114,21 +115,7 @@ def main(cfg: DictConfig) -> None:
     cap = max(int(spec.k) for spec in cfg.readouts)
 
     def score(pairs):  # (prompt, answer) -> {readout: [p_harmful]}
-        out = {name: [] for name in readers}
-        keys = ["ids", "tgt", "attn"]
-        for start in range(0, len(pairs), int(cfg.batch_size)):
-            items = []
-            for prompt, answer in pairs[start:start + int(cfg.batch_size)]:
-                ids, _, tgt, attn = build_example_full(prompt, answer, tok)
-                p_len = int((tgt > 0).float().argmax()) if (tgt > 0).any() else ids.numel()
-                items.append(dict(zip(keys, (t[: p_len + cap] for t in (ids, tgt, attn)))))
-            batch = {k: v.to(device) for k, v in pad_collate(items, keys, pad_id=0).items()}
-            with torch.no_grad():
-                hidden = model(input_ids=batch["ids"], attention_mask=batch["attn"],
-                               output_hidden_states=True).hidden_states[int(cfg.layer)]
-                for name, reader in readers.items():
-                    out[name] += reader.p_harmful(hidden, batch["tgt"], batch["attn"]).tolist()
-        return out
+        return score_pairs(model, tok, readers, pairs, int(cfg.layer), cap, int(cfg.batch_size))
 
     source = cfg.get("answers_from") or cfg.model  # whose attack answers to score (cross-scoring: another model's)
     tag = f"{cfg.model}_on_{source}" if cfg.get("answers_from") else cfg.model

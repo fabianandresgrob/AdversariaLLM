@@ -1,0 +1,16 @@
+# W: CAT calibration, earlier EMA checkpoints (steps 500, 750) of the three KL weights: judged xs_test over-refusal.
+# The final EMA models all over-refuse (0.25-0.29); does over-refusal build up late in training?
+entrypoint: run_overrefusal_eval.py
+name: overrefusal-{+run}-ema{+step}
+time_per_run: 02:00:00
+overrides:
+  +block: W
+  ~checkpoints.base: base
+  +checkpoints.model: ${root_dir}/checkpoints_cat/${block}/${run}/ema_step${step}_adapter
+  out: ${root_dir}/outputs/eval/overrefusal/${block}/${run}-ema${step}
+  judge.enabled: true
+artifacts:
+- outputs/eval/overrefusal/{+block}/{+run}-ema{+step}/overrefusal.json
+sweep:
+  +run: [W-cat-kl1.0-s0, W-cat-kl2.0-s0, W-cat-kl4.0-s0]
+  +step: [500, 750]

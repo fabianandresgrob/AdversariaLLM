@@ -1,0 +1,14 @@
+# W: 1%-FPR calibration (2000 held-out Alpaca answers) of the coop arm's final EMA probes; the coop_probe defense
+# and the pipeline over-refusal read this threshold.
+entrypoint: run_calibrate_probe.py
+name: calib-{+run}-ema
+time_per_run: 01:30:00
+overrides:
+  +block: W
+  adapter_path: ${root_dir}/checkpoints_coop/${block}/${run}/ema_adapter
+  checkpoint_path: ${root_dir}/checkpoints_coop/${block}/${run}/ema_reader.pt
+  calibration_window: calib
+artifacts:
+- checkpoints_coop/{+block}/{+run}/threshold_1pct_calib.json
+sweep:
+  +run: [W-coop-s0, W-coop-s1, W-coop-s2]

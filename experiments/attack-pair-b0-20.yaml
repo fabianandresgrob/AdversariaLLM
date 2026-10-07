@@ -11,5 +11,6 @@ overrides:
   attacks.pair.judge_model.tokenizer_id: lmsys/vicuna-13b-v1.5
 sweep:
   model:
-  - V-varied-s0-ema1000
-  - V-varied-gate0-s0-ema1000
+  - W-coop-s0-ema
+  - W-coop-s1-ema
+  - W-coop-s2-ema

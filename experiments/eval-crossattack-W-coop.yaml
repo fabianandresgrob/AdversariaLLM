@@ -1,0 +1,27 @@
+# W: the coop arm's final EMA models under the 100-iteration embedding attack, model-only and detector-aware
+# (through the probe); as eval-crossattack-V.
+entrypoint: run_cross_attack_eval.py
+name: xattack-{+run}-ema-a{seed}
+time_per_run: "02:00:00"
+overrides:
+  +block: W
+  adapter_path: ${root_dir}/checkpoints_coop/${block}/${run}/ema_adapter
+  eval_use_detector: [true, false]
+  eval_detector_coeffs: [0.5]
+  attack.iters: 100
+  attack.eps: 0.1
+  attack.target_eot: false
+  attack.perturb: user
+  harmful.val_size: 24
+  harmful.val_targets: 6
+  harmful.batch_size: 16
+  benign.benign_gen_n: 40
+  judge.enabled: true
+  harmful.answer_pool: ${root_dir}/outputs/eval/answer_pool/pool-heretic.jsonl
+  harmful.answer_max_tokens: 512
+  out: ${root_dir}/outputs/eval/cross_attack/${block}/${run}-ema/seed${seed}
+sweep:
+  +run: [W-coop-s0, W-coop-s1, W-coop-s2]
+  seed: [0]
+artifacts:
+  - outputs/eval/cross_attack/{+block}/{+run}-ema/seed{seed}/cross_attack_eval.json

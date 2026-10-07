@@ -1692,3 +1692,36 @@ V-varied-gate0-s0-ema1000:
   adapter_path: ${root_dir}/checkpoints_coop/V/V-varied-gate0-s0/ema_step1000_adapter
   reader_path: ${root_dir}/checkpoints_coop/V/V-varied-gate0-s0/ema_step1000_reader.pt
 # <<< generated coop checkpoints <<<
+W-coop-s0-ema:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/W/W-coop-s0/ema_adapter
+  reader_path: ${root_dir}/checkpoints_coop/W/W-coop-s0/ema_reader.pt
+W-coop-s1-ema:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/W/W-coop-s1/ema_adapter
+  reader_path: ${root_dir}/checkpoints_coop/W/W-coop-s1/ema_reader.pt
+W-coop-s2-ema:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/W/W-coop-s2/ema_adapter
+  reader_path: ${root_dir}/checkpoints_coop/W/W-coop-s2/ema_reader.pt

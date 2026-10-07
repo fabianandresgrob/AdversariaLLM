@@ -1,0 +1,15 @@
+# W: calibration of the CAT arm (cat-W-cat): judged xs_test over-refusal of the EMA models of the three KL weights. Pick the strongest
+# one with judged xs_test refusal <= 0.20 and intact utility; it gets seeds 1 and 2.
+entrypoint: run_overrefusal_eval.py
+name: overrefusal-{+run}-ema
+time_per_run: 02:00:00
+overrides:
+  +block: W
+  ~checkpoints.base: base
+  +checkpoints.model: ${root_dir}/checkpoints_cat/${block}/${run}/ema_adapter
+  out: ${root_dir}/outputs/eval/overrefusal/${block}/${run}-ema
+  judge.enabled: true
+artifacts:
+- outputs/eval/overrefusal/{+block}/{+run}-ema/overrefusal.json
+sweep:
+  +run: [W-cat-kl1.0-s0, W-cat-kl2.0-s0, W-cat-kl4.0-s0]

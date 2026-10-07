@@ -1,0 +1,12 @@
+# W, non-coop arm: the frozen R-noprobe EMA models (as saved with their post-hoc probes): MMLU / ARC-C / GSM8K.
+entrypoint: run_utility_eval.py
+name: utility-{+run}-ema
+time_per_run: 02:00:00
+overrides:
+  +block: W-posthoc
+  adapter_path: ${root_dir}/checkpoints_coop/${block}/${run}/ema_adapter
+  out: ${root_dir}/outputs/eval/utility/${block}/${run}-ema
+artifacts:
+- outputs/eval/utility/{+block}/{+run}-ema/utility.json
+sweep:
+  +run: [W-posthoc-noprobe-s0, W-posthoc-noprobe-s1, W-posthoc-noprobe-s2]

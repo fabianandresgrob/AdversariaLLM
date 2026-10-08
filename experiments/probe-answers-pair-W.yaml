@@ -1,0 +1,15 @@
+# W: offline scoring of the model-alone PAIR answers (attack-pair-b0-20) by each arm's own probe: the co-trained probe
+# (coop) and the probe trained afterwards on the frozen R-noprobe model (non-coop), at the pipeline's threshold
+# (threshold_1pct_calib.json, "trained" readout). Writes <model>_answers.jsonl with every answer's StrongREJECT and
+# probe score, so the probes can also be compared at a matched xs_test flag rate offline (the xs_test scores are in
+# outputs/eval/overrefusal/<block>/<run>/probe_model_xs_test.json).
+entrypoint: rescore_answer_probe.py
+name: answers-pair-{model}
+time_per_run: "01:30:00"
+overrides:
+  attack_names: [pair]
+  save_answer_scores: true
+sweep:
+  model: [W-coop-s0-ema, W-coop-s1-ema, W-coop-s2-ema, W-posthoc-noprobe-s0-ema, W-posthoc-noprobe-s1-ema, W-posthoc-noprobe-s2-ema]
+artifacts:
+  - outputs/eval/answer_probe_rescore/{model}_answers.jsonl

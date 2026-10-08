@@ -1,0 +1,12 @@
+# W, CAT arm: the frozen CAT models (KL 8, step-500 EMA) the post-hoc probes read: MMLU / ARC-C / GSM8K.
+entrypoint: run_utility_eval.py
+name: utility-W-posthoc-cat-s{+s}-ema
+time_per_run: 02:00:00
+overrides:
+  adapter_path: ${root_dir}/checkpoints_cat/W/W-cat-kl8.0-s${s}/ema_step500_adapter
+  vllm.max_lora_rank: 64          # CAT's LoRA is rank 64
+  out: ${root_dir}/outputs/eval/utility/W-posthoc-cat/W-posthoc-cat-s${s}-ema
+artifacts:
+- outputs/eval/utility/W-posthoc-cat/W-posthoc-cat-s{+s}-ema/utility.json
+sweep:
+  +s: [0, 1, 2]

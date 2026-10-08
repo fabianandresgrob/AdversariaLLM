@@ -14,4 +14,4 @@ overrides:
   attacks.replay.source: ${root_dir}/outputs/${src}__none__${model}
 sweep:
   +src: [gcg, gcg_adaptive]
-  model: [Q-bp-it50-gate0p25-s0-ema, R-noprobe-it50-s0-ema, U-answer-gate0p05-s0, U2-win512-w32-s0-ema750, U2-win512-s0-ema750, U2-mean512-s0-ema750, V-varied-s0-ema1000, V-varied-gate0-s0-ema1000]
+  model: [Q-bp-it50-gate0p25-s0-ema, R-noprobe-it50-s0-ema, U-answer-gate0p05-s0, U2-win512-w32-s0-ema750, U2-win512-s0-ema750, U2-mean512-s0-ema750, V-varied-s0-ema1000, V-varied-gate0-s0-ema1000, W-coop-s0-ema, W-coop-s1-ema, W-coop-s2-ema, W-posthoc-noprobe-s0-ema, W-posthoc-noprobe-s1-ema, W-posthoc-noprobe-s2-ema]

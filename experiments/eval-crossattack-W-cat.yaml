@@ -18,7 +18,7 @@ overrides:
   judge.enabled: true
   out: ${root_dir}/outputs/eval/cross_attack/${block}/${run}-ema/seed${seed}
 sweep:
-  +run: [W-cat-kl1.0-s0, W-cat-kl2.0-s0, W-cat-kl4.0-s0]
+  +run: [W-cat-kl1.0-s0, W-cat-kl2.0-s0, W-cat-kl4.0-s0, W-cat-kl8.0-s0, W-cat-kl16.0-s0]
   seed: [0]
 artifacts:
   - outputs/eval/cross_attack/{+block}/{+run}-ema/seed{seed}/cross_attack_eval.json

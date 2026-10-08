@@ -1,0 +1,23 @@
+# W: CAT KL 8 seed 0 at its step-500 EMA checkpoint (the one under xs_test 0.20): crossattack.
+entrypoint: run_cross_attack_eval.py
+name: xattack-{+run}-ema500-a{seed}
+time_per_run: "02:00:00"
+overrides:
+  +block: W
+  adapter_path: ${root_dir}/checkpoints_cat/${block}/${run}/ema_step500_adapter
+  eval_use_detector: [false]
+  attack.iters: 100
+  attack.eps: 0.1
+  attack.target_eot: false
+  attack.perturb: user
+  harmful.val_size: 24
+  harmful.val_targets: 6
+  harmful.batch_size: 16
+  benign.benign_gen_n: 40
+  judge.enabled: true
+  out: ${root_dir}/outputs/eval/cross_attack/${block}/${run}-ema500/seed${seed}
+sweep:
+  +run: [W-cat-kl8.0-s0]
+  seed: [0]
+artifacts:
+  - outputs/eval/cross_attack/{+block}/{+run}-ema500/seed{seed}/cross_attack_eval.json

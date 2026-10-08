@@ -1,0 +1,28 @@
+# W: the CAT arm's seeds 1 and 2 at the chosen KL weight (8; cat-W-cat calibration: KL 8 is the only setting under
+# xs_test 0.20, at its step-500 EMA checkpoint, 0.188). Identical to cat-W-cat otherwise; all EMA checkpoints are saved,
+# so the checkpoint (step 500, or 1000 with the gap reported) is chosen at evaluation.
+entrypoint: run_train.py
+name: W-cat-kl{lambda_kl}-s{seed}
+time_per_run: "10:00:00"  # ~23 s per step with the chunked 1024-token KL: 1000 steps ~6.5 h
+overrides:
+  +cat_recipe: leo
+  attack.eps: 0.1
+  attack.iters: 50
+  attack.lr: 0.01
+  attack.optimizer: adam
+  utility_objective: kl
+  data.kl_source: magpie
+  data.kl_max_length: 1024
+  data.utility_chunk: 1      # 7 x 1024-token KL examples at once ran out of memory; same gradient one at a time
+  training.n_epochs: null
+  training.n_steps: 1000
+  training.grad_accum: 4
+  training.ema_decay: 0.995
+  training.checkpoint_every: 250
+  output.checkpoint_path: ${root_dir}/checkpoints_cat/W
+sweep:
+  lambda_kl: [8.0]
+  seed: [1, 2]
+artifacts:
+  - checkpoints_cat/W/{name}/final_adapter
+  - checkpoints_cat/W/{name}/ema_adapter

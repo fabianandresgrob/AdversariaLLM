@@ -1,0 +1,16 @@
+# W, CAT arm (CAT KL 8 step-500 EMA + post-hoc probe), as the non-coop arm's file: over-refusal of the frozen CAT model + post-hoc probe, model alone and pipeline (model refuses OR the probe
+# flags the answer, at the threshold from eval-calib-W-posthoc-cat, which has to run first).
+entrypoint: run_overrefusal_eval.py
+name: overrefusal-{+run}-ema
+time_per_run: 02:00:00
+overrides:
+  +block: W-posthoc-cat
+  ~checkpoints.base: base
+  +checkpoints.model: ${root_dir}/checkpoints_coop/${block}/${run}/ema_adapter
+  +readers.model: ${root_dir}/checkpoints_coop/${block}/${run}/ema_reader.pt
+  out: ${root_dir}/outputs/eval/overrefusal/${block}/${run}-ema
+  judge.enabled: true
+artifacts:
+- outputs/eval/overrefusal/{+block}/{+run}-ema/overrefusal.json
+sweep:
+  +run: [W-posthoc-cat-s0, W-posthoc-cat-s1]  # s2 once its probe exists

@@ -1,0 +1,14 @@
+# W, CAT arm: 1%-FPR calibration (2000 held-out Alpaca answers) of the post-hoc probes on the frozen CAT models (KL 8,
+# step-500 EMA); the coop_probe defense and the pipeline over-refusal read this threshold.
+entrypoint: run_calibrate_probe.py
+name: calib-{+run}-ema
+time_per_run: 01:30:00
+overrides:
+  +block: W-posthoc-cat
+  adapter_path: ${root_dir}/checkpoints_coop/${block}/${run}/ema_adapter
+  checkpoint_path: ${root_dir}/checkpoints_coop/${block}/${run}/ema_reader.pt
+  calibration_window: calib
+artifacts:
+- checkpoints_coop/{+block}/{+run}/threshold_1pct_calib.json
+sweep:
+  +run: [W-posthoc-cat-s0, W-posthoc-cat-s1]  # s2 once its probe exists

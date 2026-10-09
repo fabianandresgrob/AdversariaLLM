@@ -10,6 +10,6 @@ overrides:
   attack_names: [pair]
   save_answer_scores: true
 sweep:
-  model: [W-coop-s0-ema, W-coop-s1-ema, W-coop-s2-ema, W-posthoc-noprobe-s0-ema, W-posthoc-noprobe-s1-ema, W-posthoc-noprobe-s2-ema]
+  model: [W-coop-s0-ema, W-coop-s1-ema, W-coop-s2-ema, W-posthoc-noprobe-s0-ema, W-posthoc-noprobe-s1-ema, W-posthoc-noprobe-s2-ema, W-posthoc-cat-s0-ema, W-posthoc-cat-s1-ema]
 artifacts:
   - outputs/eval/answer_probe_rescore/{model}_answers.jsonl

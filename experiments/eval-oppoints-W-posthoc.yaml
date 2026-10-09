@@ -1,0 +1,15 @@
+# W: extra operating points of the final EMA probes (W-posthoc), 0.5% and 5% false positives on the same 2000 held-out
+# Alpaca answers as the default 1% point; written to <probe dir>/operating_points/ for the coop_probe_fpr0p5 / _fpr5
+# defenses (PAIR against the pipeline at those points, for the Pareto figure). The default calibration is untouched.
+entrypoint: run_calibrate_probe.py
+name: oppoints-{+run}-ema
+time_per_run: 01:30:00
+overrides:
+  adapter_path: ${root_dir}/checkpoints_coop/W-posthoc/${run}/ema_adapter
+  checkpoint_path: ${root_dir}/checkpoints_coop/W-posthoc/${run}/ema_reader.pt
+  calibration_window: calib
+  fprs: [0.005, 0.05]
+artifacts:
+- checkpoints_coop/W-posthoc/{+run}/operating_points/ema_reader/threshold_fpr0.05_calib.json
+sweep:
+  +run: [W-posthoc-noprobe-s0, W-posthoc-noprobe-s1, W-posthoc-noprobe-s2]

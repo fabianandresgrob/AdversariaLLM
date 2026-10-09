@@ -21,7 +21,7 @@ overrides:
   harmful.answer_max_tokens: 512
   out: ${root_dir}/outputs/eval/cross_attack/${block}/${run}-ema/seed${seed}
 sweep:
-  +run: [W-posthoc-cat-s0, W-posthoc-cat-s1]  # s2 once its probe exists
+  +run: [W-posthoc-cat-s0, W-posthoc-cat-s1, W-posthoc-cat-s2]
   seed: [0]
 artifacts:
   - outputs/eval/cross_attack/{+block}/{+run}-ema/seed{seed}/cross_attack_eval.json

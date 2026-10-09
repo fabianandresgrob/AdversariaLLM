@@ -11,4 +11,4 @@ overrides:
 artifacts:
 - checkpoints_coop/{+block}/{+run}/threshold_1pct_calib.json
 sweep:
-  +run: [W-posthoc-cat-s0, W-posthoc-cat-s1]  # s2 once its probe exists
+  +run: [W-posthoc-cat-s0, W-posthoc-cat-s1, W-posthoc-cat-s2]

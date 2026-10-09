@@ -13,4 +13,4 @@ overrides:
 artifacts:
 - outputs/eval/overrefusal/{+block}/{+run}-ema/overrefusal.json
 sweep:
-  +run: [W-posthoc-cat-s0, W-posthoc-cat-s1]  # s2 once its probe exists
+  +run: [W-posthoc-cat-s0, W-posthoc-cat-s1, W-posthoc-cat-s2]

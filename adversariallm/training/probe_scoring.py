@@ -43,6 +43,15 @@ def calibrated_threshold(reader_path: str) -> float:
     return float(data["threshold"])
 
 
+def operating_point_path(checkpoint_path, fpr, calibration_window):
+    """Where the threshold for one extra operating point lives: <probe dir>/operating_points/, out of reach of the
+    defense's default threshold_*pct*.json search, so adding points never changes the default operating point;
+    one subdirectory per probe file, since a run dir can hold several probes."""
+    suffix = "" if calibration_window == "val" else f"_{calibration_window}"
+    probe = Path(str(checkpoint_path))
+    return str(probe.parent / "operating_points" / probe.stem / f"threshold_fpr{float(fpr):g}{suffix}.json")
+
+
 def pipeline_refusals(refused, scores, threshold: float) -> list[bool]:
     """Per answer: the pipeline refuses if the model refused or the probe flags the answer (score above threshold)."""
     if len(refused) != len(scores):

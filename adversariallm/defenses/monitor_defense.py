@@ -15,7 +15,7 @@ from .monitors import build_monitor
 log = logging.getLogger(__name__)
 
 
-def _calibrated_threshold(monitor_cfg, fallback, calibration_path=None, calibration_window=None):
+def _calibrated_threshold(monitor_cfg, fallback, calibration_path=None, calibration_window=None, calibration_fpr=None):
     """Prefer the calibrated operating point written next to the checkpoint by
     run_calibrate_probe.py; the config value is only a fallback.
 
@@ -23,7 +23,14 @@ def _calibrated_threshold(monitor_cfg, fallback, calibration_path=None, calibrat
     (threshold_1pct.json, threshold_5pct.json, ...), so match the whole family
     rather than assuming the fpr=0.01 default. calibration_window selects a non-val window's
     files (threshold_*pct_<window>.json) and, being an explicit request, raises when none exist
-    instead of falling back. An explicit calibration_path in the defense config wins over the search."""
+    instead of falling back. An explicit calibration_path in the defense config wins over the search.
+    calibration_fpr picks an extra operating point (run_calibrate_probe.py fprs=[...]) from
+    <probe dir>/operating_points/ instead, and raises when it was not calibrated."""
+    if calibration_fpr is not None and not calibration_path:
+        from ..training.probe_scoring import operating_point_path
+
+        calibration_path = operating_point_path((monitor_cfg or {})["checkpoint_path"], calibration_fpr,
+                                                calibration_window or "val")
     if calibration_path:
         path = str(calibration_path)
         if not os.path.exists(path):
@@ -84,7 +91,8 @@ class MonitorDefense(TargetSystem):
             tokenizer=tokenizer,
             monitor=monitor,
             threshold=_calibrated_threshold(
-                monitor_cfg, float(cfg.get("threshold", 0.5)), calibration_path, cfg.get("calibration_window")
+                monitor_cfg, float(cfg.get("threshold", 0.5)), calibration_path, cfg.get("calibration_window"),
+                cfg.get("calibration_fpr"),
             ),
             refusal_text=cfg["refusal_text"],
             default_generate_kwargs=default_generate_kwargs,

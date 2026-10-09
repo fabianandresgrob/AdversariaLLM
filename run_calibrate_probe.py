@@ -27,6 +27,23 @@ from adversariallm.training.generation import generate_responses  # noqa: F401 (
 log = logging.getLogger(__name__)
 
 
+def write_operating_points(cfg, scores, window, generated):
+    """One threshold file per false-positive rate in cfg.fprs, all from the same benign scores (also stored)."""
+    from adversariallm.training.coop_metrics import threshold_at_fpr
+    from adversariallm.training.probe_scoring import operating_point_path
+
+    for fpr in cfg.fprs:
+        out_path = operating_point_path(cfg.checkpoint_path, fpr, cfg.calibration_window)
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        out = {"threshold": threshold_at_fpr(scores, fpr=float(fpr)), "fpr": float(fpr), "n_benign": len(scores),
+               "calibration_benign": cfg.calibration_benign, "calibration_window": cfg.calibration_window,
+               "window": list(window), "checkpoint_path": cfg.checkpoint_path, "adapter_path": cfg.adapter_path,
+               "calibrated_on": "generated_responses" if generated else "prompts_only", "scores": [float(x) for x in scores]}
+        with open(out_path, "w") as fh:
+            json.dump(out, fh, indent=2)
+        log.info(f"{float(fpr):.1%}-FPR threshold tau={out['threshold']:.6f}; wrote {out_path}")
+
+
 @torch.no_grad()
 @hydra.main(version_base=None, config_path="conf", config_name="calibrate_probe")
 def main(cfg: DictConfig) -> None:
@@ -56,6 +73,9 @@ def main(cfg: DictConfig) -> None:
     else:
         responses = [""] * len(prompts)  # prompt-only readout: the response is not read
     scores = monitor.score(prompts, responses, target_model=model, target_tokenizer=tokenizer)
+    if cfg.get("fprs"):  # extra operating points, kept apart from the defense's default calibration
+        write_operating_points(cfg, scores, window, any(responses))
+        return
     tau = threshold_at_fpr(scores, fpr=float(cfg.fpr))
 
     out = {

@@ -47,3 +47,32 @@ coop_probe:
     target_model_id: meta-llama/Llama-3.1-8B-Instruct
     index_hidden_layer_detector: -1
     batch_size: 16
+
+# coop_probe at another operating point: 0.5% false positives instead of 1%, from <probe dir>/operating_points/.
+coop_probe_fpr0p5:
+  name: monitor
+  threshold: 0.5
+  calibration_window: calib
+  calibration_fpr: 0.005       # operating point 0.5% FPR on the same 2000 Alpaca answers (run_calibrate_probe.py fprs=[...])
+  refusal_text: "Sorry, I can't assist you with that."
+  monitor:
+    name: linear_probe
+    checkpoint_path: ${models.${model}.reader_path}
+    target_model_id: meta-llama/Llama-3.1-8B-Instruct
+    index_hidden_layer_detector: -1
+    batch_size: 16
+
+# coop_probe at another operating point: 5% false positives instead of 1%, from <probe dir>/operating_points/.
+coop_probe_fpr5:
+  name: monitor
+  threshold: 0.5
+  calibration_window: calib
+  calibration_fpr: 0.05       # operating point 5% FPR on the same 2000 Alpaca answers (run_calibrate_probe.py fprs=[...])
+  refusal_text: "Sorry, I can't assist you with that."
+  monitor:
+    name: linear_probe
+    checkpoint_path: ${models.${model}.reader_path}
+    target_model_id: meta-llama/Llama-3.1-8B-Instruct
+    index_hidden_layer_detector: -1
+    batch_size: 16
+

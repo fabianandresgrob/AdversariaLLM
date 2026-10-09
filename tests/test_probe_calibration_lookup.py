@@ -81,3 +81,20 @@ def test_requested_window_missing_raises_instead_of_falling_back(tmp_path):
     cfg = {"checkpoint_path": str(tmp_path / "final_reader.pt")}
     with pytest.raises(FileNotFoundError, match="calib"):
         _calibrated_threshold(cfg, 0.5, calibration_window="calib")
+
+
+def test_an_extra_operating_point_is_picked_explicitly_and_leaves_the_default_alone(tmp_path):
+    from adversariallm.training.probe_scoring import operating_point_path
+
+    reader = tmp_path / "ema_reader.pt"
+    (tmp_path / "threshold_1pct_calib.json").write_text(json.dumps({"threshold": 0.3, "fpr": 0.01}))
+    extra = operating_point_path(reader, 0.05, "calib")
+    assert extra.endswith("operating_points/ema_reader/threshold_fpr0.05_calib.json")
+    (tmp_path / "operating_points" / "ema_reader").mkdir(parents=True)
+    with open(extra, "w") as fh:
+        json.dump({"threshold": 0.1, "fpr": 0.05}, fh)
+    cfg = {"checkpoint_path": str(reader)}
+    assert _calibrated_threshold(cfg, 0.5, calibration_window="calib") == pytest.approx(0.3)  # default unchanged
+    assert _calibrated_threshold(cfg, 0.5, calibration_window="calib", calibration_fpr=0.05) == pytest.approx(0.1)
+    with pytest.raises(FileNotFoundError):
+        _calibrated_threshold(cfg, 0.5, calibration_window="calib", calibration_fpr=0.005)

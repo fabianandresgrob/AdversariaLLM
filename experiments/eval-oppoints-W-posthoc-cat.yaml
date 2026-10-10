@@ -12,4 +12,4 @@ overrides:
 artifacts:
 - checkpoints_coop/W-posthoc-cat/{+run}/operating_points/ema_reader/threshold_fpr0.05_calib.json
 sweep:
-  +run: [W-posthoc-cat-s0, W-posthoc-cat-s1]
+  +run: [W-posthoc-cat-s0, W-posthoc-cat-s1, W-posthoc-cat-s2]

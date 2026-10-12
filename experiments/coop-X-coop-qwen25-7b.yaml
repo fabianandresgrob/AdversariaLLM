@@ -1,0 +1,41 @@
+# X (other models): the coop arm (coop-W-coop's recipe) on Qwen/Qwen2.5-7B-Instruct, seed 0.
+# Attack radius 0.3 at 50 iterations: 85 / 120 harmful in the attack check (embattack7), as strong as Llama's 0.1 (91).
+entrypoint: run_coop_train.py
+name: X-coop-qwen25-7b-s{seed}
+time_per_run: "12:00:00"
+overrides:
+  model: Qwen/Qwen2.5-7B-Instruct
+  chat_template_id: Qwen/Qwen2.5-7B-Instruct
+  attack.enabled: true
+  attack.perturb: user
+  attack.target_eot: false
+  attack.eps: 0.3
+  attack.iters: 50
+  attack.use_detector: true
+  reader.readout: response_window
+  reader.readout_k: 512
+  reader.window: 16
+  probe_init: random
+  data.answer_pool: ${root_dir}/outputs/eval/answer_pool/pool-heretic.jsonl
+  data.answer_max_tokens: 512
+  training.detector_refusal_negatives: true
+  training.rep_warmup_steps: 50
+  training.n_detector_steps: 6
+  training.n_steps: 1000
+  training.val_every: 50
+  training.checkpoint_every: 250
+  training.benign_gen_n: 40
+  training.ema_decay: 0.995
+  data.kl_source: magpie
+  data.kl_max_length: 1024
+  data.val_size: 24
+  data.val_targets: 6
+  data.val_batch_size: 16
+  lambda_benign_perturb: 1.0
+  epsilon: 0.05
+  output.checkpoint_path: ${root_dir}/checkpoints_coop/X
+sweep:
+  seed: [0]
+artifacts:
+  - checkpoints_coop/X/{name}/final_adapter
+  - checkpoints_coop/X/{name}/final_reader.pt

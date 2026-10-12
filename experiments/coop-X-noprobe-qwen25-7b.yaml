@@ -1,0 +1,34 @@
+# X (other models): the no-coop arm's model (coop-R-noprobe's recipe; its probe is trained afterwards on the frozen model) on Qwen/Qwen2.5-7B-Instruct, seed 0.
+# Attack radius 0.3 at 50 iterations: 85 / 120 harmful in the attack check (embattack7), as strong as Llama's 0.1 (91).
+entrypoint: run_coop_train.py
+name: X-noprobe-qwen25-7b-s{seed}
+time_per_run: "08:00:00"
+overrides:
+  model: Qwen/Qwen2.5-7B-Instruct
+  chat_template_id: Qwen/Qwen2.5-7B-Instruct
+  attack.enabled: true
+  attack.perturb: user
+  attack.target_eot: false
+  attack.eps: 0.3
+  training.n_detector_steps: 6
+  training.val_every: 50
+  training.rep_warmup_steps: 0
+  training.benign_gen_n: 40
+  training.ema_decay: 0.995
+  data.kl_source: magpie
+  data.kl_max_length: 1024
+  data.val_size: 24
+  data.val_targets: 6
+  data.val_batch_size: 16
+  lambda_benign_perturb: 1.0
+  output.checkpoint_path: ${root_dir}/checkpoints_coop/X
+  attack.use_detector: false
+  attack.iters: 50
+  training.n_steps: 1000
+  epsilon: 1.0
+  lambda_rep: 0.0
+sweep:
+  seed: [0]
+artifacts:
+  - checkpoints_coop/X/{name}/final_adapter
+  - checkpoints_coop/X/{name}/final_reader.pt

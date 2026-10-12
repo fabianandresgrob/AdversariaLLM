@@ -1,0 +1,35 @@
+# X (other models): the no-coop arm's model (coop-R-noprobe's recipe; its probe is trained afterwards on the frozen model) on google/gemma-3-12b-it, seed 0.
+# Attack radius 0.5 at 50 iterations: 89 / 120 harmful in the attack check (embattack9), as strong as Llama's 0.1 (91).
+entrypoint: run_coop_train.py
+name: X-noprobe-gemma3-12b-s{seed}
+time_per_run: "18:00:00"  # Gemma smoke: ~37 s per training step, ~20 min per validation
+overrides:
+  model: google/gemma-3-12b-it
+  chat_template_id: google/gemma-3-12b-it
+  attack.enabled: true
+  attack.perturb: user
+  attack.target_eot: false
+  attack.eps: 0.5
+  training.n_detector_steps: 6
+  training.val_every: 100  # Gemma: each validation takes ~20 min
+  training.rep_warmup_steps: 0
+  training.benign_gen_n: 40
+  training.ema_decay: 0.995
+  data.kl_source: magpie
+  data.kl_max_length: 1024
+  data.utility_chunk: 1    # Gemma: the KL leash and the benign-perturbation KL run out of memory on 4 examples at once
+  data.val_size: 24
+  data.val_targets: 6
+  data.val_batch_size: 4   # Gemma: 262k-token vocabulary, 16 ran out of memory in the step-0 validation attack
+  lambda_benign_perturb: 1.0
+  output.checkpoint_path: ${root_dir}/checkpoints_coop/X
+  attack.use_detector: false
+  attack.iters: 50
+  training.n_steps: 1000
+  epsilon: 1.0
+  lambda_rep: 0.0
+sweep:
+  seed: [0]
+artifacts:
+  - checkpoints_coop/X/{name}/final_adapter
+  - checkpoints_coop/X/{name}/final_reader.pt

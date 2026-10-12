@@ -1,0 +1,29 @@
+# X (other models): the CAT arm (cat-W-cat's recipe; KL weight calibrated on seed 0 as on Llama) on google/gemma-3-12b-it, seed 0.
+# Attack radius 0.5 at 50 iterations: 89 / 120 harmful in the attack check (embattack9), as strong as Llama's 0.1 (91).
+entrypoint: run_train.py
+name: X-cat-gemma3-12b-kl{lambda_kl}-s{seed}
+time_per_run: "18:00:00"  # CAT trainer not yet run on Gemma; Llama ~23 s per step, Gemma's 262k vocabulary makes the KL slower
+overrides:
+  model: google/gemma-3-12b-it
+  chat_template_id: google/gemma-3-12b-it
+  +cat_recipe: leo
+  attack.eps: 0.5
+  attack.iters: 50
+  attack.lr: 0.01
+  attack.optimizer: adam
+  utility_objective: kl
+  data.kl_source: magpie
+  data.kl_max_length: 1024
+  data.utility_chunk: 1      # 7 x 1024-token KL examples at once ran out of memory; same gradient one at a time
+  training.n_epochs: null
+  training.n_steps: 1000
+  training.grad_accum: 4
+  training.ema_decay: 0.995
+  training.checkpoint_every: 250
+  output.checkpoint_path: ${root_dir}/checkpoints_cat/X
+sweep:
+  lambda_kl: [4.0, 8.0, 16.0]  # Llama: 8 (1-4 over-refused)
+  seed: [0]
+artifacts:
+  - checkpoints_cat/X/{name}/final_adapter
+  - checkpoints_cat/X/{name}/ema_adapter

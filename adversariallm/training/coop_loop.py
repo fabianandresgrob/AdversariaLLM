@@ -24,7 +24,7 @@ from .coop_losses import detector_ce, per_example_ce
 from .coop_metrics import fresh_refit_recall, is_refusal, recall_at_fpr, refusal_rate, threshold_at_fpr
 from .gating import avg_logprob, behavior_gate, rep_gate, w_harm, w_miss
 from .loop import _benign_under_adv_prompt, _cycle, _init_wandb, _to_device
-from .losses import utility_kl
+from .losses import backward_utility_kl, utility_kl
 from .readers import build_reader
 
 log = logging.getLogger(__name__)
@@ -243,6 +243,13 @@ def _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch,
 
     # ---- easy benign: KL leash (UltraChat), + optional easy-CE ablation hook ----
     total = torch.zeros((), device=device)
+    chunk = int(hp.get("utility_chunk") or 0)
+    if easy_batch is not None and chunk:  # the KL a few examples at a time: same gradient, less memory (e.g. Gemma)
+        if hp.get("lambda_kl_head", 0.0) > 0:
+            raise ValueError("data.utility_chunk does not support lambda_kl_head")
+        logs["kl"] = backward_utility_kl(model, ref, easy_batch["input_ids"], easy_batch["attn"], hp["lambda_kl"], chunk)
+        logs["total"] += hp["lambda_kl"] * logs["kl"]
+        easy_batch = None  # done: skip the whole-batch KL below
     if easy_batch is not None:
         u_ids = easy_batch["input_ids"]
         u_logits = model(input_ids=u_ids, attention_mask=easy_batch["attn"]).logits
@@ -575,6 +582,7 @@ def run_coop_training(cfg):
     # optional benign terms (absent from older configs -> off)
     device_hp.update({k: float(container.get(k) or 0.0) for k in ("lambda_kl_head", "lambda_benign_perturb")})
     device_hp["kl_head_tokens"] = int(container.get("kl_head_tokens") or 32)
+    device_hp["utility_chunk"] = int(cfg.data.get("utility_chunk") or 0)  # 0 = the whole utility batch at once
 
     model_params = cfg.models[cfg.model]
     template_id = cfg.chat_template_id

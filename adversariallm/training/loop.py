@@ -57,10 +57,10 @@ def build_objective(cfg: dict) -> Objective:
 
 from .losses import (
     away_from_harmful,
+    backward_utility_kl,
     ipo_preference,
     sequence_logprob,
     toward_benign,
-    utility_kl,
 )
 
 
@@ -187,18 +187,8 @@ def train_step(model, ref, attack, objective, adv_batch, util_batch, scale=1.0, 
         _backward(ipo_preference(pi_b, pi_h, ref_b, ref_h, beta=objective.beta), 1.0, "ipo")
 
     if "kl" in objective.active_terms:
-        u_ids, u_attn = util_batch["input_ids"], util_batch["attn"]
-        n_tokens = u_attn.sum()  # every chunk divides by the whole batch's tokens, so the chunks sum to its KL
-        chunk = int(utility_chunk or u_ids.size(0))
-        kl = 0.0
-        for s in range(0, u_ids.size(0), chunk):
-            ids, attn = u_ids[s:s + chunk], u_attn[s:s + chunk]
-            u_logits = model(input_ids=ids, attention_mask=attn).logits
-            r_logits = ref.logits(inputs_embeds=model.get_input_embeddings()(ids), attention_mask=attn)
-            part = utility_kl(u_logits, r_logits, attention_mask=attn, n_tokens=n_tokens)
-            (scale * objective.lambda_kl * part).backward()
-            kl += part.item()
-            del u_logits, r_logits, part
+        kl = backward_utility_kl(model, ref, util_batch["input_ids"], util_batch["attn"], scale * objective.lambda_kl,
+                                 utility_chunk)
         logs["kl"] = kl
         total += objective.lambda_kl * kl
 

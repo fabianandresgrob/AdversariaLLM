@@ -67,6 +67,7 @@ data:
   safe: safe_responses/adv_training_behaviors_safe_responses_longer.csv
   harmful_batch_size: 4
   utility_batch_size: 4
+  utility_chunk: null               # KL over this many utility examples at a time (same gradient, less memory; e.g. 1 for Gemma)
   val_size: 16                      # harmful behaviors held out for validation
   val_targets: 4                    # targets per val behavior -> 64 attacked val prompts
   val_batch_size: null              # val attack/generation batch; null = harmful_batch_size (4)

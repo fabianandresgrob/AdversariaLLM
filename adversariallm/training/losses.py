@@ -88,3 +88,21 @@ def ipo_preference(
     chosen = y_benign, rejected = y_harmful. Inputs are sequence log-probs (B,)."""
     h = (pi_chosen - pi_rejected) - (ref_chosen - ref_rejected)
     return ((h - 1.0 / (2.0 * beta)) ** 2).mean()
+
+
+def backward_utility_kl(model, ref, input_ids, attention_mask, weight: float, chunk: int | None = None) -> float:
+    """weight x KL(model || ref) on a utility batch, backpropagated; returns the KL. chunk: run it over this many examples
+    at a time, each part divided by the whole batch's attended tokens, so the parts sum to the batch's KL and the
+    gradient is the same with less memory (None = the whole batch at once)."""
+    n_tokens = attention_mask.sum()
+    step = int(chunk or input_ids.size(0))
+    total = 0.0
+    for start in range(0, input_ids.size(0), step):
+        ids, attn = input_ids[start:start + step], attention_mask[start:start + step]
+        logits = model(input_ids=ids, attention_mask=attn).logits
+        ref_logits = ref.logits(inputs_embeds=model.get_input_embeddings()(ids), attention_mask=attn)
+        part = utility_kl(logits, ref_logits, attention_mask=attn, n_tokens=n_tokens)
+        (weight * part).backward()
+        total += part.item()
+        del logits, ref_logits, part
+    return total

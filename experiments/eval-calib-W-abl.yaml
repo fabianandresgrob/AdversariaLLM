@@ -1,0 +1,13 @@
+# W-abl: as eval-calib-W-coop, for the ablations (coop-W-abl-*).
+entrypoint: run_calibrate_probe.py
+name: calib-{+run}-ema
+time_per_run: 01:30:00
+overrides:
+  +block: W-abl
+  adapter_path: ${root_dir}/checkpoints_coop/${block}/${run}/ema_adapter
+  checkpoint_path: ${root_dir}/checkpoints_coop/${block}/${run}/ema_reader.pt
+  calibration_window: calib
+artifacts:
+- checkpoints_coop/{+block}/{+run}/threshold_1pct_calib.json
+sweep:
+  +run: [W-abl-nogate-s0, W-abl-norep-s0, W-abl-noattackprobe-s0]

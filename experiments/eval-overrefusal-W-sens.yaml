@@ -1,0 +1,15 @@
+# W-sens: as eval-overrefusal-W-coop, for the sensitivity runs (coop-W-sens-*).
+entrypoint: run_overrefusal_eval.py
+name: overrefusal-{+run}-ema
+time_per_run: 02:00:00
+overrides:
+  +block: W-sens
+  ~checkpoints.base: base
+  +checkpoints.model: ${root_dir}/checkpoints_coop/${block}/${run}/ema_adapter
+  +readers.model: ${root_dir}/checkpoints_coop/${block}/${run}/ema_reader.pt
+  out: ${root_dir}/outputs/eval/overrefusal/${block}/${run}-ema
+  judge.enabled: true
+artifacts:
+- outputs/eval/overrefusal/{+block}/{+run}-ema/overrefusal.json
+sweep:
+  +run: [W-sens-gate0.0-s0, W-sens-gate0.25-s0, W-sens-rep0.5-s0, W-sens-rep2.0-s0]

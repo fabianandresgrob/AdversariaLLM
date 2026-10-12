@@ -1,0 +1,12 @@
+# W-sens: as eval-utility-W-coop, for the sensitivity runs (coop-W-sens-*).
+entrypoint: run_utility_eval.py
+name: utility-{+run}-ema
+time_per_run: 02:00:00
+overrides:
+  +block: W-sens
+  adapter_path: ${root_dir}/checkpoints_coop/${block}/${run}/ema_adapter
+  out: ${root_dir}/outputs/eval/utility/${block}/${run}-ema
+artifacts:
+- outputs/eval/utility/{+block}/{+run}-ema/utility.json
+sweep:
+  +run: [W-sens-gate0.0-s0, W-sens-gate0.25-s0, W-sens-rep0.5-s0, W-sens-rep2.0-s0]

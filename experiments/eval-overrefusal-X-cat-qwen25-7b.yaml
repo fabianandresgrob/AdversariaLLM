@@ -1,0 +1,19 @@
+# X: CAT calibration on Qwen2.5-7B-Instruct (cat-X-cat-qwen25-7b), as on Llama (eval-overrefusal-W-cat-steps): judged
+# xs_test over-refusal of the EMA checkpoints at steps 500, 750, 1000 for KL weights 4 / 8 / 16. The weight and step are
+# then picked to match Qwen coop's over-refusal (X-coop-qwen25-7b). Model and chat template set explicitly (defaults are Llama).
+entrypoint: run_overrefusal_eval.py
+name: overrefusal-{+run}-ema{+step}
+time_per_run: 02:00:00
+overrides:
+  +block: X
+  model: Qwen/Qwen2.5-7B-Instruct
+  chat_template_id: Qwen/Qwen2.5-7B-Instruct
+  ~checkpoints.base: base
+  +checkpoints.model: ${root_dir}/checkpoints_cat/${block}/${run}/ema_step${step}_adapter
+  out: ${root_dir}/outputs/eval/overrefusal/${block}/${run}-ema${step}
+  judge.enabled: true
+artifacts:
+- outputs/eval/overrefusal/{+block}/{+run}-ema{+step}/overrefusal.json
+sweep:
+  +run: [X-cat-qwen25-7b-kl4.0-s0, X-cat-qwen25-7b-kl8.0-s0, X-cat-qwen25-7b-kl16.0-s0]
+  +step: [500, 750, 1000]

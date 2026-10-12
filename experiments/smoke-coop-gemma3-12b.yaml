@@ -28,7 +28,7 @@ overrides:
   training.ema_decay: 0.995
   data.kl_source: magpie
   data.kl_max_length: 1024
-  data.utility_chunk: 1    # Gemma: the 4 x 1024-token KL ran out of memory in one pass
+  data.utility_chunk: 1    # Gemma: the KL leash and the benign-perturbation KL run out of memory on 4 examples at once
   data.val_size: 24
   data.val_targets: 6
   data.val_batch_size: 4   # Gemma: 262k-token vocabulary, 16 ran out of memory in the step-0 validation attack

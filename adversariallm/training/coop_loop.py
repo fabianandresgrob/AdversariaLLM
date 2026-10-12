@@ -167,20 +167,34 @@ def _perturb_user(emb, mask, radius):
     return emb + noise * mask.unsqueeze(-1).to(emb.dtype)
 
 
-def _benign_perturb_kl(model, ref, easy_batch, hp):
-    """KL(model(x + d) || ref(x)) on the first kl_head_tokens answer tokens of benign examples, with d
-    a random perturbation of norm hp["benign_radius"] on each user-message token. Runs only up to
-    the last head position. Called first in the model step and backpropagated on its own, so its
-    graph is freed before the rest of the step is built (the step holds several graphs at once)."""
+def _benign_perturb_kl(model, ref, easy_batch, hp, weight=1.0):
+    """weight x KL(model(x + d) || ref(x)) on the first kl_head_tokens answer tokens of benign examples, with d a random
+    perturbation of norm hp["benign_radius"] on each user-message token; backpropagated here, returns the KL. Runs only
+    up to the last head position. Called first in the model step, so its graph is freed before the rest of the step is
+    built (the step holds several graphs at once). hp["utility_chunk"] runs it a few examples at a time, each part
+    divided by the whole batch's head positions, so the parts sum to the batch's KL (less memory, e.g. Gemma)."""
     head = _answer_head_mask(easy_batch["labels"], easy_batch["attn"], int(hp.get("kl_head_tokens", 32)))
     cols = head.any(dim=0).nonzero()
     width = int(cols.max()) + 2 if cols.numel() else 2
-    ids, attn = easy_batch["input_ids"][:, :width], easy_batch["attn"][:, :width]
-    emb = model.get_input_embeddings()(ids)
-    r_logits = ref.logits(inputs_embeds=emb.detach(), attention_mask=attn)
-    perturbed = _perturb_user(emb, easy_batch["perturb_mask"][:, :width], hp["benign_radius"])
-    p_logits = model(inputs_embeds=perturbed, attention_mask=attn).logits
-    return _head_kl(p_logits[:, :-1], r_logits[:, :-1], head[:, : width - 1])
+    n_head = head[:, : width - 1].sum().clamp_min(1)
+    step = int(hp.get("utility_chunk") or head.size(0))
+    total = 0.0
+    for start in range(0, head.size(0), step):
+        rows = slice(start, start + step)
+        ids, attn = easy_batch["input_ids"][rows, :width], easy_batch["attn"][rows, :width]
+        h = head[rows, : width - 1]
+        if not h.any():
+            continue
+        emb = model.get_input_embeddings()(ids)
+        r_logits = ref.logits(inputs_embeds=emb.detach(), attention_mask=attn)
+        perturbed = _perturb_user(emb, easy_batch["perturb_mask"][rows, :width], hp["benign_radius"])
+        p_logits = model(inputs_embeds=perturbed, attention_mask=attn).logits
+        sel_p, sel_r = p_logits[:, :-1][h].unsqueeze(0), r_logits[:, :-1][h].unsqueeze(0)
+        part = utility_kl(sel_p, sel_r, attention_mask=torch.ones(sel_p.shape[:2], device=sel_p.device), n_tokens=n_head)
+        (weight * part).backward()
+        total += part.item()
+        del emb, r_logits, perturbed, p_logits, sel_p, sel_r, part
+    return total
 
 
 def _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch,
@@ -208,10 +222,7 @@ def _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch,
 
     lam_pert = hp.get("lambda_benign_perturb", 0.0)
     if lam_pert > 0 and easy_batch is not None:  # own backward first: gradients add up, memory does not
-        kl_pert = _benign_perturb_kl(model, ref, easy_batch, hp)
-        (lam_pert * kl_pert).backward()
-        logs["kl_benign_perturb"] = kl_pert.item()
-        del kl_pert
+        logs["kl_benign_perturb"] = _benign_perturb_kl(model, ref, easy_batch, hp, lam_pert)
 
     # ---- harmful: gated refusal teaching + gated representation ----
     with torch.set_grad_enabled(use_rep):  # only the representation term backpropagates through it

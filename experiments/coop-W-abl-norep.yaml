@@ -1,5 +1,5 @@
-# W ablation: the coop arm (coop-W-coop) with one switch off, no representation term (lambda_rep 0): the model is not pushed to make harmful answers visible to the probe. Everything else identical; seed 0.
-# Coop = all three switches on, no coop (R-noprobe + post-hoc probe) = all off; this run isolates one of them.
+# W ablation (planning/specs/2026-10-06-coop-vs-noncoop.md): no representation term (lambda_rep 0); gate and probe-aware attack stay on. Is pushing harmful answers into the probe's view what makes the probe better?
+# Otherwise exactly coop-W-coop (one seed first).
 entrypoint: run_coop_train.py
 name: W-abl-norep-s{seed}
 time_per_run: "12:00:00"
@@ -10,6 +10,7 @@ overrides:
   attack.eps: 0.1
   attack.iters: 50
   attack.use_detector: true
+  lambda_rep: 0.0
   reader.readout: response_window
   reader.readout_k: 512
   reader.window: 16
@@ -31,7 +32,6 @@ overrides:
   data.val_batch_size: 16
   lambda_benign_perturb: 1.0
   epsilon: 0.05
-  lambda_rep: 0.0
   output.checkpoint_path: ${root_dir}/checkpoints_coop/W-abl
 sweep:
   seed: [0]

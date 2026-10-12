@@ -1,5 +1,5 @@
-# W ablation: the coop arm (coop-W-coop) with one switch off, no gate: refusal loss on every attacked prompt (epsilon 1.0, as in no coop). Everything else identical; seed 0.
-# Coop = all three switches on, no coop (R-noprobe + post-hoc probe) = all off; this run isolates one of them.
+# W ablation (planning/specs/2026-10-06-coop-vs-noncoop.md): no gate. Refusal loss on every attacked prompt (epsilon 1.0, as in no coop); representation term and probe-aware attack stay on. Does it matter that the probe decides where refusal is pushed?
+# Otherwise exactly coop-W-coop (one seed first).
 entrypoint: run_coop_train.py
 name: W-abl-nogate-s{seed}
 time_per_run: "12:00:00"

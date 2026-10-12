@@ -52,6 +52,9 @@ generate_safe_responses.py:
 rejudge_answers.py:
   config_name: rejudge_answers
   name_key: name
+score_embedding_attack.py:
+  config_name: score_embedding_attack
+  name_key: name
 run_utility_eval.py:
   config_name: utility_eval
 run_gate_diagnostics.py:

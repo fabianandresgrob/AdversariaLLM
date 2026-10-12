@@ -90,7 +90,7 @@ def main(cfg: DictConfig) -> None:
     import torch
 
     from adversariallm.io_utils import load_model_and_tokenizer
-    from adversariallm.training.attacks import ContinuousEmbeddingAttack
+    from adversariallm.training.attacks import ContinuousEmbeddingAttack, input_embedding_matrix
     from adversariallm.training.data import (AdvTupleStream, build_example_full, pad_collate, render_prompt,
                                              split_adv_stream, user_token_mask)
     from adversariallm.training.readers import load_reader
@@ -101,7 +101,7 @@ def main(cfg: DictConfig) -> None:
     model.eval()
     model.requires_grad_(False)
     device = next(model.parameters()).device
-    weight = model.get_input_embeddings().weight
+    weight = input_embedding_matrix(model)  # as the model sees it (Gemma scales its embeddings)
 
     use_detector = cfg.use_detector if cfg.use_detector is not None else bool(entry.get("reader_path"))
     detector = load_reader(entry["reader_path"]).to(device) if use_detector else None

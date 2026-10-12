@@ -1,0 +1,10 @@
+defaults:
+  - paths
+  - _self_
+
+# score_embedding_attack.py: StrongREJECT + text checks on inspect_embedding_attack.py answers.
+files: ["embattack6-*"]   # name globs in outputs/eval/embedding_attack/
+table: embattack6_metrics # output table name (.csv)
+per_category: 6           # answers per category in each review file
+max_chars: 800
+name: null                # jobs injects the run name

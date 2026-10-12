@@ -1,0 +1,10 @@
+# Rescored with the Gemma rerun after the step-size fix (inspect-embattack8-gemma3-12b). StrongREJECT + text checks on the embedding-attack sanity check of Qwen2.5-7B and Gemma 3 12B (inspect-embattack6-*),
+# and on Llama's earlier sweep (embattack4/5) for the same table. Run after the inspect runs.
+entrypoint: score_embedding_attack.py
+name: score-embattack8-{+set}
+time_per_run: "02:00:00"
+overrides:
+  files: ["embattack6-*", "embattack7-*", "embattack8-*", "embattack4-llama-base-user-*", "embattack5-llama-base-user-*"]
+  table: embattack_models_metrics
+sweep:
+  +set: [models]

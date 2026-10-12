@@ -36,6 +36,13 @@ class _Tok:
     def convert_tokens_to_ids(self, token):
         return 8 if token == "<|eot_id|>" else None
 
+    def apply_chat_template(self, conv, tokenize=False, add_generation_prompt=False):
+        """Llama-style: every turn ends with <|eot_id|> (id 8), which end_of_turn_ids reads off the template."""
+        return "".join(f"{m['content']}<|eot_id|>" for m in conv)
+
+    def __call__(self, text, add_special_tokens=False):
+        return {"input_ids": [8] if text.startswith("<|eot_id|>") else []}
+
     def decode(self, ids, **kwargs):
         return " ".join(map(str, ids.tolist()))
 

@@ -2,7 +2,7 @@
 # Attack radius 0.5 at 50 iterations: 89 / 120 harmful in the attack check (embattack9), as strong as Llama's 0.1 (91).
 entrypoint: run_coop_train.py
 name: X-noprobe-gemma3-12b-s{seed}
-time_per_run: "18:00:00"  # Gemma smoke: ~37 s per training step, ~20 min per validation
+time_per_run: "16:00:00"  # Gemma coop: ~13.6 h for 1000 steps with validation every 100
 overrides:
   model: google/gemma-3-12b-it
   chat_template_id: google/gemma-3-12b-it
@@ -24,6 +24,7 @@ overrides:
   lambda_benign_perturb: 1.0
   output.checkpoint_path: ${root_dir}/checkpoints_coop/X
   attack.use_detector: false
+  probe_init: random   # the default warm start is the Llama probe (4096 inputs); this probe never touches the model
   attack.iters: 50
   training.n_steps: 1000
   epsilon: 1.0

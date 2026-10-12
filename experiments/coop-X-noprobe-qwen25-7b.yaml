@@ -23,6 +23,7 @@ overrides:
   lambda_benign_perturb: 1.0
   output.checkpoint_path: ${root_dir}/checkpoints_coop/X
   attack.use_detector: false
+  probe_init: random   # the default warm start is the Llama probe (4096 inputs); this probe never touches the model
   attack.iters: 50
   training.n_steps: 1000
   epsilon: 1.0

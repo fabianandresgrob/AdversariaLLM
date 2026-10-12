@@ -7,6 +7,15 @@ import torch
 from ._embedding_attack_core import EmbeddingSpaceAttack
 
 
+def input_embedding_matrix(model):
+    """The token embedding matrix as the model sees it: Gemma scales its embeddings by sqrt(hidden size) inside the
+    embedding layer (embed_scale), so an attack that builds inputs_embeds from the raw weights must apply the same
+    scale, and its radius (eps x mean embedding norm) is measured on that scale. Unchanged for models without it."""
+    layer = model.get_input_embeddings()
+    scale = getattr(layer, "embed_scale", None)
+    return layer.weight if scale is None else layer.weight * scale.to(layer.weight)
+
+
 class TrainingAttack(ABC):
     @abstractmethod
     def attack(self, model, batch, detector=None, use_detector: bool = False):
@@ -64,9 +73,9 @@ class ContinuousEmbeddingAttack(TrainingAttack):
             wandb_run=None,
         )
         if not target_eot:
-            stop = {tokenizer.eos_token_id, tokenizer.convert_tokens_to_ids("<|eot_id|>")}
-            stop = sorted(t for t in stop if isinstance(t, int) and t >= 0 and t != tokenizer.unk_token_id)
-            self._attack.loss_exclude_ids = torch.tensor(stop, dtype=torch.long)
+            from .data import end_of_turn_ids
+
+            self._attack.loss_exclude_ids = torch.tensor(end_of_turn_ids(tokenizer), dtype=torch.long)
 
     @property
     def detector_loss_coeff(self):

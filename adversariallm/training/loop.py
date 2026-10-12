@@ -256,7 +256,7 @@ def run_training(cfg):
     from torch.utils.data import DataLoader
 
     from ..io_utils import load_model_and_tokenizer
-    from .attacks import ContinuousEmbeddingAttack
+    from .attacks import ContinuousEmbeddingAttack, input_embedding_matrix
     from .data import (AdvTupleStream, build_kl_stream, collate_adv, collate_util,
                        generation_prefix, split_adv_stream)
     from .reference import FrozenModelReference, LoRADisableReference
@@ -268,7 +268,7 @@ def run_training(cfg):
     model, tokenizer = load_model_and_tokenizer(model_params)
     device = next(model.parameters()).device
 
-    from .coop_loop import _seed_everything
+    from .coop_loop import _seed_everything, lora_target_modules
 
     _seed_everything(int(cfg.get("seed", 0)))  # LoRA init + loader shuffles, so a CAT seed sweep is real
 
@@ -283,15 +283,7 @@ def run_training(cfg):
             LoraConfig(
                 r=int(lora_cfg.get("r", 8)),
                 lora_alpha=int(lora_cfg.get("alpha", 32)),
-                target_modules=[
-                    "q_proj",
-                    "k_proj",
-                    "v_proj",
-                    "o_proj",
-                    "gate_proj",
-                    "up_proj",
-                    "down_proj",
-                ],
+                target_modules=lora_target_modules(model),
                 lora_dropout=float(lora_cfg.get("dropout", 0.05)),
                 task_type="CAUSAL_LM",
             ),
@@ -335,7 +327,7 @@ def run_training(cfg):
     # attack
     response_key = generation_prefix(tokenizer)
     attack = ContinuousEmbeddingAttack(
-        model.get_input_embeddings().weight,
+        input_embedding_matrix(model),
         response_key,
         tokenizer,
         iters=cfg.attack.iters,

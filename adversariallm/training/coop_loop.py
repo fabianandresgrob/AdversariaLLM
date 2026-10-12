@@ -508,6 +508,16 @@ class ParamEMA:
 LORA_TARGETS = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
 
 
+def lora_target_modules(model):
+    """LoRA targets: the attention and MLP projections of the language model. A vision-language class (Gemma 3 4B and
+    up) also has q_proj / k_proj / ... in its vision tower, which text-only training never uses, so there the targets
+    are restricted to the language model by a regex; text-only models keep the plain list."""
+    names = (n for n, _ in model.named_modules())
+    if any(".vision_tower." in f".{n}." or n.startswith("vision_tower") for n in names):
+        return r".*language_model.*\.(" + "|".join(LORA_TARGETS) + ")"
+    return list(LORA_TARGETS)
+
+
 def _attach_adapter(model, init_adapter=None, train_model=True):
     """Wrap the base model with LoRA: a fresh rank-8 adapter (coop's), or a finished one from `init_adapter` (e.g. a
     non-coop model, for a probe trained afterwards). train_model=False freezes every weight, so only the probe trains."""
@@ -517,7 +527,7 @@ def _attach_adapter(model, init_adapter=None, train_model=True):
     if init_adapter:
         model = peft.PeftModel.from_pretrained(model, init_adapter, is_trainable=train_model)
     else:
-        model = peft.get_peft_model(model, LoraConfig(r=8, lora_alpha=32, target_modules=LORA_TARGETS,
+        model = peft.get_peft_model(model, LoraConfig(r=8, lora_alpha=32, target_modules=lora_target_modules(model),
                                                       lora_dropout=0.05, task_type="CAUSAL_LM"))
     if not train_model:
         model.requires_grad_(False)
@@ -542,7 +552,7 @@ def run_coop_training(cfg):
     from torch.utils.data import DataLoader
 
     from ..io_utils import load_model_and_tokenizer
-    from .attacks import ContinuousEmbeddingAttack
+    from .attacks import ContinuousEmbeddingAttack, input_embedding_matrix
     from .data import (
         AdvTupleStream,
         BenignStream,
@@ -663,14 +673,14 @@ def run_coop_training(cfg):
 
     # attack (Stage B: model-only; Stage C: also detector-aware via attack.use_detector) or None (Stage A)
     # benign-perturbation radius: per token, like the attack's (eps x mean embedding norm)
-    emb_norm = model.get_input_embeddings().weight.norm(dim=-1).mean().item()
+    emb_norm = input_embedding_matrix(model).norm(dim=-1).mean().item()
     device_hp["benign_radius"] = float(container.get("benign_perturb_eps") or cfg.attack.eps) * emb_norm
 
     attack = None
     if cfg.attack.enabled:
         response_key = generation_prefix(tokenizer)
         attack = ContinuousEmbeddingAttack(
-            model.get_input_embeddings().weight,
+            input_embedding_matrix(model),
             response_key,
             tokenizer,
             iters=cfg.attack.iters,

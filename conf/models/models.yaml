@@ -422,6 +422,15 @@ Qwen/Qwen2.5-0.5B-Instruct:
   dtype: bfloat16
   chat_template: null
   trust_remote_code: True
+Qwen/Qwen2.5-7B-Instruct:
+  id: Qwen/Qwen2.5-7B-Instruct
+  tokenizer_id: Qwen/Qwen2.5-7B-Instruct
+  short_name: Qwen2.5
+  developer_name: Qwen
+  compile: False
+  dtype: bfloat16
+  chat_template: null
+  trust_remote_code: True
 # --- chat-template diagnostic: same checkpoints, TRAINING-format template ---
 # Identical to their counterparts except chat_template. Pair each with its normal-template
 # twin to isolate how much measured robustness is train/attack format shift.

@@ -139,7 +139,7 @@ def _case_frequencies(model, reader, layer, attack, harmful_batches, use_detecto
 def main(cfg: DictConfig) -> None:
     from torch.utils.data import DataLoader
 
-    from adversariallm.training.attacks import ContinuousEmbeddingAttack
+    from adversariallm.training.attacks import ContinuousEmbeddingAttack, input_embedding_matrix
     from adversariallm.training.coop_loop import _coop_validate
     from adversariallm.training.data import (
         generation_prefix,
@@ -192,7 +192,7 @@ def main(cfg: DictConfig) -> None:
 
         response_key = generation_prefix(tok)
         attack = ContinuousEmbeddingAttack(
-            model.get_input_embeddings().weight, response_key, tok,
+            input_embedding_matrix(model), response_key, tok,
             iters=int(cfg.attack.iters), eps=float(cfg.attack.eps), lr=float(cfg.attack.lr),
             detector_loss_coeff=float(cfg.attack.detector_loss_coeff), detector_layer=layer,
             target_eot=bool(cfg.attack.get("target_eot", True)), perturb=str(cfg.attack.get("perturb", "all")),

@@ -54,6 +54,20 @@ def generation_prefix(tokenizer):
     return with_[len(without):]
 
 
+def end_of_turn_ids(tokenizer):
+    """Token ids that close an assistant turn: eos plus the first token the chat template puts right after the answer
+    (<|eot_id|> for Llama 3, <|im_end|> for Qwen 2.5, <end_of_turn> for Gemma 3). Derived from the template, so the
+    attack's "do not optimize the stop" rule works for any model."""
+    marker = "ANSWER_END_MARKER"
+    full = render_full(tokenizer, "x", marker)
+    tail = full[full.rindex(marker) + len(marker):]
+    ids = {tokenizer.eos_token_id}
+    tail_ids = tokenizer(tail, add_special_tokens=False)["input_ids"] if tail else []
+    if tail_ids:
+        ids.add(tail_ids[0])
+    return sorted(t for t in ids if isinstance(t, int) and t >= 0 and t != tokenizer.unk_token_id)
+
+
 def _encode(tokenizer, text):
     """Tokenize a rendered chat string. add_special_tokens=False because the jinja already
     emits bos_token — letting the tokenizer add another double-prepends BOS."""

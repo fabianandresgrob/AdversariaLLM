@@ -1,0 +1,13 @@
+# Radius 0.5 for Gemma (0.3 x 50 reached 58/120 harmful vs Llama 91 at 0.1 x 50). Follows inspect-embattack8: rerun after the attack moved to the raw table's units (embed_scale; before, Adam's step was ~90x too small relative to Gemma's scaled embeddings, so only 100 iterations got anywhere). Is our embedding attack working on google/gemma-3-12b-it? The Llama sanity check (inspect-embattack4/5, 2026-09-24/10-05) on the base
+# instruct model: 10 training behaviors x 12 targets = 120 attacks, user message only, radius x iterations. Judged and
+# sorted afterwards by score_embedding_attack.py (eval-embattack9-score).
+entrypoint: inspect_embedding_attack.py
+name: embattack9-gemma3-12b-user-eps{attack.eps}-it{attack.iters}
+time_per_run: "02:00:00"
+overrides:
+  model: google/gemma-3-12b-it
+  chat_template_id: google/gemma-3-12b-it
+  perturb: user
+sweep:
+  attack.eps: [0.5]
+  attack.iters: [50, 100]

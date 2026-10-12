@@ -88,6 +88,7 @@ class EmbeddingSpaceAttack:
         relative_lr=False,
         detector_loss_coeff=0.5,
         wandb_run=None,
+        embed_scale=1.0,
         *args,
         **kwargs,
     ) -> None:
@@ -109,6 +110,9 @@ class EmbeddingSpaceAttack:
         """
 
         self.embed_weights = embed_weights
+        # the attack works in the raw embedding table's units (start, perturbation, radius, steps); the model gets
+        # embed_scale x those vectors, as its own embedding layer would give them (Gemma: sqrt(hidden size); else 1)
+        self.embed_scale = float(embed_scale)
         self.tokenizer = tokenizer
         self.vocab_size = self.embed_weights.shape[0]
         self.embedding_size = self.embed_weights.shape[1]
@@ -232,10 +236,10 @@ class EmbeddingSpaceAttack:
 
         perturbed_embeds = self.get_adv_embeddings(input_embeds, adv_perturbation, adv_perturbation_mask)
         return (
-            input_embeds.detach(),
+            self.to_model(input_embeds).detach(),
             adv_perturbation.detach(),
             adv_perturbation_mask.detach(),
-            perturbed_embeds.detach(),
+            self.to_model(perturbed_embeds).detach(),
             hidden_states.detach(),
             all_total_losses,
             all_losses,
@@ -246,7 +250,7 @@ class EmbeddingSpaceAttack:
         self, i, model, input_embeds, target_one_hot, target_ids, attention_mask, loss_mask, detector, log_debug=True
     ):
 
-        output = model(inputs_embeds=input_embeds, attention_mask=attention_mask, output_hidden_states=True)
+        output = model(inputs_embeds=self.to_model(input_embeds), attention_mask=attention_mask, output_hidden_states=True)
         logits = output.logits
         all_hidden_states = output.hidden_states
         hidden_states = all_hidden_states[self.hidden_state_detector_index]
@@ -278,6 +282,10 @@ class EmbeddingSpaceAttack:
             self.loss_no_perturbation = target_loss.clone().detach()
 
         return logits, total_loss, target_loss, detector_loss, hidden_states
+
+    def to_model(self, embeds):
+        """Raw-table embeddings -> what the model expects as inputs_embeds (identity unless embed_scale != 1)."""
+        return embeds if self.embed_scale == 1.0 else embeds * self.embed_scale
 
     def project_l2(self, adv_perturbation):
         """

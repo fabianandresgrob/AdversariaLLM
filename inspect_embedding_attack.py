@@ -90,7 +90,7 @@ def main(cfg: DictConfig) -> None:
     import torch
 
     from adversariallm.io_utils import load_model_and_tokenizer
-    from adversariallm.training.attacks import ContinuousEmbeddingAttack, input_embedding_matrix
+    from adversariallm.training.attacks import ContinuousEmbeddingAttack, embedding_scale, input_embedding_matrix
     from adversariallm.training.data import (AdvTupleStream, build_example_full, pad_collate, render_prompt,
                                              split_adv_stream, user_token_mask)
     from adversariallm.training.readers import load_reader
@@ -101,11 +101,12 @@ def main(cfg: DictConfig) -> None:
     model.eval()
     model.requires_grad_(False)
     device = next(model.parameters()).device
-    weight = input_embedding_matrix(model)  # as the model sees it (Gemma scales its embeddings)
+    weight = input_embedding_matrix(model)  # as the model sees it (Gemma scales its embeddings): for the projection
 
     use_detector = cfg.use_detector if cfg.use_detector is not None else bool(entry.get("reader_path"))
     detector = load_reader(entry["reader_path"]).to(device) if use_detector else None
-    attack = ContinuousEmbeddingAttack(weight, None, tokenizer, iters=int(cfg.attack.iters), eps=float(cfg.attack.eps),
+    attack = ContinuousEmbeddingAttack(model.get_input_embeddings().weight, None, tokenizer, iters=int(cfg.attack.iters),
+                                       eps=float(cfg.attack.eps), embed_scale=embedding_scale(model),
                                        lr=float(cfg.attack.lr), detector_loss_coeff=float(cfg.attack.detector_loss_coeff),
                                        detector_layer=int(cfg.layer), target_eot=bool(cfg.attack.target_eot),
                                        optimizer=str(cfg.attack.optimizer), relative_lr=bool(cfg.attack.relative_lr))

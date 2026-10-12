@@ -559,7 +559,7 @@ def run_coop_training(cfg):
     from torch.utils.data import DataLoader
 
     from ..io_utils import load_model_and_tokenizer
-    from .attacks import ContinuousEmbeddingAttack, input_embedding_matrix
+    from .attacks import ContinuousEmbeddingAttack, embedding_scale, input_embedding_matrix
     from .data import (
         AdvTupleStream,
         BenignStream,
@@ -688,7 +688,7 @@ def run_coop_training(cfg):
     if cfg.attack.enabled:
         response_key = generation_prefix(tokenizer)
         attack = ContinuousEmbeddingAttack(
-            input_embedding_matrix(model),
+            model.get_input_embeddings().weight,
             response_key,
             tokenizer,
             iters=cfg.attack.iters,
@@ -698,6 +698,7 @@ def run_coop_training(cfg):
             detector_layer=layer,
             target_eot=bool(cfg.attack.get("target_eot", True)),
             perturb=str(cfg.attack.get("perturb", "all")),
+            embed_scale=embedding_scale(model),
         )
 
     opt_model = torch.optim.Adam(model_trainable, lr=cfg.training.model_lr) if train_model else None

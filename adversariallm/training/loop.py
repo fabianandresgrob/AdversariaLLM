@@ -246,7 +246,7 @@ def run_training(cfg):
     from torch.utils.data import DataLoader
 
     from ..io_utils import load_model_and_tokenizer
-    from .attacks import ContinuousEmbeddingAttack, input_embedding_matrix
+    from .attacks import ContinuousEmbeddingAttack, embedding_scale
     from .data import (AdvTupleStream, build_kl_stream, collate_adv, collate_util,
                        generation_prefix, split_adv_stream)
     from .reference import FrozenModelReference, LoRADisableReference
@@ -317,7 +317,7 @@ def run_training(cfg):
     # attack
     response_key = generation_prefix(tokenizer)
     attack = ContinuousEmbeddingAttack(
-        input_embedding_matrix(model),
+        model.get_input_embeddings().weight,
         response_key,
         tokenizer,
         iters=cfg.attack.iters,
@@ -325,6 +325,7 @@ def run_training(cfg):
         lr=cfg.attack.lr,
         target_eot=bool(cfg.attack.get("target_eot", True)),
         perturb=str(cfg.attack.get("perturb", "all")),
+        embed_scale=embedding_scale(model),
         optimizer=str(cfg.attack.get("optimizer", "adam")),
         relative_lr=bool(cfg.attack.get("relative_lr", False)),
     )

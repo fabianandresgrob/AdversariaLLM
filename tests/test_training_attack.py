@@ -121,3 +121,31 @@ def test_without_a_mask_every_prompt_position_may_move():
     out = attack.attack(model, {"h_ids": ids, "h_targetids": target_ids, "h_attn": torch.ones_like(ids)})
     moved = (out - attack._attack.get_embeddings(ids)).norm(dim=-1)[0]
     assert torch.all(moved[:4] > 0) and torch.all(moved[4:] == 0)
+
+
+def test_embed_scale_runs_the_attack_in_table_units_and_hands_the_model_scaled_embeddings():
+    """Gemma-style models multiply token embeddings by embed_scale inside their embedding layer, which inputs_embeds
+    skips. The attack works on the raw table (same radius and Adam steps in table units for every model) and scales
+    only what it feeds the model and what it returns, so it behaves as it does on an unscaled model."""
+    ids = torch.tensor([[1, 2, 3, 4, 5, 6]])
+    batch = {"h_ids": ids, "h_targetids": torch.tensor([[0, 0, 0, 0, 5, 6]]), "h_attn": torch.ones_like(ids),
+             "h_perturb_mask": torch.tensor([[False, True, True, False, False, False]])}
+
+    class _Recording(_TinyLM):
+        seen = []
+
+        def forward(self, inputs_embeds, **kw):
+            self.seen.append(inputs_embeds.detach().clone())
+            return super().forward(inputs_embeds / 8.0, **kw)  # a scaled model: undo the scale, then the unscaled math
+
+    plain_model, scaled_model = _TinyLM(), _Recording()
+    scaled_model.load_state_dict(plain_model.state_dict())
+    for m in (plain_model, scaled_model):
+        m.requires_grad_(False)
+    plain, scaled = _attack(perturb="user"), _attack(perturb="user", embed_scale=8.0)
+    out_plain, out_scaled = plain.attack(plain_model, batch), scaled.attack(scaled_model, batch)
+    assert torch.allclose(out_scaled, 8.0 * out_plain, atol=1e-5)  # same attack, returned on the model's scale
+    raw = scaled._attack.get_embeddings(ids)
+    assert torch.allclose(scaled_model.seen[0], 8.0 * raw, atol=1e-5)  # first forward: the clean prompt, scaled
+    delta = (out_scaled / 8.0 - raw).norm(dim=-1)
+    assert torch.all(delta <= scaled._attack.eps + 1e-5)  # the radius holds in table units

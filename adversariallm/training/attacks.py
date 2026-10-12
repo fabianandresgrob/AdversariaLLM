@@ -7,6 +7,12 @@ import torch
 from ._embedding_attack_core import EmbeddingSpaceAttack
 
 
+def embedding_scale(model) -> float:
+    """The factor a model's embedding layer multiplies token embeddings by (Gemma: sqrt(hidden size)); 1 otherwise."""
+    scale = getattr(model.get_input_embeddings(), "embed_scale", None)
+    return 1.0 if scale is None else float(scale)
+
+
 def input_embedding_matrix(model):
     """The token embedding matrix as the model sees it: Gemma scales its embeddings by sqrt(hidden size) inside the
     embedding layer (embed_scale), so an attack that builds inputs_embeds from the raw weights must apply the same
@@ -40,6 +46,7 @@ class ContinuousEmbeddingAttack(TrainingAttack):
         optimizer="adam",
         relative_lr=False,
         perturb="all",
+        embed_scale=1.0,
     ):
         """target_eot: whether the attack's loss covers the end-of-turn token that closes the target.
         True (the original objective) optimizes "say the target, then stop", which elicits the stub
@@ -47,7 +54,10 @@ class ContinuousEmbeddingAttack(TrainingAttack):
         optimizer: "adam" or "sign" (signed-gradient steps, as pgd); relative_lr expresses lr as a
         fraction of the eps ball. perturb: "all" (every prompt position, chat template included --
         the original attack, which pushes the model off-manifold into loops and noise) or "user"
-        (only the user message, batch["h_perturb_mask"]; the answers it elicits stay coherent)."""
+        (only the user message, batch["h_perturb_mask"]; the answers it elicits stay coherent).
+        embed_weights is the raw embedding table and embed_scale the model's embedding factor (embedding_scale(model)):
+        the attack runs in the table's units, so its radius and step sizes mean the same for every model, and returns
+        embeddings already scaled for the model."""
         if perturb not in ("all", "user"):
             raise ValueError(f"perturb must be 'all' or 'user', got {perturb!r}")
         self.perturb = perturb
@@ -71,6 +81,7 @@ class ContinuousEmbeddingAttack(TrainingAttack):
             detector_loss_coeff=detector_loss_coeff,
             relative_lr=relative_lr,
             wandb_run=None,
+            embed_scale=embed_scale,
         )
         if not target_eot:
             from .data import end_of_turn_ids

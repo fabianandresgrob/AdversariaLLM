@@ -43,3 +43,38 @@ def test_env_drops_pythonpath_keeps_offline_flags(monkeypatch):
     env = lm_eval_env()
     assert "PYTHONPATH" not in env and env["HF_HUB_OFFLINE"] == "1"
     assert env["VLLM_USE_FLASHINFER_SAMPLER"] == "0" and env["VLLM_CACHE_ROOT"] == "/p/me/.cache/vllm"
+
+
+def test_tasks_with_shot_counts_run_one_call_each(monkeypatch):
+    from run_utility_eval import build_commands
+
+    cfg = _cfg(monkeypatch, ["model=google/gemma-3-12b-it", "tasks=[gsm8k:8,mmlu:5,arc_challenge:25]", "out=/o"])
+    cmds = build_commands(cfg)
+    assert [c[c.index("--tasks") + 1] for c in cmds] == ["gsm8k", "mmlu", "arc_challenge"]
+    assert [c[c.index("--num_fewshot") + 1] for c in cmds] == ["8", "5", "25"]
+    assert [c[c.index("--output_path") + 1] for c in cmds] == ["/o/gsm8k", "/o/mmlu", "/o/arc_challenge"]
+    assert all({"--apply_chat_template", "--fewshot_as_multiturn"} <= set(c) for c in cmds)
+
+
+def test_plain_tasks_keep_the_single_llama_call(monkeypatch):
+    from run_utility_eval import build_commands
+
+    cmds = build_commands(_cfg(monkeypatch))
+    assert len(cmds) == 1 and "--num_fewshot" not in cmds[0]
+
+
+def test_summary_merges_per_task_results(tmp_path, monkeypatch):
+    import json
+    import time
+
+    from run_utility_eval import write_summary
+
+    for task, metric, value in (("gsm8k", "exact_match,strict-match", 0.8), ("mmlu", "acc,none", 0.7),
+                                ("arc_challenge", "acc_norm,none", 0.6)):
+        d = tmp_path / task / "model"
+        d.mkdir(parents=True)
+        (d / "results_1.json").write_text(json.dumps({"results": {task: {metric: value}}, "n-shot": {task: 5}}))
+        time.sleep(0.01)
+    s = write_summary(str(tmp_path), _cfg(monkeypatch, ["tasks=[gsm8k:8,mmlu:5,arc_challenge:25]"]))
+    assert s["summary"] == {"gsm8k_strict_pct": 80.0, "mmlu_acc_pct": 70.0, "arc_c_acc_norm_pct": 60.0}
+    assert json.loads((tmp_path / "utility.json").read_text())["n_shot"]["mmlu"] == 5

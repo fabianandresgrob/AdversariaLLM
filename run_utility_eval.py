@@ -21,7 +21,26 @@ from omegaconf import DictConfig
 log = logging.getLogger(__name__)
 
 
-def build_command(cfg: DictConfig) -> list[str]:
+def parse_tasks(tasks) -> list[tuple[str, int | None]]:
+    """`tasks` entries are task names, optionally with their own shot count ("gsm8k:8"); None = the task's default."""
+    out = []
+    for entry in tasks:
+        name, _, shots = str(entry).partition(":")
+        out.append((name, int(shots) if shots else None))
+    return out
+
+
+def build_commands(cfg: DictConfig) -> list[list[str]]:
+    """One lm_eval call for all tasks (the Llama recipe), or, when any task carries its own shot count, one call per
+    task with --num_fewshot, each writing under <out>/<task> (lm_eval takes a single --num_fewshot per call)."""
+    tasks = parse_tasks(cfg.tasks)
+    if all(shots is None for _, shots in tasks):
+        return [build_command(cfg)]
+    return [build_command(cfg, tasks=[name], num_fewshot=shots, out=os.path.join(str(cfg.out), name))
+            for name, shots in tasks]
+
+
+def build_command(cfg: DictConfig, tasks=None, num_fewshot=None, out=None) -> list[str]:
     model_params = cfg.models[cfg.model]
     model_args = [
         f"pretrained={model_params.id}",
@@ -36,10 +55,12 @@ def build_command(cfg: DictConfig) -> list[str]:
         os.path.join(str(cfg.lm_eval_venv), "bin", "lm_eval"),
         "--model", "vllm",
         "--model_args", ",".join(model_args),
-        "--tasks", ",".join(cfg.tasks),
+        "--tasks", ",".join(tasks if tasks is not None else cfg.tasks),
         "--batch_size", str(cfg.batch_size),
-        "--output_path", str(cfg.out),
+        "--output_path", str(out if out is not None else cfg.out),
     ]
+    if num_fewshot is not None:
+        cmd += ["--num_fewshot", str(num_fewshot)]
     if cfg.apply_chat_template:
         cmd.append("--apply_chat_template")
     if cfg.fewshot_as_multiturn:
@@ -72,40 +93,53 @@ def main(cfg: DictConfig) -> None:
     if cfg.adapter_path and not os.path.isdir(str(cfg.adapter_path)):
         raise FileNotFoundError(f"adapter_path={cfg.adapter_path} is not a directory")
     os.makedirs(str(cfg.out), exist_ok=True)
-    cmd = build_command(cfg)
-    log.info("running: " + " ".join(cmd))
-    result = subprocess.run(cmd, env=lm_eval_env())
-    if result.returncode != 0:
-        sys.exit(result.returncode)
+    for cmd in build_commands(cfg):
+        log.info("running: " + " ".join(cmd))
+        result = subprocess.run(cmd, env=lm_eval_env())
+        if result.returncode != 0:
+            sys.exit(result.returncode)
     summary = write_summary(str(cfg.out), cfg)
     log.info(f"wrote lm_eval results to {cfg.out}: {summary['results']}")
 
 
 def write_summary(out: str, cfg: DictConfig) -> dict:
-    """lm_eval nests its output as <out>/<model>/results_<timestamp>.json; copy the newest run's
-    per-task metrics to <out>/utility.json (fixed name, so jsc-jobs can check it as an artifact)."""
+    """lm_eval nests its output as <out>/<model>/results_<timestamp>.json (one per call; per-task calls write under
+    <out>/<task>/); merge the per-task metrics, newest run winning, into <out>/utility.json (fixed name, so jsc-jobs
+    can check it as an artifact)."""
     import glob
     import json
 
     found = sorted(glob.glob(os.path.join(out, "**", "results_*.json"), recursive=True), key=os.path.getmtime)
     if not found:
         raise FileNotFoundError(f"lm_eval finished but wrote no results_*.json under {out}")
-    with open(found[-1]) as fh:
-        results = json.load(fh)
+    merged, n_shot = {}, {}
+    for path in found:
+        with open(path) as fh:
+            run = json.load(fh)
+        merged.update(run["results"])
+        n_shot.update(run.get("n-shot", {}))
     headline = {  # task-level scores in percent; the full per-subtask detail stays in "results"
-        name: round(100 * results["results"][task][metric], 2)
+        name: round(100 * merged[task][metric], 2)
         for name, (task, metric) in {
+            # Meta's Llama-3.1 recipe (generative llama3 tasks)
             "mmlu_pct": ("mmlu_llama", "exact_match,strict_match"),
             "arc_c_pct": ("arc_challenge_llama", "exact_match,strict_match"),
             "gsm8k_pct": ("gsm8k_llama", "exact_match,strict_match"),
             "gsm8k_flexible_pct": ("gsm8k_llama", "exact_match,flexible_extract"),
             "mmlu_pro_pct": ("mmlu_pro_llama", "exact_match,strict_match"),
+            # the standard tasks (other models): MMLU / ARC-C log-likelihood, GSM8K generative
+            "mmlu_acc_pct": ("mmlu", "acc,none"),
+            "arc_c_acc_norm_pct": ("arc_challenge", "acc_norm,none"),
+            "arc_c_acc_pct": ("arc_challenge", "acc,none"),
+            "gsm8k_strict_pct": ("gsm8k", "exact_match,strict-match"),
+            "gsm8k_flexible_extract_pct": ("gsm8k", "exact_match,flexible-extract"),
         }.items()
-        if metric in results["results"].get(task, {})
+        if metric in merged.get(task, {})
     }
     summary = {
         "summary": headline,
-        "results": results["results"],
+        "results": merged,
+        "n_shot": n_shot,
         "results_file": found[-1],
         "adapter_path": cfg.adapter_path,
         "tasks": list(cfg.tasks),

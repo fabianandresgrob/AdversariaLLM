@@ -17,6 +17,7 @@ apply_chat_template: true
 fewshot_as_multiturn: true
 log_samples: true         # per-sample prompts + generations, kept for the later probe-on-generations pipeline eval
 limit: null               # per-task cap for smoke tests only; never set for reported numbers
+gen_kwargs: null          # lm_eval --gen_kwargs, e.g. max_gen_toks=1024 (GSM8K answers of chat models outrun the default 256)
 batch_size: auto
 
 vllm:

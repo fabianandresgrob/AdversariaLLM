@@ -4,6 +4,7 @@ name: utility-{+arm}
 time_per_run: 03:00:00
 overrides:
   model: google/gemma-3-12b-it
+  gen_kwargs: max_gen_toks=1024   # chat answers to GSM8K run past lm_eval's default 256 tokens
   tasks: [gsm8k:8, mmlu:5, arc_challenge:25]
   adapter_path: ${models.${arm}.adapter_path}
   vllm.max_lora_rank: 64   # CAT's LoRA is rank 64 (coop's 8 fits too)

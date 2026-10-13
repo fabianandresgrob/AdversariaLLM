@@ -61,6 +61,8 @@ def build_command(cfg: DictConfig, tasks=None, num_fewshot=None, out=None) -> li
     ]
     if num_fewshot is not None:
         cmd += ["--num_fewshot", str(num_fewshot)]
+    if cfg.get("gen_kwargs"):
+        cmd += ["--gen_kwargs", str(cfg.gen_kwargs)]
     if cfg.apply_chat_template:
         cmd.append("--apply_chat_template")
     if cfg.fewshot_as_multiturn:

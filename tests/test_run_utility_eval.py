@@ -78,3 +78,9 @@ def test_summary_merges_per_task_results(tmp_path, monkeypatch):
     s = write_summary(str(tmp_path), _cfg(monkeypatch, ["tasks=[gsm8k:8,mmlu:5,arc_challenge:25]"]))
     assert s["summary"] == {"gsm8k_strict_pct": 80.0, "mmlu_acc_pct": 70.0, "arc_c_acc_norm_pct": 60.0}
     assert json.loads((tmp_path / "utility.json").read_text())["n_shot"]["mmlu"] == 5
+
+
+def test_gen_kwargs_pass_through(monkeypatch):
+    cmd = build_command(_cfg(monkeypatch, ["gen_kwargs=max_gen_toks=1024"]))
+    assert cmd[cmd.index("--gen_kwargs") + 1] == "max_gen_toks=1024"
+    assert "--gen_kwargs" not in build_command(_cfg(monkeypatch))

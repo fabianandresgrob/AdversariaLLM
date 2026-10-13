@@ -81,6 +81,6 @@ def test_summary_merges_per_task_results(tmp_path, monkeypatch):
 
 
 def test_gen_kwargs_pass_through(monkeypatch):
-    cmd = build_command(_cfg(monkeypatch, ["gen_kwargs=max_gen_toks=1024"]))
+    cmd = build_command(_cfg(monkeypatch, ["gen_kwargs='max_gen_toks=1024'"]))
     assert cmd[cmd.index("--gen_kwargs") + 1] == "max_gen_toks=1024"
     assert "--gen_kwargs" not in build_command(_cfg(monkeypatch))

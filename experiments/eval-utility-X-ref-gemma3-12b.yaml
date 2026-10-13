@@ -5,7 +5,7 @@ name: utility-X-ref-gemma3-12b
 time_per_run: 03:00:00
 overrides:
   model: google/gemma-3-12b-it
-  gen_kwargs: max_gen_toks=1024   # chat answers to GSM8K run past lm_eval's default 256 tokens
+  gen_kwargs: max_gen_toks=1024  # chat answers to GSM8K run past lm_eval's default 256 tokens
   tasks: [gsm8k:8, mmlu:5, arc_challenge:25]
   out: ${root_dir}/outputs/eval/utility/X/ref-gemma3-12b
 artifacts:

@@ -1934,3 +1934,14 @@ X-posthoc-cat-gemma3-12b-s0-ema:
   trust_remote_code: true
   adapter_path: ${root_dir}/checkpoints_cat/X/X-cat-gemma3-12b-kl4.0-s0/ema_step500_adapter
   reader_path: ${root_dir}/checkpoints_coop/X-posthoc-cat/X-posthoc-cat-gemma3-12b-s0/ema_reader.pt
+X-posthoc-cat-qwen25-7b-s0-ema:
+  id: Qwen/Qwen2.5-7B-Instruct
+  tokenizer_id: Qwen/Qwen2.5-7B-Instruct
+  short_name: Qwen2.5
+  developer_name: Qwen
+  compile: false
+  dtype: bfloat16
+  chat_template: null
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_cat/X/X-cat-qwen25-7b-kl16.0-s0/ema_step500_adapter
+  reader_path: ${root_dir}/checkpoints_coop/X-posthoc-cat/X-posthoc-cat-qwen25-7b-s0/ema_reader.pt

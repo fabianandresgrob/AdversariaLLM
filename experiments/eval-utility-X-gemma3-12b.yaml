@@ -10,4 +10,4 @@ overrides:
   vllm.max_lora_rank: 64   # CAT's LoRA is rank 64 (coop's 8 fits too)
   out: ${root_dir}/outputs/eval/utility/X/${arm}
 sweep:
-  +arm: [X-coop-gemma3-12b-s0-ema, X-posthoc-noprobe-gemma3-12b-s0-ema, X-posthoc-cat-gemma3-12b-s0-ema]
+  +arm: [X-coop-gemma3-12b-s0-ema]  # arms are added as their probes finish

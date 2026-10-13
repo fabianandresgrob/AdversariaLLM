@@ -10,4 +10,4 @@ overrides:
   calibration_window: calib
   fprs: [0.005, 0.05]
 sweep:
-  +arm: [X-coop-qwen25-7b-s0-ema, X-posthoc-noprobe-qwen25-7b-s0-ema]
+  +arm: [X-coop-qwen25-7b-s0-ema]  # arms are added as their probes finish

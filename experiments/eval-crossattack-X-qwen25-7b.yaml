@@ -22,5 +22,5 @@ overrides:
   harmful.answer_max_tokens: 512
   out: ${root_dir}/outputs/eval/cross_attack/X/${arm}/seed${seed}
 sweep:
-  +arm: [X-coop-qwen25-7b-s0-ema, X-posthoc-noprobe-qwen25-7b-s0-ema]
+  +arm: [X-coop-qwen25-7b-s0-ema]  # arms are added as their probes finish
   seed: [0]

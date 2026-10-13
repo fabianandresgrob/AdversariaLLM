@@ -10,4 +10,4 @@ overrides:
   attacks.pair.judge_model.id: lmsys/vicuna-13b-v1.5
   attacks.pair.judge_model.tokenizer_id: lmsys/vicuna-13b-v1.5
 sweep:
-  model: [X-coop-gemma3-12b-s0-ema, X-posthoc-noprobe-gemma3-12b-s0-ema, X-posthoc-cat-gemma3-12b-s0-ema]
+  model: [X-coop-gemma3-12b-s0-ema]  # arms are added as their probes finish

@@ -1,0 +1,11 @@
+# X: utility of the base google/gemma-3-12b-it, the reference for its trained arms. Standard lm_eval tasks with the shot counts of
+# the model's own report (Gemma report: GSM8K 8-shot, MMLU 5-shot, ARC-C 25-shot), chat template, few-shot as multiturn; the model's tokenizer template.
+entrypoint: run_utility_eval.py
+name: utility-X-ref-gemma3-12b
+time_per_run: 03:00:00
+overrides:
+  model: google/gemma-3-12b-it
+  tasks: [gsm8k:8, mmlu:5, arc_challenge:25]
+  out: ${root_dir}/outputs/eval/utility/X/ref-gemma3-12b
+artifacts:
+- outputs/eval/utility/X/ref-gemma3-12b/utility.json

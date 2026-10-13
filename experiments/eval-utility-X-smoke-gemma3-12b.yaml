@@ -1,0 +1,12 @@
+# X: smoke test that vLLM serves Gemma 3 with the coop LoRA (language model only) in the utility eval: 20 examples per task.
+entrypoint: run_utility_eval.py
+name: utility-X-smoke-gemma3-12b
+time_per_run: 01:00:00
+overrides:
+  model: google/gemma-3-12b-it
+  tasks: [gsm8k:8, mmlu:5, arc_challenge:25]
+  adapter_path: ${root_dir}/checkpoints_coop/X/X-coop-gemma3-12b-s0/ema_adapter
+  limit: 20
+  out: ${root_dir}/outputs/eval/utility/X/smoke-gemma3-12b
+artifacts:
+- outputs/eval/utility/X/smoke-gemma3-12b/utility.json

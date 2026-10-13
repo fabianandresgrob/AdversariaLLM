@@ -12,6 +12,7 @@ overrides:
   +checkpoints.model: ${root_dir}/checkpoints_cat/${block}/${run}/ema_step${step}_adapter
   out: ${root_dir}/outputs/eval/overrefusal/${block}/${run}-ema${step}
   judge.enabled: true
+  judge.model: Qwen/Qwen2.5-7B-Instruct   # not Gemma: the default judge (gemma-3-12b-it) would grade its own answers
 artifacts:
 - outputs/eval/overrefusal/{+block}/{+run}-ema{+step}/overrefusal.json
 sweep:

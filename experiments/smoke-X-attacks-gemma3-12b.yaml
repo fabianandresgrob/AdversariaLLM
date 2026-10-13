@@ -1,0 +1,16 @@
+# X: smoke test of the attacks on Gemma 3 12B (memory with the 262k vocabulary, LoRA + probe loading): GCG and adaptive
+# GCG for 10 steps, PAIR in full, on JBB behavior 99 only (outside the evaluated 0-19, so nothing here enters a result).
+entrypoint: run_attacks.py
+name: smoke-{attack}-{model}-b99
+time_per_run: 01:30:00
+overrides:
+  dataset: jbb_behaviors
+  datasets.jbb_behaviors.idx: list(range(99,100))
+  attacks.gcg.num_steps: 10
+  attacks.gcg_adaptive.num_steps: 10
+  attacks.pair.attack_model.max_attempts: 30
+  attacks.pair.judge_model.id: lmsys/vicuna-13b-v1.5
+  attacks.pair.judge_model.tokenizer_id: lmsys/vicuna-13b-v1.5
+sweep:
+  attack: [gcg, gcg_adaptive, pair]
+  model: [X-coop-gemma3-12b-s0-ema]

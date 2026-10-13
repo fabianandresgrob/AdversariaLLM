@@ -1,0 +1,10 @@
+# X (Qwen/Qwen2.5-7B-Instruct): 1%-FPR threshold of each arm's probe on 2000 held-out Alpaca answers the model generates; the probe defense and pipeline over-refusal read it. Model and chat template set explicitly (defaults are Llama).
+entrypoint: run_calibrate_probe.py
+name: calib-X-posthoc-noprobe-qwen25-7b-s0-ema
+time_per_run: 01:30:00
+overrides:
+  model: Qwen/Qwen2.5-7B-Instruct
+  chat_template_id: Qwen/Qwen2.5-7B-Instruct
+  adapter_path: ${root_dir}/checkpoints_coop/X/X-noprobe-qwen25-7b-s0/ema_adapter
+  checkpoint_path: ${root_dir}/checkpoints_coop/X-posthoc/X-posthoc-noprobe-qwen25-7b-s0/ema_reader.pt
+  calibration_window: calib

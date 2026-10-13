@@ -1,0 +1,11 @@
+# X (Qwen/Qwen2.5-7B-Instruct): utility of each arm, the same tasks and shot counts as the base reference (eval-utility-X-ref). Model and chat template set explicitly (defaults are Llama).
+entrypoint: run_utility_eval.py
+name: utility-X-coop-qwen25-7b-s0-ema
+time_per_run: 03:00:00
+overrides:
+  model: Qwen/Qwen2.5-7B-Instruct
+  gen_kwargs: max_gen_toks=1024  # chat answers to GSM8K run past lm_eval's default 256 tokens
+  tasks: [gsm8k:4, mmlu:5, arc_challenge:25]
+  adapter_path: ${root_dir}/checkpoints_coop/X/X-coop-qwen25-7b-s0/ema_adapter
+  vllm.max_lora_rank: 64   # CAT's LoRA is rank 64 (coop's 8 fits too)
+  out: ${root_dir}/outputs/eval/utility/X/X-coop-qwen25-7b-s0-ema

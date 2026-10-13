@@ -1,12 +1,10 @@
 # X (Qwen/Qwen2.5-7B-Instruct): 1%-FPR threshold of each arm's probe on 2000 held-out Alpaca answers the model generates; the probe defense and pipeline over-refusal read it. Model and chat template set explicitly (defaults are Llama).
 entrypoint: run_calibrate_probe.py
-name: calib-{+arm}
+name: calib-X-coop-qwen25-7b-s0-ema
 time_per_run: 01:30:00
 overrides:
   model: Qwen/Qwen2.5-7B-Instruct
   chat_template_id: Qwen/Qwen2.5-7B-Instruct
-  adapter_path: ${models.${arm}.adapter_path}
-  checkpoint_path: ${models.${arm}.reader_path}
+  adapter_path: ${root_dir}/checkpoints_coop/X/X-coop-qwen25-7b-s0/ema_adapter
+  checkpoint_path: ${root_dir}/checkpoints_coop/X/X-coop-qwen25-7b-s0/ema_reader.pt
   calibration_window: calib
-sweep:
-  +arm: [X-coop-qwen25-7b-s0-ema]  # arms are added as their probes finish

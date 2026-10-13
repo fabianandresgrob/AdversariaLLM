@@ -1,13 +1,11 @@
 # X (google/gemma-3-12b-it): utility of each arm, the same tasks and shot counts as the base reference (eval-utility-X-ref). Model and chat template set explicitly (defaults are Llama).
 entrypoint: run_utility_eval.py
-name: utility-{+arm}
+name: utility-X-coop-gemma3-12b-s0-ema
 time_per_run: 03:00:00
 overrides:
   model: google/gemma-3-12b-it
   gen_kwargs: max_gen_toks=1024  # chat answers to GSM8K run past lm_eval's default 256 tokens
   tasks: [gsm8k:8, mmlu:5, arc_challenge:25]
-  adapter_path: ${models.${arm}.adapter_path}
+  adapter_path: ${root_dir}/checkpoints_coop/X/X-coop-gemma3-12b-s0/ema_adapter
   vllm.max_lora_rank: 64   # CAT's LoRA is rank 64 (coop's 8 fits too)
-  out: ${root_dir}/outputs/eval/utility/X/${arm}
-sweep:
-  +arm: [X-coop-gemma3-12b-s0-ema]  # arms are added as their probes finish
+  out: ${root_dir}/outputs/eval/utility/X/X-coop-gemma3-12b-s0-ema

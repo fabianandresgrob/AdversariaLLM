@@ -1,0 +1,13 @@
+# X (Qwen/Qwen2.5-7B-Instruct): judged xs_test over-refusal, model alone and pipeline (model refuses OR the probe flags, at the calibrated threshold; eval-calib-X-qwen25-7b first). Judge google/gemma-3-12b-it, so no model judges itself. Model and chat template set explicitly (defaults are Llama).
+entrypoint: run_overrefusal_eval.py
+name: overrefusal-X-coop-qwen25-7b-s0-ema
+time_per_run: 02:00:00
+overrides:
+  model: Qwen/Qwen2.5-7B-Instruct
+  chat_template_id: Qwen/Qwen2.5-7B-Instruct
+  ~checkpoints.base: base
+  +checkpoints.model: ${root_dir}/checkpoints_coop/X/X-coop-qwen25-7b-s0/ema_adapter
+  +readers.model: ${root_dir}/checkpoints_coop/X/X-coop-qwen25-7b-s0/ema_reader.pt
+  out: ${root_dir}/outputs/eval/overrefusal/X/X-coop-qwen25-7b-s0-ema
+  judge.enabled: true
+  judge.model: google/gemma-3-12b-it

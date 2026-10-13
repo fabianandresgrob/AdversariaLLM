@@ -1,0 +1,10 @@
+# X (Qwen/Qwen2.5-7B-Instruct): GCG on the model alone, JBB 0-19, as attack-gcg-b0-20. Model and chat template set explicitly (defaults are Llama).
+entrypoint: run_attacks.py
+name: gcg-{model}-b0-20
+time_per_run: 06:00:00
+overrides:
+  attack: gcg
+  dataset: jbb_behaviors
+  datasets.jbb_behaviors.idx: list(range(0,20))
+sweep:
+  model: [X-coop-qwen25-7b-s0-ema, X-posthoc-noprobe-qwen25-7b-s0-ema]

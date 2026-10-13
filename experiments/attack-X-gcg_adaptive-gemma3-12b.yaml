@@ -1,0 +1,10 @@
+# X (google/gemma-3-12b-it): adaptive GCG (also evades the arm's probe), JBB 0-19. Model and chat template set explicitly (defaults are Llama).
+entrypoint: run_attacks.py
+name: gcg_adaptive-{model}-b0-20
+time_per_run: 12:00:00
+overrides:
+  attack: gcg_adaptive
+  dataset: jbb_behaviors
+  datasets.jbb_behaviors.idx: list(range(0,20))
+sweep:
+  model: [X-coop-gemma3-12b-s0-ema, X-posthoc-noprobe-gemma3-12b-s0-ema, X-posthoc-cat-gemma3-12b-s0-ema]

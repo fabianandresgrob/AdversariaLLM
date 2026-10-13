@@ -30,6 +30,14 @@ from omegaconf import DictConfig, OmegaConf
 log = logging.getLogger(__name__)
 
 
+def checkpoints_to_eval(cfg) -> dict:
+    """adapter_path: one checkpoint named "model", its probe reader_path or (null) the reader saved next to the
+    adapter. Otherwise the checkpoints map."""
+    if cfg.get("adapter_path"):
+        return {"model": {"adapter": cfg.adapter_path, "reader": cfg.get("reader_path")}}
+    return cfg.checkpoints
+
+
 def _reader_path(adapter_path: str) -> str:
     """<tag>_adapter/ -> sibling <tag>_reader.pt (the _save_pair naming convention)."""
     d, tag_adapter = os.path.split(adapter_path.rstrip("/"))
@@ -152,7 +160,7 @@ def main(cfg: DictConfig) -> None:
     layer = int(cfg.reader.layer)
 
     results, to_judge = {}, {}
-    checkpoints = {"model": {"adapter": cfg.adapter_path, "reader": None}} if cfg.get("adapter_path") else cfg.checkpoints
+    checkpoints = checkpoints_to_eval(cfg)
     for name, spec in checkpoints.items():
         log.info(f"=== {name} ===")
         model, tok, reader, train_cfg = _load_checkpoint(cfg, name, spec)

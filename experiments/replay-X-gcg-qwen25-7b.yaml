@@ -1,0 +1,14 @@
+# X (Qwen/Qwen2.5-7B-Instruct): every GCG / adaptive GCG step's suffix replayed through the pipeline (as replay-gcg-b0-20). Model and chat template set explicitly (defaults are Llama).
+entrypoint: run_attacks.py
+name: replay-{+src}-{model}-b0-20
+time_per_run: "02:00:00"
+overrides:
+  attack: replay
+  defense: coop_probe
+  dataset: jbb_behaviors
+  datasets.jbb_behaviors.idx: list(range(0,20))
+  attacks.replay.all_steps: true
+  attacks.replay.source: ${root_dir}/outputs/${src}__none__${model}
+sweep:
+  +src: [gcg, gcg_adaptive]
+  model: [X-coop-qwen25-7b-s0-ema, X-posthoc-noprobe-qwen25-7b-s0-ema]

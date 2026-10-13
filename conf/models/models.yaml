@@ -1878,3 +1878,59 @@ W-sens-rep2p0-s0-ema:
   trust_remote_code: true
   adapter_path: ${root_dir}/checkpoints_coop/W-sens/W-sens-rep2.0-s0/ema_adapter
   reader_path: ${root_dir}/checkpoints_coop/W-sens/W-sens-rep2.0-s0/ema_reader.pt
+# X (other models): final EMA model + its probe, one per arm. Tokenizer's own chat template, as in training.
+X-coop-qwen25-7b-s0-ema:
+  id: Qwen/Qwen2.5-7B-Instruct
+  tokenizer_id: Qwen/Qwen2.5-7B-Instruct
+  short_name: Qwen2.5
+  developer_name: Qwen
+  compile: false
+  dtype: bfloat16
+  chat_template: null
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/X/X-coop-qwen25-7b-s0/ema_adapter
+  reader_path: ${root_dir}/checkpoints_coop/X/X-coop-qwen25-7b-s0/ema_reader.pt
+X-posthoc-noprobe-qwen25-7b-s0-ema:
+  id: Qwen/Qwen2.5-7B-Instruct
+  tokenizer_id: Qwen/Qwen2.5-7B-Instruct
+  short_name: Qwen2.5
+  developer_name: Qwen
+  compile: false
+  dtype: bfloat16
+  chat_template: null
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/X/X-noprobe-qwen25-7b-s0/ema_adapter
+  reader_path: ${root_dir}/checkpoints_coop/X-posthoc/X-posthoc-noprobe-qwen25-7b-s0/ema_reader.pt
+X-coop-gemma3-12b-s0-ema:
+  id: google/gemma-3-12b-it
+  tokenizer_id: google/gemma-3-12b-it
+  short_name: Gemma
+  developer_name: Google
+  compile: false
+  dtype: bfloat16
+  chat_template: null
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/X/X-coop-gemma3-12b-s0/ema_adapter
+  reader_path: ${root_dir}/checkpoints_coop/X/X-coop-gemma3-12b-s0/ema_reader.pt
+X-posthoc-noprobe-gemma3-12b-s0-ema:
+  id: google/gemma-3-12b-it
+  tokenizer_id: google/gemma-3-12b-it
+  short_name: Gemma
+  developer_name: Google
+  compile: false
+  dtype: bfloat16
+  chat_template: null
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/X/X-noprobe-gemma3-12b-s0/ema_adapter
+  reader_path: ${root_dir}/checkpoints_coop/X-posthoc/X-posthoc-noprobe-gemma3-12b-s0/ema_reader.pt
+X-posthoc-cat-gemma3-12b-s0-ema:
+  id: google/gemma-3-12b-it
+  tokenizer_id: google/gemma-3-12b-it
+  short_name: Gemma
+  developer_name: Google
+  compile: false
+  dtype: bfloat16
+  chat_template: null
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_cat/X/X-cat-gemma3-12b-kl4.0-s0/ema_step500_adapter
+  reader_path: ${root_dir}/checkpoints_coop/X-posthoc-cat/X-posthoc-cat-gemma3-12b-s0/ema_reader.pt

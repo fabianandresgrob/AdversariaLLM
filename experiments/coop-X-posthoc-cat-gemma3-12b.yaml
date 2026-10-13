@@ -1,0 +1,45 @@
+# X: post-hoc probe on the frozen CAT model on Gemma 3 12B: KL 4 at its step-500 EMA checkpoint (xs_test 0.11, the closest
+# to coop's 0.14 without exceeding it; later checkpoints over-refuse, 0.36-0.62). As coop-W-posthoc-cat on Llama; the
+# same probe recipe and training attack as coop-X-coop-gemma3-12b, only the model is loaded and frozen.
+entrypoint: run_coop_train.py
+name: X-posthoc-cat-gemma3-12b-s{seed}
+time_per_run: "16:00:00"
+overrides:
+  init_adapter: ${root_dir}/checkpoints_cat/X/X-cat-gemma3-12b-kl4.0-s${seed}/ema_step500_adapter
+  training.train_model: false
+  model: google/gemma-3-12b-it
+  chat_template_id: google/gemma-3-12b-it
+  attack.enabled: true
+  attack.perturb: user
+  attack.target_eot: false
+  attack.eps: 0.5
+  attack.iters: 50
+  attack.use_detector: true
+  reader.readout: response_window
+  reader.readout_k: 512
+  reader.window: 16
+  probe_init: random
+  data.answer_pool: ${root_dir}/outputs/eval/answer_pool/pool-heretic.jsonl
+  data.answer_max_tokens: 512
+  training.detector_refusal_negatives: true
+  training.rep_warmup_steps: 50
+  training.n_detector_steps: 6
+  training.n_steps: 1000
+  training.val_every: 100  # Gemma: each validation takes ~20 min
+  training.checkpoint_every: 250
+  training.benign_gen_n: 40
+  training.ema_decay: 0.995
+  data.kl_source: magpie
+  data.kl_max_length: 1024
+  data.utility_chunk: 1    # Gemma: the KL leash and the benign-perturbation KL run out of memory on 4 examples at once
+  data.val_size: 24
+  data.val_targets: 6
+  data.val_batch_size: 4   # Gemma: 262k-token vocabulary, 16 ran out of memory in the step-0 validation attack
+  lambda_benign_perturb: 1.0
+  epsilon: 0.05
+  output.checkpoint_path: ${root_dir}/checkpoints_coop/X-posthoc-cat
+sweep:
+  seed: [0]
+artifacts:
+  - checkpoints_coop/X-posthoc-cat/{name}/final_adapter
+  - checkpoints_coop/X-posthoc-cat/{name}/final_reader.pt

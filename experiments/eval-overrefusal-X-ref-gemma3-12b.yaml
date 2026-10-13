@@ -1,0 +1,15 @@
+# X: reference points for the CAT calibration on Gemma 3 12B: judged xs_test over-refusal of the base model and of the coop
+# model alone (X-coop-gemma3-12b, EMA), with the same judge as eval-overrefusal-X-cat-gemma3-12b. Model and chat template set
+# explicitly (defaults are Llama). The pipeline over-refusal (model + probe) comes later, after the probe is calibrated.
+entrypoint: run_overrefusal_eval.py
+name: overrefusal-X-ref-gemma3-12b
+time_per_run: 02:00:00
+overrides:
+  +block: X
+  model: google/gemma-3-12b-it
+  chat_template_id: google/gemma-3-12b-it
+  +checkpoints.coop: ${root_dir}/checkpoints_coop/X/X-coop-gemma3-12b-s0/ema_adapter
+  out: ${root_dir}/outputs/eval/overrefusal/X/ref-gemma3-12b
+  judge.enabled: true
+artifacts:
+- outputs/eval/overrefusal/X/ref-gemma3-12b/overrefusal.json

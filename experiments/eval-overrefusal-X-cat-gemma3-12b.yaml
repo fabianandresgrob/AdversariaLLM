@@ -1,0 +1,19 @@
+# X: CAT calibration on Gemma 3 12B (cat-X-cat-gemma3-12b), as on Llama (eval-overrefusal-W-cat-steps): judged
+# xs_test over-refusal of the EMA checkpoints at steps 500, 750, 1000 for KL weights 4 / 8 / 16. The weight and step are
+# then picked to match Gemma coop's over-refusal (X-coop-gemma3-12b). Model and chat template set explicitly (defaults are Llama).
+entrypoint: run_overrefusal_eval.py
+name: overrefusal-{+run}-ema{+step}
+time_per_run: 02:00:00
+overrides:
+  +block: X
+  model: google/gemma-3-12b-it
+  chat_template_id: google/gemma-3-12b-it
+  ~checkpoints.base: base
+  +checkpoints.model: ${root_dir}/checkpoints_cat/${block}/${run}/ema_step${step}_adapter
+  out: ${root_dir}/outputs/eval/overrefusal/${block}/${run}-ema${step}
+  judge.enabled: true
+artifacts:
+- outputs/eval/overrefusal/{+block}/{+run}-ema{+step}/overrefusal.json
+sweep:
+  +run: [X-cat-gemma3-12b-kl4.0-s0, X-cat-gemma3-12b-kl8.0-s0, X-cat-gemma3-12b-kl16.0-s0]
+  +step: [500, 750, 1000]

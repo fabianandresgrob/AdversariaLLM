@@ -22,7 +22,7 @@ overrides:
   training.checkpoint_every: 250
   output.checkpoint_path: ${root_dir}/checkpoints_cat/X
 sweep:
-  lambda_kl: [4.0, 8.0, 16.0]  # Llama: 8 (1-4 over-refused)
+  lambda_kl: [4.0, 8.0, 16.0, 32.0, 64.0]  # Llama: 8 (1-4 over-refused); Qwen: 4-16 all over-refuse (xs_test 0.28-0.37)
   seed: [0]
 artifacts:
   - checkpoints_cat/X/{name}/final_adapter

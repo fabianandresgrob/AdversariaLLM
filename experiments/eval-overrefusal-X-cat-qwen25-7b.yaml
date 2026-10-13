@@ -15,5 +15,5 @@ overrides:
 artifacts:
 - outputs/eval/overrefusal/{+block}/{+run}-ema{+step}/overrefusal.json
 sweep:
-  +run: [X-cat-qwen25-7b-kl4.0-s0, X-cat-qwen25-7b-kl8.0-s0, X-cat-qwen25-7b-kl16.0-s0]
+  +run: [X-cat-qwen25-7b-kl4.0-s0, X-cat-qwen25-7b-kl8.0-s0, X-cat-qwen25-7b-kl16.0-s0, X-cat-qwen25-7b-kl32.0-s0, X-cat-qwen25-7b-kl64.0-s0]
   +step: [500, 750, 1000]

@@ -1,0 +1,11 @@
+# X (Qwen/Qwen2.5-7B-Instruct): extra operating points (0.5% and 5% FPR on the same 2000 Alpaca answers) for PAIR at other thresholds. Model and chat template set explicitly (defaults are Llama).
+entrypoint: run_calibrate_probe.py
+name: oppoints-X-posthoc-cat-qwen25-7b-s0-ema
+time_per_run: 01:30:00
+overrides:
+  model: Qwen/Qwen2.5-7B-Instruct
+  chat_template_id: Qwen/Qwen2.5-7B-Instruct
+  adapter_path: ${root_dir}/checkpoints_cat/X/X-cat-qwen25-7b-kl16.0-s0/ema_step500_adapter
+  checkpoint_path: ${root_dir}/checkpoints_coop/X-posthoc-cat/X-posthoc-cat-qwen25-7b-s0/ema_reader.pt
+  calibration_window: calib
+  fprs: [0.005, 0.05]

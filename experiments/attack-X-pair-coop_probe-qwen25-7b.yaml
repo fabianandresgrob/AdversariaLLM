@@ -11,4 +11,4 @@ overrides:
   attacks.pair.judge_model.tokenizer_id: lmsys/vicuna-13b-v1.5
   defense: coop_probe
 sweep:
-  model: [X-coop-qwen25-7b-s0-ema, X-posthoc-noprobe-qwen25-7b-s0-ema]  # arms are added as their probes finish
+  model: [X-coop-qwen25-7b-s0-ema, X-posthoc-noprobe-qwen25-7b-s0-ema, X-posthoc-cat-qwen25-7b-s0-ema]  # arms are added as their probes finish

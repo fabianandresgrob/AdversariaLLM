@@ -1,0 +1,13 @@
+# X: offline scoring of the model-alone PAIR answers (attack-X-pair-*) by each arm's own probe, for the wider PAIR
+# threshold sweep (as probe-answers-pair-W on Llama). Writes <model>_answers.jsonl with every answer's StrongREJECT and
+# probe score; the xs_test probe scores for the over-refusal side are in outputs/eval/overrefusal/X/<model>/.
+entrypoint: rescore_answer_probe.py
+name: answers-pair-{model}
+time_per_run: "01:30:00"
+overrides:
+  attack_names: [pair]
+  save_answer_scores: true
+sweep:
+  model: [X-coop-qwen25-7b-s0-ema, X-posthoc-noprobe-qwen25-7b-s0-ema, X-posthoc-cat-qwen25-7b-s0-ema, X-coop-gemma3-12b-s0-ema, X-posthoc-noprobe-gemma3-12b-s0-ema, X-posthoc-cat-gemma3-12b-s0-ema]
+artifacts:
+  - outputs/eval/answer_probe_rescore/{model}_answers.jsonl

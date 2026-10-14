@@ -7,4 +7,4 @@ overrides:
   dataset: jbb_behaviors
   datasets.jbb_behaviors.idx: list(range(0,20))
 sweep:
-  model: [X-coop-gemma3-12b-s0-ema, X-posthoc-noprobe-gemma3-12b-s0-ema, X-posthoc-cat-gemma3-12b-s0-ema]  # arms are added as their probes finish
+  model: [base-gemma3-12b, X-coop-gemma3-12b-s0-ema, X-posthoc-noprobe-gemma3-12b-s0-ema, X-posthoc-cat-gemma3-12b-s0-ema]  # arms are added as their probes finish

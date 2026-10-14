@@ -11,4 +11,4 @@ overrides:
   attacks.replay.source: ${root_dir}/outputs/${src}__none__${model}
 sweep:
   +src: [gcg, gcg_adaptive]
-  model: [X-coop-gemma3-12b-s0-ema, X-posthoc-noprobe-gemma3-12b-s0-ema]  # arms are added as their probes finish
+  model: [X-coop-gemma3-12b-s0-ema, X-posthoc-noprobe-gemma3-12b-s0-ema, X-posthoc-cat-gemma3-12b-s0-ema]  # arms are added as their probes finish

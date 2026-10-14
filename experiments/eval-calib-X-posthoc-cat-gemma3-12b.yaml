@@ -1,0 +1,10 @@
+# X (google/gemma-3-12b-it): 1%-FPR threshold of each arm's probe on 2000 held-out Alpaca answers the model generates; the probe defense and pipeline over-refusal read it. Model and chat template set explicitly (defaults are Llama).
+entrypoint: run_calibrate_probe.py
+name: calib-X-posthoc-cat-gemma3-12b-s0-ema
+time_per_run: 01:30:00
+overrides:
+  model: google/gemma-3-12b-it
+  chat_template_id: google/gemma-3-12b-it
+  adapter_path: ${root_dir}/checkpoints_cat/X/X-cat-gemma3-12b-kl4.0-s0/ema_step500_adapter
+  checkpoint_path: ${root_dir}/checkpoints_coop/X-posthoc-cat/X-posthoc-cat-gemma3-12b-s0/ema_reader.pt
+  calibration_window: calib

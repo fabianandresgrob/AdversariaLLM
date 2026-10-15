@@ -12,4 +12,4 @@ overrides:
 artifacts:
 - outputs/eval/overrefusal/{+block}/{+run}-ema/overrefusal.json
 sweep:
-  +run: [W-abl-nogate-s0, W-abl-norep-s0, W-abl-noattackprobe-s0]
+  +run: [W-abl-nogate-s0, W-abl-norep-s0, W-abl-noattackprobe-s0, W-abl-promptprobe-s0]

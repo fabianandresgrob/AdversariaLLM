@@ -24,3 +24,4 @@ sweep:
   - W-sens-gate0p25-s0-ema
   - W-sens-rep0p5-s0-ema
   - W-sens-rep2p0-s0-ema
+  - W-abl-promptprobe-s0-ema

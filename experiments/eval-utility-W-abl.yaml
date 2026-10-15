@@ -9,4 +9,4 @@ overrides:
 artifacts:
 - outputs/eval/utility/{+block}/{+run}-ema/utility.json
 sweep:
-  +run: [W-abl-nogate-s0, W-abl-norep-s0, W-abl-noattackprobe-s0]
+  +run: [W-abl-nogate-s0, W-abl-norep-s0, W-abl-noattackprobe-s0, W-abl-promptprobe-s0]

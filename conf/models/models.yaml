@@ -1964,3 +1964,14 @@ base-gemma3-12b:
   dtype: bfloat16
   chat_template: null
   trust_remote_code: true
+W-abl-promptprobe-s0-ema:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/W-abl/W-abl-promptprobe-s0/ema_adapter
+  reader_path: ${root_dir}/checkpoints_coop/W-abl/W-abl-promptprobe-s0/ema_reader.pt

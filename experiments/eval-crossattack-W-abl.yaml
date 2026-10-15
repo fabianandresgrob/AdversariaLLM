@@ -20,7 +20,7 @@ overrides:
   harmful.answer_max_tokens: 512
   out: ${root_dir}/outputs/eval/cross_attack/${block}/${run}-ema/seed${seed}
 sweep:
-  +run: [W-abl-nogate-s0, W-abl-norep-s0, W-abl-noattackprobe-s0]
+  +run: [W-abl-nogate-s0, W-abl-norep-s0, W-abl-noattackprobe-s0, W-abl-promptprobe-s0]
   seed: [0]
 artifacts:
   - outputs/eval/cross_attack/{+block}/{+run}-ema/seed{seed}/cross_attack_eval.json

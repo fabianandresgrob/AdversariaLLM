@@ -55,6 +55,9 @@ rejudge_answers.py:
 score_embedding_attack.py:
   config_name: score_embedding_attack
   name_key: name
+probe_prompt_conditions.py:
+  config_name: probe_prompt_conditions
+  name_key: name
 run_utility_eval.py:
   config_name: utility_eval
 run_gate_diagnostics.py:

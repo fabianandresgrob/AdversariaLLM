@@ -1,0 +1,19 @@
+defaults:
+  - models: models
+  - paths
+  - _self_
+
+# probe_prompt_conditions.py: one fixed answer set, scored by a model + its probe under different prompts.
+model: null               # models.yaml entry with adapter_path + reader_path (threshold_1pct_calib.json next to the reader)
+answers: ${root_dir}/outputs/eval/probe_conditions/condition_set.jsonl
+conditions: [pair, behavior, behavior_attacked]
+max_answer_tokens: 256    # the pipeline's threshold is calibrated on answers of up to 256 generated tokens
+batch_size: 4
+layer: -1
+attack:                   # the coop training attack, model-only (no probe term), on the user message
+  iters: 50
+  eps: 0.1
+  lr: 0.01
+seed: 0
+out: ${root_dir}/outputs/eval/probe_conditions
+name: null                # jobs injects the run name

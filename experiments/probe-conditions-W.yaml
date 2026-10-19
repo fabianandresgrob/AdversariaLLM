@@ -1,0 +1,10 @@
+# PAIR analysis, step 3: the fixed answer set (outputs/eval/probe_conditions/condition_set.jsonl, built by
+# planning/results/pair_probe_analysis/build_condition_set.py) scored by each Llama arm's model + probe under the PAIR
+# prompt, the plain behavior prompt and the embedding-attacked behavior prompt (probe_prompt_conditions.py).
+entrypoint: probe_prompt_conditions.py
+name: conditions-{model}
+time_per_run: "02:00:00"
+sweep:
+  model: [W-coop-s0-ema, W-coop-s1-ema, W-coop-s2-ema, W-posthoc-noprobe-s0-ema, W-posthoc-noprobe-s1-ema, W-posthoc-noprobe-s2-ema, W-posthoc-cat-s0-ema, W-posthoc-cat-s1-ema, W-posthoc-cat-s2-ema]
+artifacts:
+  - outputs/eval/probe_conditions/{model}.summary.json

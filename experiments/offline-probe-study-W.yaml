@@ -1,0 +1,11 @@
+# PAIR analysis, step 5: offline linear probes on the frozen Llama W models (one seed per arm), per training set
+# (ours / WildGuardTest completions / BeaverTails) x layer (8 / 16 / 24 / 32), tested on the PAIR answers behind each
+# prompt, xs_test and WildJailbreak (offline_probe_study.py). Follows Libon et al.'s probe recipe (completion tokens,
+# mean, completion-level harm labels).
+entrypoint: offline_probe_study.py
+name: probestudy-{model}
+time_per_run: "02:00:00"
+sweep:
+  model: [W-coop-s0-ema, W-posthoc-noprobe-s0-ema, W-posthoc-cat-s0-ema]
+artifacts:
+  - outputs/eval/offline_probe_study/{model}.json

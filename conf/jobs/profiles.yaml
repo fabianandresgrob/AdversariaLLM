@@ -61,6 +61,9 @@ probe_prompt_conditions.py:
 reread_monitor_eval.py:
   config_name: reread_monitor_eval
   name_key: name
+offline_probe_study.py:
+  config_name: offline_probe_study
+  name_key: name
 run_utility_eval.py:
   config_name: utility_eval
 run_gate_diagnostics.py:

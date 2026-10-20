@@ -35,6 +35,7 @@ def example(prompt, answer, tokenizer, max_answer_tokens):
     """(ids, target_ids, attn, user mask) for prompt + answer, the answer cut to max_answer_tokens."""
     from adversariallm.training.data import build_example_full, user_token_mask
 
+    prompt = prompt.strip()  # the chat template strips the user message (PAIR prompts start with a space)
     ids, _, tgt, attn = build_example_full(prompt, answer, tokenizer)
     start = int((tgt != 0).nonzero()[0]) if (tgt != 0).any() else ids.numel()
     end = min(ids.numel(), start + max_answer_tokens)

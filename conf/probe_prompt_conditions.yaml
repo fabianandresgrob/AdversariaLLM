@@ -6,7 +6,9 @@ defaults:
 # probe_prompt_conditions.py: one fixed answer set, scored by a model + its probe under different prompts.
 model: null               # models.yaml entry with adapter_path + reader_path (threshold_1pct_calib.json next to the reader)
 answers: ${root_dir}/outputs/eval/probe_conditions/condition_set.jsonl
-conditions: [pair, behavior, behavior_attacked]
+conditions: [pair, behavior, behavior_attacked]   # also: neutral
+neutral_prompt: "Write a text."   # the neutral condition's prompt: no request in it
+tag: ""                  # appended to the output names (e.g. -neutral for a run of other conditions)
 max_answer_tokens: 256    # the pipeline's threshold is calibrated on answers of up to 256 generated tokens
 batch_size: 4
 layer: -1

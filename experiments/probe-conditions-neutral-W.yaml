@@ -1,0 +1,12 @@
+# PAIR analysis, step 3b: the same fixed answer set as probe-conditions-W, behind a neutral prompt with no request in it
+# ("Write a text."), so the probe reads the answer itself. Separate output names (tag -neutral); no attack, fast.
+entrypoint: probe_prompt_conditions.py
+name: conditions-neutral-{model}
+time_per_run: "01:00:00"
+overrides:
+  conditions: [neutral]
+  tag: -neutral
+sweep:
+  model: [W-coop-s0-ema, W-coop-s1-ema, W-coop-s2-ema, W-posthoc-noprobe-s0-ema, W-posthoc-noprobe-s1-ema, W-posthoc-noprobe-s2-ema, W-posthoc-cat-s0-ema, W-posthoc-cat-s1-ema, W-posthoc-cat-s2-ema]
+artifacts:
+  - outputs/eval/probe_conditions/{model}-neutral.summary.json

@@ -8,13 +8,16 @@ Conditions (each row of `answers`, a jsonl with behavior, answer, optional pair_
   behavior           the plain behavior as the prompt + the answer (no role-play framing in the activations)
   behavior_attacked  the behavior prompt with a training-style embedding perturbation on the user message (the model
                      -only attack of the coop training, eps / iters / lr as configured, target = the answer) + the answer
+  neutral            a fixed prompt with no request in it (`neutral_prompt`) + the answer: what the probe reads from the
+                     answer itself, with nothing harmful or disguising in front of it
 Same answer, same model, same probe across conditions, so a difference comes from the prompt alone: pair vs behavior
 tests whether the framing hides harm from the probe, behavior vs behavior_attacked whether the probe keys on the
 perturbation itself. Answers are cut to `max_answer_tokens` in every condition.
 
 Each answer is scored with the probe's P(harmful) and flagged at its 1% Alpaca threshold (threshold_1pct_calib.json
 next to the reader, the pipeline's operating point). Writes <out>/<model>.jsonl (one row per answer x condition) and
-<out>/<model>.summary.json (flag rate per source x condition).
+<out>/<model>.summary.json (flag rate per source x condition); `tag` is appended to both names, so a run of other
+conditions does not overwrite an earlier one.
 """
 
 import json
@@ -28,7 +31,7 @@ import torch
 from omegaconf import DictConfig, OmegaConf
 
 log = logging.getLogger(__name__)
-CONDITIONS = ("pair", "behavior", "behavior_attacked")
+CONDITIONS = ("pair", "behavior", "behavior_attacked", "neutral")
 
 
 def example(prompt, answer, tokenizer, max_answer_tokens):
@@ -80,10 +83,13 @@ def main(cfg: DictConfig) -> None:
     rows = [json.loads(line) for line in open(cfg.answers)]
     out_rows = []
     for cond in cfg.conditions:
+        if cond not in CONDITIONS:
+            raise ValueError(f"unknown condition {cond!r}; choose from {CONDITIONS}")
         todo = [r for r in rows if cond != "pair" or r.get("pair_prompt")]
         for i in range(0, len(todo), int(cfg.batch_size)):
             chunk = todo[i: i + int(cfg.batch_size)]
-            prompt = (lambda r: r["pair_prompt"]) if cond == "pair" else (lambda r: r["behavior"])
+            prompt = {"pair": lambda r: r["pair_prompt"], "neutral": lambda r: str(cfg.neutral_prompt)}.get(
+                cond, lambda r: r["behavior"])
             batch = collate([example(prompt(r), r["answer"], tokenizer, int(cfg.max_answer_tokens)) for r in chunk], device)
             embeds = attack.attack(model, batch) if cond == "behavior_attacked" else None
             for r, p in zip(chunk, probe_scores(model, reader, int(cfg.layer), batch, embeds)):
@@ -92,7 +98,8 @@ def main(cfg: DictConfig) -> None:
         log.info(f"{cfg.model} {cond}: {len(todo)} answers scored")
 
     os.makedirs(cfg.out, exist_ok=True)
-    with open(os.path.join(cfg.out, f"{cfg.model}.jsonl"), "w") as fh:
+    stem = f"{cfg.model}{cfg.get('tag') or ''}"
+    with open(os.path.join(cfg.out, f"{stem}.jsonl"), "w") as fh:
         fh.writelines(json.dumps(r) + "\n" for r in out_rows)
     groups = defaultdict(list)
     for r in out_rows:
@@ -101,7 +108,7 @@ def main(cfg: DictConfig) -> None:
         f"{s}|{c}": {"n": len(v), "flagged": round(sum(x["flagged"] for x in v) / len(v), 4),
                      "p_probe_median": round(sorted(x["p_probe"] for x in v)[len(v) // 2], 4)}
         for (s, c), v in sorted(groups.items())}}
-    Path(cfg.out, f"{cfg.model}.summary.json").write_text(json.dumps(summary, indent=1))
+    Path(cfg.out, f"{stem}.summary.json").write_text(json.dumps(summary, indent=1))
     log.info(json.dumps(summary["flag_rate"], indent=1))
 
 

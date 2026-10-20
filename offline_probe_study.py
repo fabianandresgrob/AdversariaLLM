@@ -10,6 +10,9 @@ Features: hidden states at each of `layers`, mean over the first `max_answer_tok
   wildguard    lenalibon/jailbreak-judge-completions wildguardtest_harmful + _unharmful: WildGuardTest prompts (vanilla
                and adversarial) with heretic Llama-3-8B completions, labelled by the completion's harmfulness (WildGuard)
   beavertails  PKU-Alignment/BeaverTails 30k_train, `n_beavertails` unsafe + as many safe (prompt, response) pairs
+  ours+wildguard  the union of ours and wildguard (what coop's probe would train on: our heretic answers for the
+                  representation term plus completion-labelled data)
+`train_sets` picks which are fit; `tag` is appended to the output name so a run of other sets keeps an earlier one.
 Evaluation, each probe at its own 1% threshold on the model's own Alpaca calibration answers (from
 reread_monitor_eval.py's <model>_scores.jsonl, own prompts):
   - the PAIR-analysis answer set (condition_set.jsonl) behind PAIR's prompt / the plain behavior / a neutral prompt:
@@ -127,6 +130,8 @@ def main(cfg: DictConfig) -> None:
     rng.shuffle(unsafe); rng.shuffle(safe)
     n = int(cfg.n_beavertails)
     train["beavertails"] = unsafe[:n] + safe[:n]
+    train["ours+wildguard"] = train["ours"] + train["wildguard"]
+    train = {name: rows for name, rows in train.items() if name in set(cfg.train_sets)}
 
     # ---- evaluation sets ----
     cond = [json.loads(line) for line in open(cfg.condition_set)]
@@ -178,7 +183,7 @@ def main(cfg: DictConfig) -> None:
             results.append(res)
             log.info(json.dumps({k: (round(v, 3) if isinstance(v, float) else v) for k, v in res.items()}))
     out = Path(cfg.out); out.mkdir(parents=True, exist_ok=True)
-    (out / f"{cfg.model}.json").write_text(json.dumps({"model": cfg.model, "layers": layers, "results": results}, indent=1))
+    (out / f"{cfg.model}{cfg.get('tag') or ''}.json").write_text(json.dumps({"model": cfg.model, "layers": layers, "results": results}, indent=1))
 
 
 if __name__ == "__main__":

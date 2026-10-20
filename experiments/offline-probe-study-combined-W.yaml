@@ -1,0 +1,12 @@
+# PAIR analysis, step 5b: the offline probe study's combined training set (ours + WildGuardTest), same models and
+# evaluation as offline-probe-study-W; output <model>-combined.json.
+entrypoint: offline_probe_study.py
+name: probestudy-combined-{model}
+time_per_run: "01:30:00"
+overrides:
+  train_sets: [ours+wildguard]
+  tag: -combined
+sweep:
+  model: [W-coop-s0-ema, W-posthoc-noprobe-s0-ema, W-posthoc-cat-s0-ema]
+artifacts:
+  - outputs/eval/offline_probe_study/{model}-combined.json

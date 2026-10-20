@@ -10,10 +10,12 @@ model: null                       # models.yaml entry (frozen model + adapter); 
 layers: [8, 16, 24, 32]           # hidden_states index; 32 = last layer of Llama 3.1 8B (the coop probe's layer)
 max_answer_tokens: 256
 batch_size: 8
+train_sets: [ours, wildguard, beavertails]   # also: ours+wildguard
 n_beavertails: 750                # per class, as Libon et al.'s second paper
 n_wildjailbreak: 600              # adversarial-prompt eval examples
 neutral_prompt: "Write a text."
 condition_set: ${root_dir}/outputs/eval/probe_conditions/condition_set.jsonl
 seed: 0
 out: ${root_dir}/outputs/eval/offline_probe_study
+tag: ""                          # appended to the output name
 name: null                        # jobs injects the run name

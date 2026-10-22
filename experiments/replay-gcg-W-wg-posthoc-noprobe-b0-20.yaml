@@ -1,0 +1,14 @@
+# W-wg: replay plain GCG through the post-hoc noprobe pipeline with the WildGuardTest probe (as replay-gcg-b0-20). The model
+# is W-posthoc-noprobe-s0's frozen model and plain GCG attacks the model only, so its suffixes are reused, not rerun.
+entrypoint: run_attacks.py
+name: replay-gcg-{model}-b0-20
+time_per_run: "02:00:00"
+overrides:
+  attack: replay
+  defense: coop_probe
+  dataset: jbb_behaviors
+  datasets.jbb_behaviors.idx: list(range(0,20))
+  attacks.replay.all_steps: true
+  attacks.replay.source: ${root_dir}/outputs/gcg__none__W-posthoc-noprobe-s0-ema
+sweep:
+  model: [W-wg-posthoc-noprobe-s0-ema]

@@ -29,3 +29,7 @@ sweep:
   - W-sens-rep0p5-s0-ema
   - W-sens-rep2p0-s0-ema
   - W-abl-promptprobe-s0-ema
+  - W-wg-coop-s0-ema
+  - W-wg-noalpaca-s0-ema
+  - W-wg-posthoc-noprobe-s0-ema
+  - W-wg-posthoc-cat-s0-ema

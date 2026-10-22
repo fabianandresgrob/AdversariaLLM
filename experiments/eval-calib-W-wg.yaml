@@ -1,0 +1,13 @@
+# W-wg: as eval-calib-W-coop, for the WildGuardTest probe-data runs (coop-W-wg-*).
+entrypoint: run_calibrate_probe.py
+name: calib-{+run}-ema
+time_per_run: 01:30:00
+overrides:
+  +block: W-wg
+  adapter_path: ${root_dir}/checkpoints_coop/${block}/${run}/ema_adapter
+  checkpoint_path: ${root_dir}/checkpoints_coop/${block}/${run}/ema_reader.pt
+  calibration_window: calib
+artifacts:
+- checkpoints_coop/{+block}/{+run}/threshold_1pct_calib.json
+sweep:
+  +run: [W-wg-coop-s0, W-wg-noalpaca-s0, W-wg-posthoc-noprobe-s0, W-wg-posthoc-cat-s0]

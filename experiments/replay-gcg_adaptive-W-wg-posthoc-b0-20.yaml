@@ -1,0 +1,14 @@
+# W-wg: replay the adaptive GCG results of the post-hoc pipelines with the WildGuardTest probes through those pipelines
+# (as replay-gcg-b0-20, +src gcg_adaptive only). Plain GCG: replay-gcg-W-wg-posthoc-{noprobe,cat}-b0-20.
+entrypoint: run_attacks.py
+name: replay-gcg_adaptive-{model}-b0-20
+time_per_run: "02:00:00"
+overrides:
+  attack: replay
+  defense: coop_probe
+  dataset: jbb_behaviors
+  datasets.jbb_behaviors.idx: list(range(0,20))
+  attacks.replay.all_steps: true
+  attacks.replay.source: ${root_dir}/outputs/gcg_adaptive__none__${model}
+sweep:
+  model: [W-wg-posthoc-noprobe-s0-ema, W-wg-posthoc-cat-s0-ema]

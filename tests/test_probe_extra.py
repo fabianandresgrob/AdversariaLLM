@@ -26,6 +26,11 @@ def test_split_by_label_keeps_only_labelled_rows_with_prompt_and_completion():
     assert harmful == [("a", "x")] and harmless == [("b", "y")]
 
 
+def test_split_by_label_strips_what_the_chat_template_would_trim():
+    harmful, _ = split_by_label([{"p": " a\n", "c": "x ", "l": "harmful"}, {"p": "  ", "c": "y", "l": "harmful"}], "p", "c", "l")
+    assert harmful == [("a", "x")]
+
+
 def test_drop_longer_than_drops_rather_than_cuts():
     rows = [("ab", "cd"), ("a" * 20, "b")]
     assert drop_longer_than(rows, _FakeTok(), 8) == [("ab", "cd")]  # "UabRcdE" = 7 tokens

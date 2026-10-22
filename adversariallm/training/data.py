@@ -176,11 +176,13 @@ def load_answer_pool(path, threshold=0.5):
 
 def split_by_label(records, prompt_col, completion_col, label_col, harmful="harmful", harmless="unharmful"):
     """(harmful rows, harmless rows) of (prompt, completion) from completion-labelled records; rows with another
-    label (e.g. unlabelled) or without a prompt or completion are dropped."""
+    label (e.g. unlabelled) or without a prompt or completion are dropped. Both are stripped: the chat template trims
+    them, and user_token_mask must find the user message as given."""
     out = {harmful: [], harmless: []}
     for r in records:
-        if r.get(label_col) in out and r.get(prompt_col) and r.get(completion_col):
-            out[r[label_col]].append((r[prompt_col], r[completion_col]))
+        p, c = (r.get(prompt_col) or "").strip(), (r.get(completion_col) or "").strip()
+        if r.get(label_col) in out and p and c:
+            out[r[label_col]].append((p, c))
     return out[harmful], out[harmless]
 
 

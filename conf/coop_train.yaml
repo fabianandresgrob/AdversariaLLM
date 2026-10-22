@@ -86,6 +86,20 @@ data:
   answer_max_tokens: 128
   benign_answers: dataset           # model: the probe's benign answers and the threshold's are the model's own greedy
                                     # answers to those Alpaca prompts (generated once before training), not the dataset's
+  # Extra probe data: clean (prompt, answer) pairs labelled by the answer's harmfulness, per_class harmful + per_class
+  # harmless added to every probe update. dataset: null = off (all runs before 2026-10-22). easy_benign_sources: []
+  # then drops the Alpaca examples from the probe updates (the threshold stays on Alpaca).
+  probe_extra:
+    dataset: null                   # e.g. lenalibon/jailbreak-judge-completions
+    config: null
+    splits: []
+    prompt_col: prompt
+    completion_col: completion
+    label_col: label
+    harmful: harmful                # label values
+    harmless: unharmful
+    per_class: 2
+    max_tokens: 1024                # rows longer than this (rendered) are dropped
 
 training:
   model_lr: 5.0e-5

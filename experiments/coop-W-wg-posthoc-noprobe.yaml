@@ -1,0 +1,52 @@
+# W-wg: post-hoc probe on the frozen non-coop model (as coop-W-posthoc-noprobe) with coop-W-wg-coop's probe data
+# (WildGuardTest completions, 2 harmful + 2 harmless per probe update, next to the rest); seed 0. PAIR investigation.
+entrypoint: run_coop_train.py
+name: W-wg-posthoc-noprobe-s{seed}
+time_per_run: "12:00:00"
+overrides:
+  init_adapter: ${root_dir}/checkpoints_coop/R/R-noprobe-it50-s${seed}/ema_adapter
+  training.train_model: false
+  attack.enabled: true
+  attack.perturb: user
+  attack.target_eot: false
+  attack.eps: 0.1
+  attack.iters: 50
+  attack.use_detector: true
+  reader.readout: response_window
+  reader.readout_k: 512
+  reader.window: 16
+  probe_init: random
+  data.answer_pool: ${root_dir}/outputs/eval/answer_pool/pool-heretic.jsonl
+  data.answer_max_tokens: 512
+  training.detector_refusal_negatives: true
+  training.rep_warmup_steps: 50
+  training.n_detector_steps: 6
+  training.n_steps: 1000
+  training.val_every: 50
+  training.checkpoint_every: 250
+  training.benign_gen_n: 40
+  training.ema_decay: 0.995
+  data.kl_source: magpie
+  data.kl_max_length: 1024
+  data.val_size: 24
+  data.val_targets: 6
+  data.val_batch_size: 16
+  lambda_benign_perturb: 1.0
+  epsilon: 0.05
+  data.probe_extra.dataset: lenalibon/jailbreak-judge-completions
+  data.probe_extra.config: null
+  data.probe_extra.splits: [wildguardtest_harmful, wildguardtest_unharmful]
+  data.probe_extra.prompt_col: prompt
+  data.probe_extra.completion_col: completion_llama3_8b_heretic_mlabonne
+  data.probe_extra.label_col: response_harmfulness_llama3_8b_heretic_mlabonne
+  data.probe_extra.harmful: harmful
+  data.probe_extra.harmless: unharmful
+  data.probe_extra.per_class: 2
+  data.probe_extra.max_tokens: 1024
+  data.easy_benign_sources: [alpaca]
+  output.checkpoint_path: ${root_dir}/checkpoints_coop/W-wg
+sweep:
+  seed: [0]
+artifacts:
+  - checkpoints_coop/W-wg/{name}/final_adapter
+  - checkpoints_coop/W-wg/{name}/final_reader.pt

@@ -174,6 +174,32 @@ def load_answer_pool(path, threshold=0.5):
     return out
 
 
+def split_by_label(records, prompt_col, completion_col, label_col, harmful="harmful", harmless="unharmful"):
+    """(harmful rows, harmless rows) of (prompt, completion) from completion-labelled records; rows with another
+    label (e.g. unlabelled) or without a prompt or completion are dropped."""
+    out = {harmful: [], harmless: []}
+    for r in records:
+        if r.get(label_col) in out and r.get(prompt_col) and r.get(completion_col):
+            out[r[label_col]].append((r[prompt_col], r[completion_col]))
+    return out[harmful], out[harmless]
+
+
+def load_labelled_completions(spec):
+    """split_by_label over the splits of a Hugging Face dataset. spec: dataset, config (or null), splits,
+    prompt_col, completion_col, label_col, harmful, harmless (the label values)."""
+    import datasets
+
+    records = [r for s in spec["splits"] for r in datasets.load_dataset(spec["dataset"], spec.get("config"), split=s)]
+    return split_by_label(records, spec["prompt_col"], spec["completion_col"], spec["label_col"],
+                          spec.get("harmful", "harmful"), spec.get("harmless", "unharmful"))
+
+
+def drop_longer_than(rows, tokenizer, max_tokens):
+    """The (prompt, completion) rows whose rendered conversation fits in max_tokens (long rows are dropped, not
+    cut: the probe reads the answer, which truncation would remove)."""
+    return [(p, c) for p, c in rows if len(tokenizer(render_full(tokenizer, p, c))["input_ids"]) <= max_tokens]
+
+
 class AdvTupleStream(Dataset):
     """(x, y_harmful, y_benign) per behavior, tokenized for the model.
 

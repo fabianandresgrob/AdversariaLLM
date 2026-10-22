@@ -83,7 +83,7 @@ def _replay_loss(reader, replay, device):
 
 
 def _detector_step(model, reader, opt_det, layer, adv_embeds, adv_batch, easy_batch, device, feature_sink=None,
-                   replay=None, perturb_radius=None, refusal_negatives=False):
+                   replay=None, perturb_radius=None, refusal_negatives=False, extra_batches=()):
     """One detector update: model frozen, reader trainable. Mixed batch — attacked harmful
     (label 0) plus easy benign (label 1). Diverse benign is what stops the OOD over-firing.
     Model forwards under no_grad so only the reader trains. Label convention: harmful=0, benign=1.
@@ -95,7 +95,9 @@ def _detector_step(model, reader, opt_det, layer, adv_embeds, adv_batch, easy_ba
     probe must separate complying from refusing, not harmful requests from benign ones).
     perturb_radius: also add the benign batch with random noise of this norm on its user message, labelled
     benign. The harmful class is always perturbed (attacked) and the benign class never is, so without these
-    the probe can separate the classes by "perturbed or not" instead of "harmful or not"."""
+    the probe can separate the classes by "perturbed or not" instead of "harmful or not".
+    extra_batches: (benign-format batch, label) pairs of clean, completion-labelled examples (data.probe_extra),
+    in the same CE as the rest."""
     opt_det.zero_grad(set_to_none=True)
     logits_parts, labels_parts = [], []
 
@@ -132,6 +134,13 @@ def _detector_step(model, reader, opt_det, layer, adv_embeds, adv_batch, easy_ba
             logits_p = reader.logits(p_hidden, easy_batch["d_targetids"], easy_batch["d_attn"])
             logits_parts.append(logits_p)
             labels_parts.append(torch.ones(logits_p.size(0), dtype=torch.long, device=device))  # still benign
+
+    for batch, label in extra_batches:
+        with torch.no_grad():
+            e_hidden, _ = _hidden_and_logits(model, layer, input_ids=batch["d_ids"], attention_mask=batch["d_attn"])
+        logits_e = reader.logits(e_hidden, batch["d_targetids"], batch["d_attn"])
+        logits_parts.append(logits_e)
+        labels_parts.append(torch.full((logits_e.size(0),), label, dtype=torch.long, device=device))
 
     logits = torch.cat(logits_parts, dim=0)
     labels = torch.cat(labels_parts, dim=0)
@@ -579,8 +588,10 @@ def run_coop_training(cfg):
         collate_benign,
         collate_util,
         generation_prefix,
+        drop_longer_than,
         load_answer_pool,
         load_dataset_prompts,
+        load_labelled_completions,
         split_adv_stream,
     )
     from .reference import LoRADisableReference
@@ -652,11 +663,24 @@ def run_coop_training(cfg):
     own_answers = cfg.data.get("benign_answers", "dataset") == "model"
     if own_answers:  # the model's own greedy answers instead of the dataset's (Libon et al.'s negatives)
         easy_rows = _own_answers(model, tokenizer, [p for p, _ in easy_rows], int(cfg.data.get("answer_max_tokens", 128)))
-    easy_benign_ds = BenignStream(easy_rows, tokenizer, template_id)
-    easy_benign_loader = DataLoader(
-        easy_benign_ds, batch_size=cfg.data.harmful_batch_size, shuffle=True, collate_fn=collate_benign
-    )
-    easy_benign_iter = _cycle(easy_benign_loader)
+    easy_benign_iter = None  # easy_benign_sources: [] -> the probe sees no easy benign class (e.g. probe_extra instead)
+    if easy_rows:
+        easy_benign_ds = BenignStream(easy_rows, tokenizer, template_id)
+        easy_benign_iter = _cycle(DataLoader(
+            easy_benign_ds, batch_size=cfg.data.harmful_batch_size, shuffle=True, collate_fn=collate_benign
+        ))
+
+    # extra probe data: clean, completion-labelled (prompt, answer) pairs, per_class of each class per probe update
+    extra_iters = []
+    extra = container["data"].get("probe_extra") or {}
+    if extra.get("dataset"):
+        harmful_rows, harmless_rows = load_labelled_completions(extra)
+        for rows, label in ((harmful_rows, 0), (harmless_rows, 1)):  # harmful = 0, benign = 1
+            rows = drop_longer_than(rows, tokenizer, int(extra["max_tokens"]))
+            extra_iters.append((_cycle(DataLoader(BenignStream(rows, tokenizer, template_id),
+                                                  batch_size=int(extra["per_class"]), shuffle=True,
+                                                  collate_fn=collate_benign)), label))
+            log.info(f"probe_extra {extra['dataset']}: {len(rows)} {'harmful' if label == 0 else 'harmless'} rows")
 
     # held-out validation: clean harmful (from the split)
     harmful_val_batches = [
@@ -792,9 +816,10 @@ def run_coop_training(cfg):
         det_losses = [
             _detector_step(
                 model, reader, opt_det, layer, adv_embeds, adv_batch,
-                _to_device(next(easy_benign_iter), device),
+                _to_device(next(easy_benign_iter), device) if easy_benign_iter is not None else None,
                 device, feature_sink=sink if i == 0 else None, replay=replay, perturb_radius=det_perturb_radius,
                 refusal_negatives=det_refusal_negatives,
+                extra_batches=[(_to_device(next(it), device), label) for it, label in extra_iters],
             )
             for i in range(n_det)
         ]

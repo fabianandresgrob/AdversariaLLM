@@ -1,0 +1,13 @@
+# PAIR analysis, cross-check of the WildGuardTest version: the offline probe study with the original WildGuardTest
+# (allenai/wildguardmix, human labels on the original responses) instead of Libon's heretic completions, same models
+# and evaluation as offline-probe-study-W; output <model>-wgorig.json.
+entrypoint: offline_probe_study.py
+name: probestudy-wgorig-{model}
+time_per_run: "01:30:00"
+overrides:
+  train_sets: [wildguard_orig, ours+wildguard_orig]
+  tag: -wgorig
+sweep:
+  model: [W-coop-s0-ema, W-posthoc-noprobe-s0-ema, W-posthoc-cat-s0-ema]
+artifacts:
+  - outputs/eval/offline_probe_study/{model}-wgorig.json

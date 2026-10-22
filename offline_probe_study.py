@@ -12,6 +12,9 @@ Features: hidden states at each of `layers`, mean over the first `max_answer_tok
   beavertails  PKU-Alignment/BeaverTails 30k_train, `n_beavertails` unsafe + as many safe (prompt, response) pairs
   ours+wildguard  the union of ours and wildguard (what coop's probe would train on: our heretic answers for the
                   representation term plus completion-labelled data)
+  wildguard_orig  the original WildGuardTest (allenai/wildguardmix, wildguardtest): the same prompts with their original
+                  responses (several models) and human response-harmfulness labels; a cross-check of Libon's version
+  ours+wildguard_orig  the union of ours and wildguard_orig
 `train_sets` picks which are fit; `tag` is appended to the output name so a run of other sets keeps an earlier one.
 Evaluation, each probe at its own 1% threshold on the model's own Alpaca calibration answers (from
 reread_monitor_eval.py's <model>_scores.jsonl, own prompts):
@@ -100,7 +103,8 @@ def main(cfg: DictConfig) -> None:
 
     from adversariallm.io_utils import load_model_and_tokenizer
     from adversariallm.training.coop_metrics import threshold_at_fpr
-    from adversariallm.training.data import AdvTupleStream, load_answer_pool, load_dataset_prompts, split_adv_stream
+    from adversariallm.training.data import (AdvTupleStream, load_answer_pool, load_dataset_prompts,
+                                             load_labelled_completions, split_adv_stream)
 
     rng = random.Random(int(cfg.seed))
     root = Path(cfg.root_dir)
@@ -131,6 +135,10 @@ def main(cfg: DictConfig) -> None:
     n = int(cfg.n_beavertails)
     train["beavertails"] = unsafe[:n] + safe[:n]
     train["ours+wildguard"] = train["ours"] + train["wildguard"]
+    if {"wildguard_orig", "ours+wildguard_orig"} & set(cfg.train_sets):  # gated dataset: loaded only when asked for
+        h, b = load_labelled_completions(OmegaConf.to_container(cfg.wildguard_orig, resolve=True))
+        train["wildguard_orig"] = [(p, c, 1) for p, c in h] + [(p, c, 0) for p, c in b]
+        train["ours+wildguard_orig"] = train["ours"] + train["wildguard_orig"]
     train = {name: rows for name, rows in train.items() if name in set(cfg.train_sets)}
 
     # ---- evaluation sets ----

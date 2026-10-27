@@ -48,8 +48,14 @@ BEHAVIORS = 100
 # variants is far past the point where the budget curve flattens; 128 is the agreed protocol and
 # cuts the run 8x. PAIR's own budget is 30 streams x 3 steps = 90 queries, already under it.
 INPAINTING_SAMPLES = 128
+# Jailbreak-R1 writes its prompts without seeing the target, so they are generated once
+# (experiments/attack-jailbreak_r1-fill-b0-20.yaml, 1024 per behavior) and every attack run reads the
+# first JR1_SAMPLES of them: all systems get the same prompts, and a larger budget is a rerun with a
+# larger num_steps, not a new cache.
+JR1_SAMPLES = 64
+JR1_CACHE = "${root_dir}/outputs/eval/jailbreak_r1/prompt_cache_jbb.json"
 TIME_PER_RUN = {"gcg": "06:00:00", "gcg_adaptive": "06:00:00", "inpainting": "03:00:00",
-                "pair": "06:00:00", "direct": "01:00:00", "replay": "01:00:00"}
+                "pair": "06:00:00", "direct": "01:00:00", "replay": "01:00:00", "jailbreak_r1": "02:00:00"}
 # PAIR aborts a whole run when its attacker returns unparseable JSON max_attempts times in a row; the
 # default 10 loses roughly one run in eight. Retrying more costs seconds and changes no attack semantics.
 EXTRA_OVERRIDES = {
@@ -65,6 +71,12 @@ EXTRA_OVERRIDES = {
         "attacks.pair.judge_model.tokenizer_id": "lmsys/vicuna-13b-v1.5",
     },
     "inpainting": {"attacks.inpainting.num_samples_per_behavior": INPAINTING_SAMPLES},
+    "jailbreak_r1": {
+        "attacks.jailbreak_r1.num_steps": JR1_SAMPLES,
+        "attacks.jailbreak_r1.prompt_cache_mode": "read",
+        "attacks.jailbreak_r1.prompt_cache_path": JR1_CACHE,
+        "attacks.jailbreak_r1.prompt_cache_subset_strategy": "first_n",
+    },
 }
 # gcg_adaptive needs no probe override: conf/attacks/attacks.yaml resolves the swept model's own
 # reader_path. Passing it on the CLI does not work -- hydra cannot parse a nested interpolation

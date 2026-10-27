@@ -95,3 +95,12 @@ def test_adaptive_gcg_is_its_own_attack_with_its_own_results_dir():
 def test_adaptive_gcg_cannot_be_run_against_the_runtime_defense_either():
     with pytest.raises(ValueError, match="replay"):
         build(["gcg_adaptive"], ["M-respmean-s0"], shards=1, n_behaviors=20, defense="coop_probe")
+
+
+def test_jailbreak_r1_reads_the_shared_prompt_cache():
+    spec = build(["jailbreak_r1"], ["E-nd6-s0"], shards=1, n_behaviors=20, defense="coop_probe")[
+        "attack-jailbreak_r1-coop_probe-b0-20.yaml"]
+    o = spec["overrides"]
+    assert o["attacks.jailbreak_r1.prompt_cache_mode"] == "read"  # never generates: the fill run did that once
+    assert o["attacks.jailbreak_r1.prompt_cache_path"].endswith("prompt_cache_jbb.json")
+    assert o["attacks.jailbreak_r1.num_steps"] == 64 and spec["time_per_run"] == "02:00:00"

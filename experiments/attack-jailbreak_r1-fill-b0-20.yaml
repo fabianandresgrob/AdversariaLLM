@@ -1,0 +1,17 @@
+# Jailbreak-R1 prompt cache for JBB 0-19: 1024 prompts per behavior, generated once (the prompts never see the
+# target). Run this alone first; attack-jailbreak_r1{,-coop_probe}-b0-20 then read the first 64. The target is the
+# base model, so this run is also base Llama's Jailbreak-R1 result at up to 1024 attempts (subsample for 64).
+entrypoint: run_attacks.py
+name: jailbreak_r1-fill-{model}-b0-20
+time_per_run: "12:00:00"
+overrides:
+  attack: jailbreak_r1
+  dataset: jbb_behaviors
+  datasets.jbb_behaviors.idx: list(range(0,20))
+  attacks.jailbreak_r1.num_steps: 1024
+  attacks.jailbreak_r1.prompt_cache_mode: write
+  attacks.jailbreak_r1.prompt_cache_num_steps: 1024
+  attacks.jailbreak_r1.prompt_cache_path: ${root_dir}/outputs/eval/jailbreak_r1/prompt_cache_jbb.json
+  attacks.jailbreak_r1.prompt_cache_subset_strategy: first_n
+sweep:
+  model: [base-llama31-8b]

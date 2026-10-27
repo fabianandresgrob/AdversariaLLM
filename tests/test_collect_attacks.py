@@ -157,3 +157,14 @@ def test_behavior_window_drops_runs_outside_it(tmp_path):
     assert collect(tmp_path).iloc[0].n_behaviors == 3
     row = collect(tmp_path, behaviors=(0, 20)).iloc[0]
     assert (row.n_behaviors, row.asr_behavior) == (2, 0.5)
+
+
+def test_max_steps_reads_a_longer_run_as_the_shorter_one(tmp_path):
+    # the only success is attempt 3, so cut to 2 attempts the behavior is not jailbroken
+    _write_run(tmp_path, "jailbreak_r1", "none", "base", [[0.1, 0.2, 0.9, 0.4]])
+    full = collect(tmp_path).iloc[0]
+    cut = collect(tmp_path, max_steps={"jailbreak_r1": 2}).iloc[0]
+    assert (full["asr_behavior"], full["n_completions"]) == (1.0, 4)
+    assert (cut["asr_behavior"], cut["n_completions"], cut["asr_per_sample"]) == (0.0, 2, 0.0)
+    other = collect(tmp_path, max_steps={"gcg": 2}).iloc[0]  # other attacks' cut leaves this one alone
+    assert other["n_completions"] == 4

@@ -12,7 +12,6 @@ overrides:
   attacks.jailbreak_r1.prompt_cache_subset_strategy: first_n
 sweep:
   model:
-  - base-llama31-8b
   - cb-llama3-8b-rr
   - mixat-llama31-8b
   - W-coop-s0-ema

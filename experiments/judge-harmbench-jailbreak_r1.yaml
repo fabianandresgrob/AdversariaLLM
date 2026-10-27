@@ -1,0 +1,10 @@
+# Second judge, for signal only (the reported numbers stay StrongREJECT): the HarmBench classifier on every stored
+# Jailbreak-R1 answer, written as scores.harmbench next to scores.strong_reject in the same run.json files. Submit after
+# the attack runs are done (it judges what exists at start; rerun it to pick up later runs).
+entrypoint: run_judges.py
+name: judge-{classifier}-jailbreak_r1
+time_per_run: "08:00:00"
+overrides:
+  filter_by: {attack: jailbreak_r1}
+sweep:
+  classifier: [harmbench]

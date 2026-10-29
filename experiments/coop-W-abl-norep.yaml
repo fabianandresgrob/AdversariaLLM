@@ -34,7 +34,7 @@ overrides:
   lambda_rep: 0.0
   output.checkpoint_path: ${root_dir}/checkpoints_coop/W-abl
 sweep:
-  seed: [0]
+  seed: [0, 1]  # 1 added 2026-10-29: second seed of the most promising variant
 artifacts:
   - checkpoints_coop/W-abl/{name}/final_adapter
   - checkpoints_coop/W-abl/{name}/final_reader.pt

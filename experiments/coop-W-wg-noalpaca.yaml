@@ -45,7 +45,7 @@ overrides:
   data.easy_benign_sources: []
   output.checkpoint_path: ${root_dir}/checkpoints_coop/W-wg
 sweep:
-  seed: [0]
+  seed: [0, 1]  # 1 added 2026-10-29: second seed of the most promising variant
 artifacts:
   - checkpoints_coop/W-wg/{name}/final_adapter
   - checkpoints_coop/W-wg/{name}/final_reader.pt

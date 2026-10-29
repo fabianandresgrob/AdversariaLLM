@@ -1,0 +1,13 @@
+# PAIR analysis, step 5d: the offline probe study on the no-representation-term ablation (W-abl-norep), our data and
+# ours + WG, to see whether coop's weak WildJailbreak separation comes from the representation term. It has no
+# reread_monitor run, so the calibration answers are generated here (generate_calib).
+entrypoint: offline_probe_study.py
+name: probestudy-{model}
+time_per_run: "02:00:00"
+overrides:
+  train_sets: [ours, ours+wildguard]
+  generate_calib: true
+sweep:
+  model: [W-abl-norep-s0-ema]
+artifacts:
+  - outputs/eval/offline_probe_study/{model}.json

@@ -151,9 +151,15 @@ def main(cfg: DictConfig) -> None:
           "cond_neutral": [(neutral, r["answer"]) for r in cond]}
     cond_src = {"cond_pair": [r["source"] for r in cond if r.get("pair_prompt")],
                 "cond_behavior": [r["source"] for r in cond], "cond_neutral": [r["source"] for r in cond]}
-    scores_file = root / "outputs/eval/reread_monitor" / f"{cfg.model}_scores.jsonl"
-    calib = [json.loads(line) for line in open(scores_file)]
-    ev["alpaca_calib"] = [(r["prompt"], r["answer"]) for r in calib if r["set"] == "calib"]
+    if cfg.get("generate_calib", False):  # no reread_monitor run for this model: answer the calibration prompts here,
+        from adversariallm.training.generation import generate_responses  # exactly as reread_monitor_eval.py does
+
+        cprompts, _ = load_dataset_prompts(cfg.datasets, "alpaca", window=cfg.splits.alpaca.calib, seed=0)
+        ev["alpaca_calib"] = list(zip(cprompts, generate_responses(model, tok, cprompts, 256, 16)))
+    else:
+        scores_file = root / "outputs/eval/reread_monitor" / f"{cfg.model}_scores.jsonl"
+        calib = [json.loads(line) for line in open(scores_file)]
+        ev["alpaca_calib"] = [(r["prompt"], r["answer"]) for r in calib if r["set"] == "calib"]
     xs_dir = Path(glob.glob(str(root / "outputs/eval/overrefusal/*" / cfg.model / "judged_model_xs_test.json"))[0]).parent
     judged = json.loads((xs_dir / "judged_model_xs_test.json").read_text())
     xs_refused = [j["judgment"] == "2_full_refusal" or bool(j["degeneration_reasons"]) for j in judged]

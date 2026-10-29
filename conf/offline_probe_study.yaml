@@ -7,6 +7,7 @@ defaults:
 
 # offline_probe_study.py: offline linear probes on a frozen model, per training set x layer, tested on PAIR answers etc.
 model: null                       # models.yaml entry (frozen model + adapter); its reread_monitor scores must exist
+generate_calib: false             # true: generate the 2000 Alpaca calibration answers here instead (as reread_monitor_eval.py)
 layers: [8, 16, 24, 32]           # hidden_states index; 32 = last layer of Llama 3.1 8B (the coop probe's layer)
 max_answer_tokens: 256
 batch_size: 8

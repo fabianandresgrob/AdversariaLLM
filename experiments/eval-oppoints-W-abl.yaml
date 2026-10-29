@@ -1,0 +1,16 @@
+# W-abl: extra operating points (0.5% and 5% false positives on the same 2000 held-out Alpaca answers as the default 1%
+# point) of the final EMA probes, as eval-oppoints-W-coop. Their stored scores give every threshold of the Pareto sweep
+# (pareto_sweep.py), so each variant can be drawn over thresholds. The default calibration is untouched.
+entrypoint: run_calibrate_probe.py
+name: oppoints-{+run}-ema
+time_per_run: 01:30:00
+overrides:
+  +block: W-abl
+  adapter_path: ${root_dir}/checkpoints_coop/${block}/${run}/ema_adapter
+  checkpoint_path: ${root_dir}/checkpoints_coop/${block}/${run}/ema_reader.pt
+  calibration_window: calib
+  fprs: [0.005, 0.05]
+artifacts:
+- checkpoints_coop/{+block}/{+run}/operating_points/ema_reader/threshold_fpr0.05_calib.json
+sweep:
+  +run: [W-abl-nogate-s0, W-abl-norep-s0, W-abl-noattackprobe-s0, W-abl-promptprobe-s0]

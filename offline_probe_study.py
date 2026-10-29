@@ -15,6 +15,7 @@ Features: hidden states at each of `layers`, mean over the first `max_answer_tok
   wildguard_orig  the original WildGuardTest (allenai/wildguardmix, wildguardtest): the same prompts with their original
                   responses (several models) and human response-harmfulness labels; a cross-check of Libon's version
   ours+wildguard_orig  the union of ours and wildguard_orig
+  ours_noalpaca+wildguard  ours without the Alpaca answers, plus wildguard (the coop-W-wg-noalpaca probe's data)
 `train_sets` picks which are fit; `tag` is appended to the output name so a run of other sets keeps an earlier one.
 Evaluation, each probe at its own 1% threshold on the model's own Alpaca calibration answers (from
 reread_monitor_eval.py's <model>_scores.jsonl, own prompts):
@@ -135,6 +136,7 @@ def main(cfg: DictConfig) -> None:
     n = int(cfg.n_beavertails)
     train["beavertails"] = unsafe[:n] + safe[:n]
     train["ours+wildguard"] = train["ours"] + train["wildguard"]
+    train["ours_noalpaca+wildguard"] = harmful + refusals + train["wildguard"]
     if {"wildguard_orig", "ours+wildguard_orig"} & set(cfg.train_sets):  # gated dataset: loaded only when asked for
         h, b = load_labelled_completions(OmegaConf.to_container(cfg.wildguard_orig, resolve=True))
         train["wildguard_orig"] = [(p, c, 1) for p, c in h] + [(p, c, 0) for p, c in b]

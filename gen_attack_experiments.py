@@ -76,6 +76,8 @@ EXTRA_OVERRIDES = {
         "attacks.jailbreak_r1.prompt_cache_mode": "read",
         "attacks.jailbreak_r1.prompt_cache_path": JR1_CACHE,
         "attacks.jailbreak_r1.prompt_cache_subset_strategy": "first_n",
+        # many short runs start together; without it one run's judge can read another's half-written run.json
+        "judge_own_runs_only": True,
     },
 }
 # gcg_adaptive needs no probe override: conf/attacks/attacks.yaml resolves the swept model's own

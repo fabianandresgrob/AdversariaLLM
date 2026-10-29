@@ -96,6 +96,12 @@ def run_attacks(all_run_configs: list[RunConfig], cfg: DictConfig, date_time_str
         log_attack(run_config, results, cfg, date_time_string)
 
 
+def own_runs_filter(run_configs) -> dict:
+    """filter_by for the judge pass: only this run's (model, attack, defense) cells. The timestamp suffix alone also
+    matches other runs that started in the same second, whose run.json may still be half-written."""
+    return {key: sorted({getattr(rc, key) for rc in run_configs}, key=str) for key in ("model", "attack", "defense")}
+
+
 @hydra.main(config_path="./conf", config_name="config", version_base="1.3")
 @print_exceptions
 def main(cfg: DictConfig) -> None:
@@ -123,7 +129,7 @@ def main(cfg: DictConfig) -> None:
         judge_cfg = OmegaConf.create({
             "classifier": judge,
             "suffixes": [date_time_string.split('/')[-1]],  # Use the timestamp from this run to make sure we only judge this run
-            "filter_by": None
+            "filter_by": own_runs_filter(all_run_configs) if cfg.get("judge_own_runs_only", False) else None
         })
         free_vram()
         # Run the judge

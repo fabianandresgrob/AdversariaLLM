@@ -21,6 +21,9 @@ embed_dir: ${root_dir}/embeddings/  # place to store embeddings for emebdding at
 overwrite: false
 
 classifiers: ["strong_reject"]  # anything from judgezoo
+# true: the judge pass after the attack scores only this run's (model, attack, defense) results; false (the default,
+# all runs before 2026-10-29) also picks up any other unscored run that started in the same second
+judge_own_runs_only: false
 
 # Top-level generation config for easier overriding
 generation_config:

@@ -27,3 +27,4 @@ sweep:
   - W-abl-promptprobe-s0-ema
   - W-wg-coop-s0-ema
   - W-wg-noalpaca-s0-ema
+  - W-abl-norep-s1-ema

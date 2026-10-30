@@ -12,4 +12,4 @@ overrides:
   attacks.jailbreak_r1.prompt_cache_subset_strategy: first_n
   judge_own_runs_only: true
 sweep:
-  model: [W-abl-norep-s1-ema, W-wg-noalpaca-s1-ema]
+  model: [W-abl-norep-s1-ema, W-wg-noalpaca-s1-ema, W-wg-noalpaca-norep-s0-ema]

@@ -13,4 +13,4 @@ overrides:
   judge_own_runs_only: true
   defense: coop_probe
 sweep:
-  model: [W-abl-norep-s1-ema, W-wg-noalpaca-s1-ema]
+  model: [W-abl-norep-s1-ema, W-wg-noalpaca-s1-ema, W-wg-noalpaca-norep-s0-ema]

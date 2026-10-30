@@ -1,0 +1,16 @@
+# Daml-trained runs of 2026-10-29 (second seeds, WG instead of Alpaca without rep. term), as eval-overrefusal-W-wg.
+# W-wg: as eval-overrefusal-W-coop, for the WildGuardTest probe-data runs (coop-W-wg-*).
+entrypoint: run_overrefusal_eval.py
+name: overrefusal-{+run}-ema
+time_per_run: 02:00:00
+overrides:
+  +block: W-wg
+  ~checkpoints.base: base
+  +checkpoints.model: ${root_dir}/checkpoints_coop/${block}/${run}/ema_adapter
+  +readers.model: ${root_dir}/checkpoints_coop/${block}/${run}/ema_reader.pt
+  out: ${root_dir}/outputs/eval/overrefusal/${block}/${run}-ema
+  judge.enabled: true
+artifacts:
+- outputs/eval/overrefusal/{+block}/{+run}-ema/overrefusal.json
+sweep:
+  +run: [W-wg-noalpaca-s1, W-wg-noalpaca-norep-s0]

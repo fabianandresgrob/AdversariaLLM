@@ -1,0 +1,14 @@
+# Daml-trained runs of 2026-10-29 (second seeds, WG instead of Alpaca without rep. term), as eval-calib-W-wg.
+# W-wg: as eval-calib-W-coop, for the WildGuardTest probe-data runs (coop-W-wg-*).
+entrypoint: run_calibrate_probe.py
+name: calib-{+run}-ema
+time_per_run: 01:30:00
+overrides:
+  +block: W-wg
+  adapter_path: ${root_dir}/checkpoints_coop/${block}/${run}/ema_adapter
+  checkpoint_path: ${root_dir}/checkpoints_coop/${block}/${run}/ema_reader.pt
+  calibration_window: calib
+artifacts:
+- checkpoints_coop/{+block}/{+run}/threshold_1pct_calib.json
+sweep:
+  +run: [W-wg-noalpaca-s1, W-wg-noalpaca-norep-s0]

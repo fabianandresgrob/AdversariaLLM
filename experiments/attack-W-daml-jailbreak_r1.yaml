@@ -1,0 +1,15 @@
+# Second seeds of no-rep and WG instead of Alpaca (trained on daml 2026-10-29): Jailbreak-R1 against the model alone, JBB 0-19, the first 64 prompts of the shared cache (attack-jailbreak_r1-fill-b0-20), as the W runs.
+entrypoint: run_attacks.py
+name: jailbreak_r1-{model}-b0-20
+time_per_run: "02:00:00"
+overrides:
+  attack: jailbreak_r1
+  dataset: jbb_behaviors
+  datasets.jbb_behaviors.idx: list(range(0,20))
+  attacks.jailbreak_r1.num_steps: 64
+  attacks.jailbreak_r1.prompt_cache_mode: read
+  attacks.jailbreak_r1.prompt_cache_path: ${root_dir}/outputs/eval/jailbreak_r1/prompt_cache_jbb.json
+  attacks.jailbreak_r1.prompt_cache_subset_strategy: first_n
+  judge_own_runs_only: true
+sweep:
+  model: [W-abl-norep-s1-ema, W-wg-noalpaca-s1-ema]

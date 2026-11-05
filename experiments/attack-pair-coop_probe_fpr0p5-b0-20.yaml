@@ -21,3 +21,5 @@ sweep:
   - W-posthoc-cat-s0-ema
   - W-posthoc-cat-s1-ema
   - W-posthoc-cat-s2-ema
+  - W-abl-norep-s0-ema
+  - W-abl-norep-s1-ema

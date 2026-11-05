@@ -24,3 +24,4 @@ sweep:
   - W-wg-noalpaca-s0-ema
   - W-abl-norep-s0-ema
   - W-abl-norep-s1-ema
+  - W-abl-norep-s2-ema

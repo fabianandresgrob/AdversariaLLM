@@ -14,4 +14,4 @@ overrides:
 artifacts:
 - checkpoints_coop/{+block}/{+run}/operating_points/ema_reader/threshold_fpr0.05_calib.json
 sweep:
-  +run: [W-abl-norep-s1]
+  +run: [W-abl-norep-s1, W-abl-norep-s2]

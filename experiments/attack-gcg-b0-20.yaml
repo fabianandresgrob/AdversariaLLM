@@ -28,5 +28,6 @@ sweep:
   - W-wg-coop-s0-ema
   - W-wg-noalpaca-s0-ema
   - W-abl-norep-s1-ema
+  - W-abl-norep-s2-ema
   - W-abl-nopert-s0-ema
   - W-abl-nopert-s1-ema

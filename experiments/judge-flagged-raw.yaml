@@ -24,3 +24,4 @@ sweep:
     - X-posthoc-cat-gemma3-12b-s0-ema
     - W-abl-norep-s0-ema
     - W-abl-norep-s1-ema
+    - W-abl-norep-s2-ema

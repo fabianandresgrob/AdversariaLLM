@@ -30,3 +30,5 @@ sweep:
   - W-wg-posthoc-noprobe-s0-ema
   - W-wg-posthoc-cat-s0-ema
   - W-abl-norep-s1-ema
+  - W-abl-nopert-s0-ema
+  - W-abl-nopert-s1-ema

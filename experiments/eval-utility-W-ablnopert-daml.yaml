@@ -1,0 +1,12 @@
+# Daml-trained runs of 2026-11-04 (W ablation without the perturbation KL, lambda_benign_perturb 0; coop-W-abl-nopert), as eval-utility-W-abl.
+entrypoint: run_utility_eval.py
+name: utility-{+run}-ema
+time_per_run: 02:00:00
+overrides:
+  +block: W-abl
+  adapter_path: ${root_dir}/checkpoints_coop/${block}/${run}/ema_adapter
+  out: ${root_dir}/outputs/eval/utility/${block}/${run}-ema
+artifacts:
+- outputs/eval/utility/{+block}/{+run}-ema/utility.json
+sweep:
+  +run: [W-abl-nopert-s0, W-abl-nopert-s1]

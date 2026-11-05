@@ -70,3 +70,6 @@ run_gate_diagnostics.py:
   config_name: gate_diagnostics
 run_generate_benign_targets.py:
   config_name: generate_benign_targets
+judge_flagged_raw.py:
+  config_name: judge_flagged_raw
+  name_key: name

@@ -1,0 +1,24 @@
+# StrongREJECT on the raw answers the probe flagged (GCG / adaptive GCG replays, PAIR against the pipeline), for the
+# division-of-labor figure: which attempts the model complied with although the probe caught them.
+entrypoint: judge_flagged_raw.py
+name: flaggedraw-{model}
+time_per_run: "01:00:00"
+artifacts:
+  - outputs/eval/flagged_raw/{model}.jsonl
+sweep:
+  model:
+    - W-coop-s0-ema
+    - W-coop-s1-ema
+    - W-coop-s2-ema
+    - W-posthoc-noprobe-s0-ema
+    - W-posthoc-noprobe-s1-ema
+    - W-posthoc-noprobe-s2-ema
+    - W-posthoc-cat-s0-ema
+    - W-posthoc-cat-s1-ema
+    - W-posthoc-cat-s2-ema
+    - X-coop-qwen25-7b-s0-ema
+    - X-posthoc-noprobe-qwen25-7b-s0-ema
+    - X-posthoc-cat-qwen25-7b-s0-ema
+    - X-coop-gemma3-12b-s0-ema
+    - X-posthoc-noprobe-gemma3-12b-s0-ema
+    - X-posthoc-cat-gemma3-12b-s0-ema

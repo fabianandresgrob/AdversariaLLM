@@ -1,0 +1,8 @@
+defaults:
+  - paths
+  - _self_
+
+# judge_flagged_raw.py: StrongREJECT on the raw answers the probe flagged in attacks against the pipeline.
+model: null                # required (models.yaml entry, e.g. W-coop-s0-ema)
+cells: [replay, pair]      # outputs/<cell>__coop_probe__<model>/
+name: null                 # jobs injects the run name

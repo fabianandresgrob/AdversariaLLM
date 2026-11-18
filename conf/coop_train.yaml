@@ -70,6 +70,7 @@ data:
   val_targets: 4                    # targets per val behavior -> 64 attacked val prompts
   val_batch_size: null              # val attack/generation batch; null = harmful_batch_size (4)
   val_seed: 0
+  val_pool: null                    # behaviors csv to draw val from (null = all); the original file keeps an extended set's val identical
   # Benign split: easy = detector class + PINNED calibration.
   kl_source: ultrachat              # KL-leash dataset; any registered source (e.g. magpie) or ultrachat
   kl_max_length: null               # truncate leash examples to N tokens (magpie responses run ~90k chars)
@@ -81,6 +82,8 @@ data:
   # answer_max_tokens. null = prompt + target only (all runs before 2026-10-01).
   answer_pool: null
   answer_max_tokens: 128
+  benign_answers: dataset           # model: the probe's benign answers and the threshold's are the model's own greedy
+                                    # answers to those Alpaca prompts (generated once before training), not the dataset's
 
 training:
   model_lr: 5.0e-5
@@ -95,6 +98,7 @@ training:
   benign_gen_n: 16           # xs_test AND alpaca prompts free-generated for the refusal rates
   val_attack_gen_tokens: 96  # continuation length under the val attack (model/asr_gen)
   refit_buffer_steps: 100    # training steps of features the fresh-refit probe is fit on
+  detector_perturb_benign: false  # true: the probe also sees benign prompts with random user-message noise, as benign
   detector_refusal_negatives: false  # true: the probe also sees attacked harmful prompt + refusal, as benign
   benign_val_max_new_tokens: 32
 

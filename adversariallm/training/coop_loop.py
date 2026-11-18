@@ -633,7 +633,7 @@ def run_coop_training(cfg):
 
     # attack (Stage B: model-only; Stage C: also detector-aware via attack.use_detector) or None (Stage A)
     # benign-perturbation radius: per token, like the attack's (eps x mean embedding norm)
-    emb_norm = model.get_input_embeddings().weight.norm(dim=-1).mean().item()
+    emb_norm = input_embedding_matrix(model).norm(dim=-1).mean().item()  # Gemma: scaled, as the attack sees it
     device_hp["benign_radius"] = float(cfg.attack.eps) * emb_norm
 
     attack = None

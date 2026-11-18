@@ -13,7 +13,6 @@ apply the incremental-backward pattern from loop.py:train_step).
 from __future__ import annotations
 
 import contextlib
-import csv
 import json
 import logging
 import os
@@ -72,32 +71,16 @@ def _hidden_and_logits(model, layer, *, inputs_embeds=None, input_ids=None, atte
     return out.hidden_states[layer], out.logits
 
 
-def _replay_loss(reader, replay, device):
-    """Detector CE on buffered readout features from recent steps (harmful=0, benign=1): each update
-    then sees a few hundred attacked prompts instead of this step's 4. A probe fit on the same buffer
-    beats the co-trained one by ~10 points of recall -- it lacks data per update, not updates."""
-    r_h, r_b = replay
-    feats = torch.cat([r_h, r_b]).to(device=device, dtype=reader.linear.weight.dtype)
-    labels = torch.cat([torch.zeros(len(r_h)), torch.ones(len(r_b))]).long().to(device)
-    return detector_ce(reader.linear(feats), labels)
-
-
 def _detector_step(model, reader, opt_det, layer, adv_embeds, adv_batch, easy_batch, device, feature_sink=None,
-                   replay=None, perturb_radius=None, refusal_negatives=False, extra_batches=()):
+                   refusal_negatives=False):
     """One detector update: model frozen, reader trainable. Mixed batch — attacked harmful
     (label 0) plus easy benign (label 1). Diverse benign is what stops the OOD over-firing.
     Model forwards under no_grad so only the reader trains. Label convention: harmful=0, benign=1.
 
     feature_sink: optional dict {"harmful": list, "benign": list}; the step appends its readout
     features (detached) so validation can fit a fresh probe on many recent training examples.
-    replay: optional (harmful, benign) buffered features; adds _replay_loss with equal weight.
     refusal_negatives: also add the attacked harmful prompt + its refusal y_safe, labelled benign (an answer
-    probe must separate complying from refusing, not harmful requests from benign ones).
-    perturb_radius: also add the benign batch with random noise of this norm on its user message, labelled
-    benign. The harmful class is always perturbed (attacked) and the benign class never is, so without these
-    the probe can separate the classes by "perturbed or not" instead of "harmful or not".
-    extra_batches: (benign-format batch, label) pairs of clean, completion-labelled examples (data.probe_extra),
-    in the same CE as the rest."""
+    probe must separate complying from refusing, not harmful requests from benign ones)."""
     opt_det.zero_grad(set_to_none=True)
     logits_parts, labels_parts = [], []
 
@@ -126,27 +109,10 @@ def _detector_step(model, reader, opt_det, layer, adv_embeds, adv_batch, easy_ba
             feature_sink["benign"].append(reader.readout(b_hidden, easy_batch["d_targetids"], easy_batch["d_attn"]).detach())
         logits_parts.append(logits_b)
         labels_parts.append(torch.ones(logits_b.size(0), dtype=torch.long, device=device))  # benign = 1
-        if perturb_radius is not None:
-            with torch.no_grad():
-                emb = _perturb_user(model.get_input_embeddings()(easy_batch["d_ids"]), easy_batch["d_perturb_mask"],
-                                    perturb_radius)
-                p_hidden, _ = _hidden_and_logits(model, layer, inputs_embeds=emb, attention_mask=easy_batch["d_attn"])
-            logits_p = reader.logits(p_hidden, easy_batch["d_targetids"], easy_batch["d_attn"])
-            logits_parts.append(logits_p)
-            labels_parts.append(torch.ones(logits_p.size(0), dtype=torch.long, device=device))  # still benign
-
-    for batch, label in extra_batches:
-        with torch.no_grad():
-            e_hidden, _ = _hidden_and_logits(model, layer, input_ids=batch["d_ids"], attention_mask=batch["d_attn"])
-        logits_e = reader.logits(e_hidden, batch["d_targetids"], batch["d_attn"])
-        logits_parts.append(logits_e)
-        labels_parts.append(torch.full((logits_e.size(0),), label, dtype=torch.long, device=device))
 
     logits = torch.cat(logits_parts, dim=0)
     labels = torch.cat(labels_parts, dim=0)
     loss = detector_ce(logits, labels)
-    if replay is not None:
-        loss = loss + _replay_loss(reader, replay, device)
     loss.backward()
     opt_det.step()
     return loss.item()
@@ -163,7 +129,7 @@ def _answer_head_mask(labels, attn, n_tokens):
 def _head_kl(model_logits, ref_logits, head):
     """KL(model || ref) averaged over the positions in `head` (B, T) only. Selects those rows before
     the softmax: a full-width log-softmax over a 128k vocabulary for ~1000 positions per example is
-    what the head terms must not pay for a mask that keeps at most kl_head_tokens of them."""
+    what the head term must not pay for a mask that keeps at most kl_head_tokens of them."""
     if not head.any():
         return model_logits.sum() * 0.0
     return utility_kl(model_logits[head].unsqueeze(0), ref_logits[head].unsqueeze(0))
@@ -177,12 +143,12 @@ def _perturb_user(emb, mask, radius):
 
 
 def _benign_perturb_kl(model, ref, easy_batch, hp, weight=1.0):
-    """weight x KL(model(x + d) || ref(x)) on the first kl_head_tokens answer tokens of benign examples, with d a random
-    perturbation of norm hp["benign_radius"] on each user-message token; backpropagated here, returns the KL. Runs only
-    up to the last head position. Called first in the model step, so its graph is freed before the rest of the step is
-    built (the step holds several graphs at once). hp["utility_chunk"] runs it a few examples at a time, each part
+    """weight x KL(model(x + d) || ref(x)) on the first hp["kl_head_tokens"] answer tokens of benign examples, with d a
+    random perturbation of norm hp["benign_radius"] on each user-message token; backpropagated here, returns the KL. Runs
+    only up to the last head position. Called first in the model step, so its graph is freed before the rest of the step
+    is built (the step holds several graphs at once). hp["utility_chunk"] runs it a few examples at a time, each part
     divided by the whole batch's head positions, so the parts sum to the batch's KL (less memory, e.g. Gemma)."""
-    head = _answer_head_mask(easy_batch["labels"], easy_batch["attn"], int(hp.get("kl_head_tokens", 32)))
+    head = _answer_head_mask(easy_batch["labels"], easy_batch["attn"], hp["kl_head_tokens"])
     cols = head.any(dim=0).nonzero()
     width = int(cols.max()) + 2 if cols.numel() else 2
     n_head = head[:, : width - 1].sum().clamp_min(1)
@@ -214,14 +180,12 @@ def _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch,
         harmful      : lambda_beh * [eps+(1-eps)*w_D] * CE(y_safe)
                      + lambda_rep * [delta+(1-delta)*w_M] * detector_ce(reader(h), harmful=0)
         easy benign  : lambda_kl * KL(model||ref)                   (every attended token)
-                     + lambda_kl_head * KL(model||ref)              (first kl_head_tokens answer
-                                                                     tokens only; off by default)
-                     + lambda_benign_perturb * KL(model(x+d)||ref(x))  (same head tokens, with
-                       a random perturbation d of norm benign_radius on the user message: a
-                       perturbed prompt must not mean "refuse"; off by default)
+                     + lambda_benign_perturb * KL(model(x+d)||ref(x))  (first kl_head_tokens answer
+                       tokens only, with a random perturbation d of norm benign_radius on the user
+                       message: a perturbed prompt must not mean "refuse"; off by default)
 
     The full KL averages over up to ~1000 tokens, so the answer's first tokens -- where refusing
-    is decided -- barely register in it; the two head terms weight exactly those.
+    is decided -- barely register in it; the perturbation term weights exactly those.
 
     No away term. Gates are stop-gradient. During warmup (`warming`): rep term off and the
     harmful behavior gate is forced to eps=1 (w_D is meaningless while a cold probe warms)."""
@@ -265,8 +229,6 @@ def _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch,
     total = torch.zeros((), device=device)
     chunk = int(hp.get("utility_chunk") or 0)
     if easy_batch is not None and chunk:  # the KL a few examples at a time: same gradient, less memory (e.g. Gemma)
-        if hp.get("lambda_kl_head", 0.0) > 0:
-            raise ValueError("data.utility_chunk does not support lambda_kl_head")
         logs["kl"] = backward_utility_kl(model, ref, easy_batch["input_ids"], easy_batch["attn"], hp["lambda_kl"], chunk)
         logs["total"] += hp["lambda_kl"] * logs["kl"]
         easy_batch = None  # done: skip the whole-batch KL below
@@ -277,13 +239,6 @@ def _model_step(model, reader, ref, opt_model, layer, adv_embeds, adv_batch,
         kl = utility_kl(u_logits, r_logits, attention_mask=easy_batch["attn"])
         total = total + hp["lambda_kl"] * kl
         logs["kl"] = kl.item()
-
-        lam_head = hp.get("lambda_kl_head", 0.0)
-        if lam_head > 0:
-            head = _answer_head_mask(easy_batch["labels"], easy_batch["attn"], int(hp.get("kl_head_tokens", 32)))
-            kl_head = _head_kl(u_logits[:, :-1], r_logits[:, :-1], head)
-            total = total + lam_head * kl_head
-            logs["kl_head"] = kl_head.item()
 
     if total.requires_grad:
         total.backward()
@@ -472,20 +427,6 @@ def _score_answers(model, reader, layer, prefixes, texts, tokenizer, max_tokens=
     return scores
 
 
-def _own_answers(model, tokenizer, prompts, max_new_tokens, batch_size=32):
-    """(prompt, the model's greedy answer) pairs, generated once before training (LoRA still at zero, so these
-    are the base model's answers)."""
-    from .generation import generate_responses
-
-    was_training = model.training
-    model.eval()
-    answers = generate_responses(model, tokenizer, prompts, max_new_tokens, batch_size)
-    if was_training:
-        model.train()
-    log.info(f"generated {len(answers)} benign answers with the model")
-    return list(zip(prompts, answers))
-
-
 def _adv_embeds(attack, model, adv_batch, reader=None, use_detector=False):
     """Stage B: perturbed embeddings from the continuous attack. Stage A (attack is None):
     clean prompt embeddings, so the whole machine runs with no attack cost. Stage C
@@ -588,22 +529,20 @@ def run_coop_training(cfg):
         collate_benign,
         collate_util,
         generation_prefix,
-        drop_longer_than,
         load_answer_pool,
         load_dataset_prompts,
-        load_labelled_completions,
         split_adv_stream,
     )
     from .reference import LoRADisableReference
 
     container = OmegaConf.to_container(cfg, resolve=True)
     device_hp = {k: container[k] for k in (
-        "tau", "tau_b", "epsilon", "delta",
+        "tau", "epsilon", "delta",
         "lambda_beh", "lambda_rep", "lambda_kl",
     )}
-    # optional benign terms (absent from older configs -> off)
-    device_hp.update({k: float(container.get(k) or 0.0) for k in ("lambda_kl_head", "lambda_benign_perturb")})
-    device_hp["kl_head_tokens"] = int(container.get("kl_head_tokens") or 32)
+    # optional benign term (absent from older configs -> off)
+    device_hp["lambda_benign_perturb"] = float(container.get("lambda_benign_perturb") or 0.0)
+    device_hp["kl_head_tokens"] = int(container["kl_head_tokens"])
     device_hp["utility_chunk"] = int(cfg.data.get("utility_chunk") or 0)  # 0 = the whole utility batch at once
 
     model_params = cfg.models[cfg.model]
@@ -646,12 +585,8 @@ def run_coop_training(cfg):
         window=cfg.splits[cfg.data.kl_source].train, max_length=cfg.data.kl_max_length, seed=cfg.data.val_seed,
     )
 
-    val_pool = None
-    if cfg.data.get("val_pool"):  # hold out the same behaviors as with the original file (see split_adv_stream)
-        with open(os.path.join(cfg.data.dir, cfg.data.val_pool), newline="") as fh:
-            val_pool = {r["Behavior"] for r in csv.DictReader(fh)}
     adv_train_ds, adv_val_ds = split_adv_stream(adv_ds, val_size=cfg.data.val_size, seed=cfg.data.val_seed,
-                                                val_targets=int(cfg.data.get("val_targets", 1)), val_pool=val_pool)
+                                                val_targets=int(cfg.data.get("val_targets", 1)))
     adv_loader = DataLoader(adv_train_ds, batch_size=cfg.data.harmful_batch_size, shuffle=True, collate_fn=collate_adv)
     util_loader = DataLoader(util_ds, batch_size=cfg.data.utility_batch_size, shuffle=True, collate_fn=collate_util)
 
@@ -660,27 +595,11 @@ def run_coop_training(cfg):
     for name in cfg.data.easy_benign_sources:
         ps, rs = load_dataset_prompts(cfg.datasets, name, window=cfg.splits[name].train, seed=cfg.data.val_seed)
         easy_rows += list(zip(ps, rs))
-    own_answers = cfg.data.get("benign_answers", "dataset") == "model"
-    if own_answers:  # the model's own greedy answers instead of the dataset's (Libon et al.'s negatives)
-        easy_rows = _own_answers(model, tokenizer, [p for p, _ in easy_rows], int(cfg.data.get("answer_max_tokens", 128)))
-    easy_benign_iter = None  # easy_benign_sources: [] -> the probe sees no easy benign class (e.g. probe_extra instead)
-    if easy_rows:
-        easy_benign_ds = BenignStream(easy_rows, tokenizer, template_id)
-        easy_benign_iter = _cycle(DataLoader(
-            easy_benign_ds, batch_size=cfg.data.harmful_batch_size, shuffle=True, collate_fn=collate_benign
-        ))
-
-    # extra probe data: clean, completion-labelled (prompt, answer) pairs, per_class of each class per probe update
-    extra_iters = []
-    extra = container["data"].get("probe_extra") or {}
-    if extra.get("dataset"):
-        harmful_rows, harmless_rows = load_labelled_completions(extra)
-        for rows, label in ((harmful_rows, 0), (harmless_rows, 1)):  # harmful = 0, benign = 1
-            rows = drop_longer_than(rows, tokenizer, int(extra["max_tokens"]))
-            extra_iters.append((_cycle(DataLoader(BenignStream(rows, tokenizer, template_id),
-                                                  batch_size=int(extra["per_class"]), shuffle=True,
-                                                  collate_fn=collate_benign)), label))
-            log.info(f"probe_extra {extra['dataset']}: {len(rows)} {'harmful' if label == 0 else 'harmless'} rows")
+    easy_benign_ds = BenignStream(easy_rows, tokenizer, template_id)
+    easy_benign_loader = DataLoader(
+        easy_benign_ds, batch_size=cfg.data.harmful_batch_size, shuffle=True, collate_fn=collate_benign
+    )
+    easy_benign_iter = _cycle(easy_benign_loader)
 
     # held-out validation: clean harmful (from the split)
     harmful_val_batches = [
@@ -692,8 +611,6 @@ def run_coop_training(cfg):
     calib_prompts, calib_resp = load_dataset_prompts(
         cfg.datasets, cfg.data.calibration_benign, window=cfg.splits[cfg.data.calibration_benign].val, seed=cfg.data.val_seed
     )
-    if own_answers:  # the threshold is then set on the same kind of answers the probe scores
-        calib_resp = [r for _, r in _own_answers(model, tokenizer, calib_prompts, int(cfg.data.get("answer_max_tokens", 128)))]
     calib_ds = BenignStream(list(zip(calib_prompts, calib_resp)), tokenizer, template_id)
     calib_benign_batches = [
         _to_device(b, device)
@@ -716,8 +633,8 @@ def run_coop_training(cfg):
 
     # attack (Stage B: model-only; Stage C: also detector-aware via attack.use_detector) or None (Stage A)
     # benign-perturbation radius: per token, like the attack's (eps x mean embedding norm)
-    emb_norm = input_embedding_matrix(model).norm(dim=-1).mean().item()
-    device_hp["benign_radius"] = float(container.get("benign_perturb_eps") or cfg.attack.eps) * emb_norm
+    emb_norm = model.get_input_embeddings().weight.norm(dim=-1).mean().item()
+    device_hp["benign_radius"] = float(cfg.attack.eps) * emb_norm
 
     attack = None
     if cfg.attack.enabled:
@@ -783,14 +700,7 @@ def run_coop_training(cfg):
         if wandb_run is not None:
             wandb_run.log(base, step=0)
 
-    # detector replay: each detector step also trains on the refit buffer (refit_buffer_steps of features); the
-    # fresh-refit recall then reads data the probe trained on and stops being an independent ceiling
-    detector_replay = bool(cfg.training.get("detector_replay", False))
-    # perturbed benign examples for the probe (same radius as the benign-perturbation term)
-    det_perturb_radius = device_hp["benign_radius"] if cfg.training.get("detector_perturb_benign", False) else None
     det_refusal_negatives = bool(cfg.training.get("detector_refusal_negatives", False))
-    if detector_replay and not hasattr(reader, "linear"):
-        raise ValueError("training.detector_replay needs a reader with a linear head over readout features")
 
     # off by default; the EMA pair is saved as ema_adapter / ema_reader.pt (+ ema_step<N>_*)
     ema_decay = cfg.training.get("ema_decay")
@@ -811,15 +721,11 @@ def run_coop_training(cfg):
         _assert_grad(model_trainable, False, "model(det phase)")
         _assert_grad(reader_params, True, "reader(det phase)")
         sink = {"harmful": [], "benign": []}
-        replay = refit_train() if detector_replay else None  # the refit buffer, before this step's features
-        replay = tuple(t.to(device) for t in replay) if replay is not None else None
         det_losses = [
             _detector_step(
                 model, reader, opt_det, layer, adv_embeds, adv_batch,
-                _to_device(next(easy_benign_iter), device) if easy_benign_iter is not None else None,
-                device, feature_sink=sink if i == 0 else None, replay=replay, perturb_radius=det_perturb_radius,
-                refusal_negatives=det_refusal_negatives,
-                extra_batches=[(_to_device(next(it), device), label) for it, label in extra_iters],
+                _to_device(next(easy_benign_iter), device),
+                device, feature_sink=sink if i == 0 else None, refusal_negatives=det_refusal_negatives,
             )
             for i in range(n_det)
         ]

@@ -74,19 +74,15 @@ def _encode(tokenizer, text):
     return tokenizer(text, add_special_tokens=False)["input_ids"]
 
 
-def split_adv_stream(dataset, val_size, seed=0, val_targets=1, val_pool=None):
+def split_adv_stream(dataset, val_size, seed=0, val_targets=1):
     """Split adversarial behaviors into disjoint (train, val) subsets.
 
     Behavior-level (not row-level): a behavior's multiple targets never straddle the
     split. Seeded, so the held-out behaviors stay fixed across runs. Val keeps the first
     `val_targets` rows (targets) per behavior, so validation cost is independent of how many
     targets a behavior has; more than one gives the val metrics more than val_size samples.
-    `val_pool` (a set of behaviors) restricts where val is drawn from: with the original behaviors as the pool,
-    an extended file holds out exactly the same behaviors as the original one, and every added behavior trains.
     """
     behaviors = list(dict.fromkeys(p for p, _, _ in dataset.rows))  # unique, first-appearance order
-    if val_pool is not None:
-        behaviors = [b for b in behaviors if b in val_pool]
     if not 0 < val_size < len(behaviors):
         raise ValueError(f"val_size must be in (0, {len(behaviors)}), got {val_size}")
     g = torch.Generator().manual_seed(seed)
@@ -172,34 +168,6 @@ def load_answer_pool(path, threshold=0.5):
             if r.get("prefill") == "target" and (r.get("p_harmful") or 0.0) > threshold:
                 out[(r["behavior"], r["target"])] = r["completion"]
     return out
-
-
-def split_by_label(records, prompt_col, completion_col, label_col, harmful="harmful", harmless="unharmful"):
-    """(harmful rows, harmless rows) of (prompt, completion) from completion-labelled records; rows with another
-    label (e.g. unlabelled) or without a prompt or completion are dropped. Both are stripped: the chat template trims
-    them, and user_token_mask must find the user message as given."""
-    out = {harmful: [], harmless: []}
-    for r in records:
-        p, c = (r.get(prompt_col) or "").strip(), (r.get(completion_col) or "").strip()
-        if r.get(label_col) in out and p and c:
-            out[r[label_col]].append((p, c))
-    return out[harmful], out[harmless]
-
-
-def load_labelled_completions(spec):
-    """split_by_label over the splits of a Hugging Face dataset. spec: dataset, config (or null), splits,
-    prompt_col, completion_col, label_col, harmful, harmless (the label values)."""
-    import datasets
-
-    records = [r for s in spec["splits"] for r in datasets.load_dataset(spec["dataset"], spec.get("config"), split=s)]
-    return split_by_label(records, spec["prompt_col"], spec["completion_col"], spec["label_col"],
-                          spec.get("harmful", "harmful"), spec.get("harmless", "unharmful"))
-
-
-def drop_longer_than(rows, tokenizer, max_tokens):
-    """The (prompt, completion) rows whose rendered conversation fits in max_tokens (long rows are dropped, not
-    cut: the probe reads the answer, which truncation would remove)."""
-    return [(p, c) for p, c in rows if len(tokenizer(render_full(tokenizer, p, c))["input_ids"]) <= max_tokens]
 
 
 class AdvTupleStream(Dataset):
@@ -370,12 +338,10 @@ class BenignStream(Dataset):
     def __getitem__(self, i):
         x, y = self.rows[i]
         ids, _, tgt, attn = build_example_full(x, y, self.tokenizer)
-        # the user message's tokens, for the probe's perturbed-benign examples (training.detector_perturb_benign)
-        user = user_token_mask(self.tokenizer, x, ids.numel())
-        return {"d_ids": ids, "d_targetids": tgt, "d_attn": attn, "d_perturb_mask": user, "prompt": x}
+        return {"d_ids": ids, "d_targetids": tgt, "d_attn": attn, "prompt": x}
 
 
 def collate_benign(batch):
-    out = pad_collate(batch, ["d_ids", "d_targetids", "d_attn", "d_perturb_mask"], pad_id=0)
+    out = pad_collate(batch, ["d_ids", "d_targetids", "d_attn"], pad_id=0)
     out["prompt"] = [b["prompt"] for b in batch]
     return out

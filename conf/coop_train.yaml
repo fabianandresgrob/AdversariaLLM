@@ -32,18 +32,16 @@ init_adapter: null
 
 # Gating / objective (design doc §3-§6). Floors default to the decoupled (1,1) control.
 tau: 1.0
-tau_b: 1.0            # unused since the w_mb validation diagnostic was removed (2026-09-24); kept for old configs
 epsilon: 0.05         # behavior-gate floor
 delta: 0.0            # rep-gate floor; LOCKED at 0 (v1 stability result)
 lambda_beh: 1.0
 lambda_rep: 1.0
 lambda_kl: 1.0
-# Optional benign terms (0 = off, the behaviour of all runs before 2026-09-24):
-lambda_kl_head: 0.0          # KL on only the first kl_head_tokens answer tokens (the refuse/answer decision)
-kl_head_tokens: 32
-lambda_benign_perturb: 0.0   # benign prompt with a random user-message perturbation must answer like the
-                             # clean prompt (KL on the same head tokens): breaks "perturbed => refuse"
-benign_perturb_eps: null     # perturbation radius as a multiple of the mean embedding norm; null = attack.eps
+# Optional benign term (0 = off, the behaviour of all runs before 2026-09-24):
+lambda_benign_perturb: 0.0   # benign prompt with a random user-message perturbation (radius attack.eps) must answer
+                             # like the clean prompt (KL on the first kl_head_tokens answer tokens): breaks
+                             # "perturbed => refuse"
+kl_head_tokens: 32           # answer tokens that KL covers: refusing or answering is decided in the first tokens
 
 # Stage A = no attack (clean prompt); Stage B = continuous embedding attack.
 attack:
@@ -72,7 +70,6 @@ data:
   val_targets: 4                    # targets per val behavior -> 64 attacked val prompts
   val_batch_size: null              # val attack/generation batch; null = harmful_batch_size (4)
   val_seed: 0
-  val_pool: null                    # behaviors csv to draw val from (null = all); the original file keeps an extended set's val identical
   # Benign split: easy = detector class + PINNED calibration.
   kl_source: ultrachat              # KL-leash dataset; any registered source (e.g. magpie) or ultrachat
   kl_max_length: null               # truncate leash examples to N tokens (magpie responses run ~90k chars)
@@ -84,22 +81,6 @@ data:
   # answer_max_tokens. null = prompt + target only (all runs before 2026-10-01).
   answer_pool: null
   answer_max_tokens: 128
-  benign_answers: dataset           # model: the probe's benign answers and the threshold's are the model's own greedy
-                                    # answers to those Alpaca prompts (generated once before training), not the dataset's
-  # Extra probe data: clean (prompt, answer) pairs labelled by the answer's harmfulness, per_class harmful + per_class
-  # harmless added to every probe update. dataset: null = off (all runs before 2026-10-22). easy_benign_sources: []
-  # then drops the Alpaca examples from the probe updates (the threshold stays on Alpaca).
-  probe_extra:
-    dataset: null                   # e.g. lenalibon/jailbreak-judge-completions
-    config: null
-    splits: []
-    prompt_col: prompt
-    completion_col: completion
-    label_col: label
-    harmful: harmful                # label values
-    harmless: unharmful
-    per_class: 2
-    max_tokens: 1024                # rows longer than this (rendered) are dropped
 
 training:
   model_lr: 5.0e-5
@@ -114,8 +95,6 @@ training:
   benign_gen_n: 16           # xs_test AND alpaca prompts free-generated for the refusal rates
   val_attack_gen_tokens: 96  # continuation length under the val attack (model/asr_gen)
   refit_buffer_steps: 100    # training steps of features the fresh-refit probe is fit on
-  detector_replay: false     # true: detector steps also train on that buffer (more attacked prompts per update)
-  detector_perturb_benign: false  # true: the probe also sees benign prompts with random user-message noise, as benign
   detector_refusal_negatives: false  # true: the probe also sees attacked harmful prompt + refusal, as benign
   benign_val_max_new_tokens: 32
 

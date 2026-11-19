@@ -6,7 +6,7 @@ defaults:
 # General-capability eval with Meta's Llama-3.1 recipe, via lm-evaluation-harness's llama3 tasks
 # (generation-based, chat template + few-shot as multiturn). Reported 8B-Instruct numbers to
 # reproduce on the base model: MMLU 5-shot 69.4, ARC-C 0-shot 83.4, GSM8K 8-shot CoT 84.5,
-# MMLU-Pro 5-shot CoT 48.3. lm_eval runs in its own venv (vLLM), not the pixi env.
+# MMLU-Pro 5-shot CoT 48.3. lm_eval runs in its own venv (vLLM), not the project env.
 model: meta-llama/Meta-Llama-3.1-8B-Instruct
 adapter_path: null        # LoRA adapter dir (coop/CAT checkpoint); null = un-adapted base model
 out: ${root_dir}/outputs/eval/utility/reference/base

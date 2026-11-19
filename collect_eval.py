@@ -1,7 +1,7 @@
 """Collect every evaluation of the coop and CAT checkpoints and the baselines into one table (+ per-config means and plots).
 
-    pixi run --frozen python collect_eval.py            # writes outputs/eval/summary/
-    pixi run --frozen python collect_eval.py --no-plots
+    uv run python collect_eval.py            # writes outputs/eval/summary/
+    uv run python collect_eval.py --no-plots
 
 One row per checkpoint (checkpoints_coop/ and checkpoints_cat/<block>/<run>/) plus reference rows
 (outputs/eval/*/reference/*):

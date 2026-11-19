@@ -16,26 +16,19 @@ cd AdversariaLLM
 
 This repository supports two setup paths:
 
-### Option A: Pixi (recommended)
+### Option A: uv (recommended)
 
-Pixi installs the environment and the local `adversariallm` package (editable) from `pyproject.toml`.
+uv installs the environment and the local `adversariallm` package (editable) from `pyproject.toml` and `uv.lock`.
 
 ```bash
-pixi install --locked
+uv sync
 ```
 
-Run commands either with `pixi run ...`:
+Run commands with `uv run ...`:
 
 ```bash
-pixi run python run_attacks.py --help
-pixi run pytest -q tests/test_attacks/test_direct.py
-```
-
-or activate the environment first:
-
-```bash
-pixi shell
-python run_attacks.py --help
+uv run python run_attacks.py --help
+uv run pytest -q tests/test_attacks/test_direct.py
 ```
 
 ### Option B: Classic pip / virtualenv / conda workflow

@@ -7,7 +7,7 @@ refusal_rate_ood` log. The only generalization: runs base + every coop checkpoin
 window (test, or 'all' since xs_test is never trained on), not just 16 val prompts of one model.
 
     cd ~/projects/AdversariaLLM
-    pixi run python run_overrefusal_eval.py \
+    uv run python run_overrefusal_eval.py \
         +checkpoints.coop_C=checkpoints_coop/coop_v2_C_targets_eps005_s0/final_adapter \
         +checkpoints.coop_D=checkpoints_coop/coop_v2_D_targets_magpie_eps005_s0/final_adapter
 

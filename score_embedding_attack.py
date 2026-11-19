@@ -1,6 +1,6 @@
 """Judge the answers of inspect_embedding_attack.py runs: is the attack actually getting harmful answers?
 
-    pixi run --frozen python score_embedding_attack.py files='[embattack6-*]' table=embattack6_metrics
+    uv run python score_embedding_attack.py files='[embattack6-*]' table=embattack6_metrics
 
 For every <name>.json in outputs/eval/embedding_attack/ matching `files`, each attacked answer (gen_attacked) is judged
 by StrongREJECT against its behavior and sorted with simple text checks:

@@ -1,7 +1,7 @@
 """Run coop training's embedding attack on a few training behaviors and write what it produces.
 
-    pixi run --frozen python inspect_embedding_attack.py model=meta-llama/Meta-Llama-3.1-8B-Instruct
-    pixi run --frozen python inspect_embedding_attack.py model=E-nd6-s0 n_behaviors=5
+    uv run python inspect_embedding_attack.py model=meta-llama/Meta-Llama-3.1-8B-Instruct
+    uv run python inspect_embedding_attack.py model=E-nd6-s0 n_behaviors=5
 
 For each behavior (from the coop training split) and each of its targets (adv_training_targets.json,
 12 per behavior) this runs the exact attack coop trains against -- ContinuousEmbeddingAttack with

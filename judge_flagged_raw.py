@@ -1,6 +1,6 @@
 """Judge the raw answers that the probe flagged in attacks against the pipeline, with StrongREJECT.
 
-    pixi run --frozen python judge_flagged_raw.py model=W-coop-s0-ema
+    uv run python judge_flagged_raw.py model=W-coop-s0-ema
 
 An attack against the pipeline replaces a flagged answer by a refusal and judges that refusal, so whether the model
 itself complied is unknown for flagged steps. This judges model_completions_raw of every flagged step (defense

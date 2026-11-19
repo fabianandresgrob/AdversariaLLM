@@ -1,7 +1,7 @@
 """Offline probe study: which training data and which layer give a probe that reads harm from the answer, rather than
 "complies with a harmful-looking request"? On one frozen model + adapter, fit linear probes offline and test them:
 
-    pixi run --frozen python offline_probe_study.py model=W-coop-s0-ema
+    uv run python offline_probe_study.py model=W-coop-s0-ema
 
 Features: hidden states at each of `layers`, mean over the first `max_answer_tokens` completion tokens, unit-normed
 (Libon et al.'s readout: completion tokens, mean). One logistic probe per (training set, layer):

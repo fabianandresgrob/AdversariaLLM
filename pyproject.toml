@@ -7,10 +7,10 @@ name = "adversariallm"
 version = "0.0.1"
 description = "Toolkit for evaluating and comparing adversarial attacks on LLMs."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.11"
 dependencies = [
     "transformers==4.57.1",
-    "torch==2.7.1+cu128",
+    "torch==2.7.1",  # Linux: the +cu128 build from the PyTorch index (tool.uv.sources)
     "peft==0.14.0",
     "lm-format-enforcer==0.10.11",
     "accelerate>=1.10,<2",
@@ -35,8 +35,9 @@ dependencies = [
     "orjson>=3.10,<4",
     "einops>=0.8,<1",
     "beartype>=0.20,<1",
-    "filelock>=3.17,<4", "wandb>=0.28.0,<0.29",
-  ]
+    "filelock>=3.17,<4",
+    "wandb>=0.28.0,<0.29",
+]
 
 [tool.setuptools]
 include-package-data = false
@@ -52,54 +53,23 @@ target-version = "py310"
 quote-style = "preserve"  # or "single" / "double"
 line-ending = "auto"      # or "lf", "crlf"
 
-[tool.pixi.workspace]
-name = "adversarial"
-channels = ["conda-forge"]
-platforms = ["linux-64"]
+[dependency-groups]
+dev = ["pytest>=8.3,<9"]
 
-[tool.pixi.environments]
-default = { solve-group = "default" }
+# Environment: uv (`uv sync`, `uv run <cmd>`). Locked for the cluster (Linux, CUDA 12.8 torch) and for
+# a Mac (CPU torch, for tests and small scripts).
+[tool.uv]
+environments = [
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",
+]
 
-[tool.pixi.pypi-options]
-index-url = "https://pypi.org/simple"
-extra-index-urls = ["https://download.pytorch.org/whl/cu128"]
-index-strategy = "unsafe-best-match"
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
 
-[tool.pixi.pypi-dependencies]
-adversariallm = { path = ".", editable = true }
-transformers = "==4.57.1"
-torch = "==2.7.1+cu128"
-peft = "==0.14.0"
-lm-format-enforcer = "==0.10.11"
-
-accelerate = ">=1.10,<2"
-datasets = ">=4.2,<5"
-huggingface-hub = ">=0.35,<1"
-safetensors = ">=0.6,<1"
-hydra-core = ">=1.3,<2"
-hydra-submitit-launcher = ">=1.2,<2"
-omegaconf = ">=2.3,<3"
-submitit = ">=1.5,<2"
-openai = ">=1.79,<2"
-litellm = "==1.25.2"
-jailbreakbench = ">=1.0,<2"
-judgezoo = ">=0.1,<1"
-numpy = ">=1.26,<2"
-pandas = ">=2.2,<3"
-matplotlib = ">=3.10,<4"
-pymongo = ">=4.12,<5"
-tqdm = ">=4.67,<5"
-pytest = ">=8.3,<9"
-python-dotenv = ">=1.0,<2"
-json5 = ">=0.12,<1"
-orjson = ">=3.10,<4"
-einops = ">=0.8,<1"
-beartype = ">=0.20,<1"
-filelock = ">=3.17,<4"
-
-[tool.pixi.tasks]
-jobs = "python -m jsc_jobs"
-
-[tool.pixi.dependencies]
-python = "==3.10.16"
-pip = ">=25,<26"
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu128", marker = "sys_platform == 'linux'" }]
+# 1.25.2 is gone from the PyPI index, the file is still served. Only jailbreakbench needs litellm.
+litellm = { url = "https://files.pythonhosted.org/packages/b8/13/407330cc5625b55b29870c14b3cbd79622d98850dc7214841aa33d807e54/litellm-1.25.2-py3-none-any.whl" }

@@ -1,6 +1,6 @@
 """Rescore an answer probe's existing attack answers with other readouts (how much it reads, how it pools).
 
-    pixi run --frozen python rescore_answer_probe.py model=U-answer-perturb-s0 \
+    uv run python rescore_answer_probe.py model=U-answer-perturb-s0 \
         xstest_gens='${root_dir}/outputs/eval/overrefusal/U/U-answer-perturb-s0-final/gens_model_xs_test.json'
 
 No new attacks: the answers of the model's undefended runs (outputs/<attack>__none__<model>/), judged by

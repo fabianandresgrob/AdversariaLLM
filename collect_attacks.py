@@ -1,7 +1,7 @@
 """Collect the transfer-attack runs into one table (+ plots).
 
-    pixi run --frozen python collect_attacks.py              # writes outputs/eval/attacks/
-    pixi run --frozen python collect_attacks.py --threshold 0.5 --no-plots
+    uv run python collect_attacks.py              # writes outputs/eval/attacks/
+    uv run python collect_attacks.py --threshold 0.5 --no-plots
 
 Reads every outputs/<attack>__<defense>__<model>/<date>/<time>/<idx>/run.json that run_judges.py has
 scored, and writes one row per (attack, defense, model):

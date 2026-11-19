@@ -5,9 +5,9 @@ using the vLLM backend with the adapter loaded as a LoRA. Adds no scoring code: 
 define prompts, few-shot, generation limits and metrics. Results and per-sample generations
 (--log_samples) land in `out`.
 
-    pixi run --frozen python run_utility_eval.py                                   # base model
-    pixi run --frozen python run_utility_eval.py adapter_path=<ckpt>/final_adapter out=<dir>
-    pixi run --frozen python run_utility_eval.py limit=20 out=/tmp/utility_smoke   # smoke test
+    uv run python run_utility_eval.py                                   # base model
+    uv run python run_utility_eval.py adapter_path=<ckpt>/final_adapter out=<dir>
+    uv run python run_utility_eval.py limit=20 out=/tmp/utility_smoke   # smoke test
 """
 
 import logging
@@ -76,7 +76,7 @@ def build_command(cfg: DictConfig, tasks=None, num_fewshot=None, out=None) -> li
 
 def lm_eval_env() -> dict[str, str]:
     """Environment for the venv's lm_eval: keep HF/W&B offline flags and CUDA binding, drop the
-    pixi env's Python path so the venv's own packages are used.
+    project env's Python path so the venv's own packages are used.
 
     VLLM_USE_FLASHINFER_SAMPLER=0: FlashInfer's sampler JIT-compiles a kernel at warmup, which needs
     nvcc (absent on compute nodes); the llama3 tasks decode greedily, so the torch sampler is equivalent.

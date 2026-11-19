@@ -9,8 +9,8 @@ following the eval layout:
     outputs/eval/{overrefusal,utility}/reference/base/         same evals on the un-adapted base model
 
 Usage (from the repo root, after training):
-    pixi run --frozen python gen_eval_experiments.py checkpoints_coop/*/* checkpoints_cat/*/*
-    pixi run --frozen python gen_eval_experiments.py checkpoints_coop/*/* \\
+    uv run python gen_eval_experiments.py checkpoints_coop/*/* checkpoints_cat/*/*
+    uv run python gen_eval_experiments.py checkpoints_coop/*/* \\
         --cross-attack 'A-eps-sweep:A-eps0.05-*' E-adaptive
     pixi run --frozen jobs submit eval-calib-A-eps-sweep --dry-run
 

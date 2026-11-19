@@ -1,6 +1,6 @@
 """Score saved attack answers with a second judge, next to StrongREJECT and the probe.
 
-    pixi run --frozen python rejudge_answers.py model=V-varied-s0-ema1000 judge=harmbench
+    uv run python rejudge_answers.py model=V-varied-s0-ema1000 judge=harmbench
 
 Reads outputs/eval/answer_probe_rescore/<model>_answers.jsonl (rescore_answer_probe.py with save_answer_scores) and
 judges every answer against its original behavior. StrongREJECT scores how harmful an answer is; the HarmBench

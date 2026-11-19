@@ -1,7 +1,7 @@
 """Re-read monitor, offline: the probe scores the generated answer behind a fixed neutral prompt instead of the user's
 prompt, so a disguising prompt (PAIR's role play) no longer shapes what the probe reads. Per model + probe:
 
-    pixi run --frozen python reread_monitor_eval.py model=W-coop-s0-ema
+    uv run python reread_monitor_eval.py model=W-coop-s0-ema
 
 1. Calibration, as run_calibrate_probe.py: the model answers the 2000 Alpaca calibration prompts (greedy, up to
    `max_new_tokens`). Every answer is scored twice through the pipeline's own monitor (LinearProbeMonitor.score, the

@@ -1,7 +1,7 @@
 """Does a probe read harm from the answer, or from the prompt in front of it? Score one fixed set of answers with a
 model + its probe under different prompts, changing only the prompt:
 
-    pixi run --frozen python probe_prompt_conditions.py model=W-coop-s0-ema
+    uv run python probe_prompt_conditions.py model=W-coop-s0-ema
 
 Conditions (each row of `answers`, a jsonl with behavior, answer, optional pair_prompt, source):
   pair               PAIR's own (role-play) prompt + the answer; rows without a pair_prompt skip it

@@ -6,8 +6,8 @@ Models are named by their conf/models/models.yaml entry (gen_coop_models.py writ
 checkpoints; CAT entries are hand-written), and results land in the run's own hydra output dir,
 tracked by the file DB the run_attacks.py profile already configures.
 
-    pixi run --frozen python gen_attack_experiments.py --attacks gcg inpainting --dry-run
-    pixi run --frozen python gen_attack_experiments.py --attacks gcg --shards 4
+    uv run python gen_attack_experiments.py --attacks gcg inpainting --dry-run
+    uv run python gen_attack_experiments.py --attacks gcg --shards 4
     pixi run --frozen jobs submit attack-gcg-shard0 --dry-run
 
 Defaults attack the eight-model selection from round 2. `--defense coop_probe` runs the attack

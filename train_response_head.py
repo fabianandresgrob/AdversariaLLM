@@ -1,7 +1,7 @@
 """Fit a DualProbe's response channel offline on a model's own attack completions.
 
-    pixi run --frozen python train_response_head.py model=E-nd6-s0 name=RH-E-nd6-all
-    pixi run --frozen python train_response_head.py model=E-nd6-s0 name=RH-E-nd6-nopair \
+    uv run python train_response_head.py model=E-nd6-s0 name=RH-E-nd6-all
+    uv run python train_response_head.py model=E-nd6-s0 name=RH-E-nd6-nopair \
         'train_attacks=[inpainting,gcg]'
 
 The coop probe's harmful class is an attacked prompt followed by a hand-written target ("Sure,

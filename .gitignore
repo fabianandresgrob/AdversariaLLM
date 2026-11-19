@@ -19,3 +19,5 @@ slurm_logs/
 wandb_logs/
 checkpoints_probe/
 checkpoints_baselines/
+.venv/
+*.egg-info/

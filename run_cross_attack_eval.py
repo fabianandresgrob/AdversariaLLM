@@ -10,7 +10,7 @@ eliciting harm and evading the detector. Running the SAME checkpoint under a pla
 attack (eval_use_detector: false) separates the two.
 
     cd ~/projects/AdversariaLLM
-    pixi run python run_cross_attack_eval.py \
+    uv run python run_cross_attack_eval.py \
         +checkpoints.eps005_s0.adapter=checkpoints_coop/coop-magpie-eps005-s0/final_adapter \
         +checkpoints.eps005_det6.adapter=checkpoints_coop/coop-magpie-eps005-detaware-ndet6-s0/final_adapter
 

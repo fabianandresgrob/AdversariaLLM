@@ -1,6 +1,6 @@
 """Build the answer-channel pool: judged completions for the coop training behaviors.
 
-    pixi run --frozen python build_answer_pool.py generator=heretic-llama31-8b name=pool-heretic
+    uv run python build_answer_pool.py generator=heretic-llama31-8b name=pool-heretic
 
 The DualProbe's answer channel needs real harmful answers to train on (the coop target stubs taught
 it the stub, not harm). This generates them with an uncensored generator and labels them with the

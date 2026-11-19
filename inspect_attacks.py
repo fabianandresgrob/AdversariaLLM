@@ -1,7 +1,7 @@
 """Show the completions an attack cell counted as successful, so they can be read by hand.
 
-    pixi run --frozen python inspect_attacks.py --attack inpainting --model M-respmean-s0
-    pixi run --frozen python inspect_attacks.py --attack inpainting --defense coop_probe \
+    uv run python inspect_attacks.py --attack inpainting --model M-respmean-s0
+    uv run python inspect_attacks.py --attack inpainting --defense coop_probe \
         --model M-respmean-s0 --limit 10 --out hits.md
 
 Every line collect_attacks.py counts as a jailbreak is one scored completion above the threshold.

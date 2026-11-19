@@ -1,6 +1,6 @@
 """Score a coop probe on the four things it could be asked about, to locate where it fails.
 
-    pixi run --frozen python probe_diagnose.py model=M-respmean-s0 hits=hits.json
+    uv run python probe_diagnose.py model=M-respmean-s0 hits=hits.json
 
 The probe is trained on ONE kind of harmful example: an attacked prompt followed by the
 teacher-forced target from adv_training_targets.json ("Sure, here is an email that ..."), against

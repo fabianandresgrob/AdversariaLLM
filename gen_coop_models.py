@@ -2,8 +2,8 @@
 defense=coop_probe pick them up by name (model=<run name>).
 
 Usage (from the repo root, after training):
-    pixi run --frozen python gen_coop_models.py checkpoints_coop/*/*
-    pixi run --frozen python gen_coop_models.py checkpoints_coop/A-eps-sweep/* --dry-run
+    uv run python gen_coop_models.py checkpoints_coop/*/*
+    uv run python gen_coop_models.py checkpoints_coop/A-eps-sweep/* --dry-run
 
 A directory counts as a checkpoint when it holds final_adapter/, final_reader.pt and
 run_config.json. Each becomes one entry named after the run, with dots replaced by "p"

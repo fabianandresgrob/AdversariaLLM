@@ -1,0 +1,28 @@
+# MPI-IS HTCondor cluster, read by condor_jobs.py. Code and run records live on /home (backed up, POSIX locks
+# work), checkpoints, outputs and the Hugging Face cache on /fast (12 TB, no backup, no file locks).
+repo: /home/fgrob/Projects/coop-detect/AdversariaLLM   # the checkout jobs take their code and .venv from
+jobs_root: /home/fgrob/coop-detect/runs                # <exp>/<run>/attempts/<n>/ (run.json, logs, hydra, wandb)
+db_root: /home/fgrob/coop-detect/runs_db               # ADVLLM_DB for profiles with uses_db (needs locks: not /fast)
+home: /home/fgrob                                      # jobs start without $HOME
+# symlinks of the checkout into /fast, recreated in every frozen copy of the code
+links: [checkpoints_cat, checkpoints_coop, checkpoints_probe, outputs, wandb_logs]
+env:                                                   # set in every run before the entrypoint is imported
+  HF_HOME: /fast/fgrob/huggingface
+  HF_HUB_OFFLINE: "1"                                  # download before submitting; jobs only see a slow proxy
+  HF_DATASETS_OFFLINE: "1"
+  TRANSFORMERS_OFFLINE: "1"
+  WANDB_MODE: offline
+  SOFTFILELOCK: "1"
+resources:                                             # per job; 8 cores + 64 GB + 1 GPU = 32 computing units
+  cpus: 8
+  memory_gb: 64
+  gpus: 1
+  disk_gb: 50
+default_time_per_run: "04:00:00"                       # when an experiment sets no time_per_run
+gpus:                                                  # --gpu name -> CUDADeviceName, minimum bid (condor_nodes, 2026-11-19)
+  a100-40: {device: NVIDIA A100-SXM4-40GB, min_bid: 15}
+  a100-80: {device: NVIDIA A100-SXM4-80GB, min_bid: 25}
+  h100: {device: NVIDIA H100 80GB HBM3, min_bid: 35}
+  h100-4: {device: NVIDIA H100, min_bid: 35}
+  b200: {device: NVIDIA B200, min_bid: 55}
+default_gpu: a100-80

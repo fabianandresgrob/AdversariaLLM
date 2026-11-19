@@ -1,4 +1,4 @@
-# jsc-jobs launch profiles: what the manager injects per entrypoint.
+# Launch profiles: what condor_jobs.py adds to each entrypoint's arguments (adversariallm/jobs/spec.py: Profile).
 # config_name must match the script's @hydra.main config (checked by tests/test_jobs_config.py).
 run_coop_train.py:
   config_name: coop_train
@@ -14,7 +14,7 @@ run_attacks.py:
   config_name: config
   uses_db: true
   extra_overrides:
-    attacks.inpainting.custom_data_path: $MYPROJECT/data/inpainting_attack.csv
+    attacks.inpainting.custom_data_path: ${root_dir}/data/inpainting_attack.csv  # not in the repo: copy it there for inpainting
   rerun_overrides:
     overwrite: true
 run_judges.py:

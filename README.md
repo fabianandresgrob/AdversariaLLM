@@ -231,6 +231,24 @@ outputs/
 ### Visualization & Evaluation (WIP)
 Generate plots and analysis with `visualize_results.ipynb` in `evaluations/`
 
+## Running on the MPI-IS cluster (HTCondor)
+
+`condor_jobs.py` turns an experiment file (`experiments/<name>.yaml`: entrypoint, name template, overrides,
+sweep) into one HTCondor job per run, all in one submission. Paths, environment and default resources are in
+`conf/jobs/mpi.yaml`, the arguments added per script in `conf/jobs/profiles.yaml`.
+
+```bash
+uv run python condor_jobs.py submit coop-W-coop --bid 25             # dry run: runs, cost, submit file
+uv run python condor_jobs.py submit coop-W-coop --bid 25 --submit    # on a login node, with committed code
+uv run python condor_jobs.py status -v
+```
+
+Every submission is an attempt under `<jobs_root>/<exp>/<run>/attempts/<n>/` with `run.json` (command, commit,
+condor job id, each start and its exit code) and the condor logs of each start. Jobs run from a frozen copy of
+the committed code, so a restarted job runs what was submitted. Each job has a price limit (`--max-price`,
+default twice the bid) and a runtime limit per start (`--max-hours`, default twice `time_per_run`). A run that
+exits with code 3 is put back in the queue and starts at a fresh price, for runs that resume from a checkpoint.
+
 
 ## Used in
 [1] Beyer, Tim, et al. ["Fast Proxies for LLM Robustness Evaluation."](https://arxiv.org/abs/2502.10487) arXiv preprint arXiv:2502.10487 (2025).\

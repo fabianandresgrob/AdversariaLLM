@@ -20,11 +20,11 @@ from .data_analysis import get_nested_value, normalize_value_for_grouping
 def get_mongodb_connection() -> Database:
     """Get a MongoDB connection.
 
-    With ADVLLM_DB=file:<dir> (JSC clusters: no network on compute nodes) returns jsc-jobs' file-backed
+    With ADVLLM_DB=file:<dir> (compute nodes without a MongoDB) returns the file-backed
     stand-in with the same `runs` collection API. Otherwise connects to MongoDB using environment variables.
     """
     if os.environ.get("ADVLLM_DB", "").startswith("file:"):
-        from jsc_jobs.filedb import FileDatabase, db_root_from_env
+        from .filedb import FileDatabase, db_root_from_env
 
         return FileDatabase(db_root_from_env())
     user = os.environ.get("MONGODB_USER")

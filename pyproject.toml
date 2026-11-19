@@ -54,7 +54,10 @@ quote-style = "preserve"  # or "single" / "double"
 line-ending = "auto"      # or "lf", "crlf"
 
 [dependency-groups]
-dev = ["pytest>=8.3,<9"]
+dev = [
+    "pytest>=8.3,<9",
+    "ruff>=0.17.6",
+]
 
 # Environment: uv (`uv sync`, `uv run <cmd>`). Locked for the cluster (Linux, CUDA 12.8 torch) and for
 # a Mac (CPU torch, for tests and small scripts).

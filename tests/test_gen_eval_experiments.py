@@ -2,11 +2,10 @@ import json
 
 import pytest
 
-pytest.importorskip("jsc_jobs")
 pytest.importorskip("hydra")
 
 from hydra import compose, initialize_config_dir  # noqa: E402
-from jsc_jobs.spec import expand, format_overrides, load_experiment  # noqa: E402
+from adversariallm.jobs.spec import expand, format_overrides, load_experiment  # noqa: E402
 
 from gen_eval_experiments import main  # noqa: E402
 from gen_coop_models import REPO  # noqa: E402

@@ -1,4 +1,4 @@
-"""Write jsc-jobs experiment files that evaluate finished checkpoints, one file per (eval type, block),
+"""Write experiment files (condor_jobs.py) that evaluate finished checkpoints, one file per (eval type, block),
 following the eval layout:
 
     checkpoints_coop/<block>/<run>/threshold_1pct_calib.json  calibration on alpaca[700:2700] (next to the probe, where
@@ -12,7 +12,7 @@ Usage (from the repo root, after training):
     uv run python gen_eval_experiments.py checkpoints_coop/*/* checkpoints_cat/*/*
     uv run python gen_eval_experiments.py checkpoints_coop/*/* \\
         --cross-attack 'A-eps-sweep:A-eps0.05-*' E-adaptive
-    pixi run --frozen jobs submit eval-calib-A-eps-sweep --dry-run
+    uv run python condor_jobs.py submit eval-calib-A-eps-sweep --bid 25
 
 Coop checkpoints (checkpoints_coop/, final_adapter + final_reader.pt + run_config.json) get calibration,
 over-refusal and utility. CAT checkpoints (checkpoints_cat/, final_adapter only -- no probe) get over-refusal

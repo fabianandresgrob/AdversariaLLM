@@ -1,4 +1,4 @@
-"""Write jsc-jobs experiment files for the transfer attacks on a chosen set of checkpoints.
+"""Write experiment files (condor_jobs.py) for the transfer attacks on a chosen set of checkpoints.
 
 One file per (attack, shard): each run attacks a slice of the behavior set with one model, so a
 100-behavior GCG run (~7 min/behavior) splits across GPUs instead of occupying one for 12 hours.
@@ -8,7 +8,7 @@ tracked by the file DB the run_attacks.py profile already configures.
 
     uv run python gen_attack_experiments.py --attacks gcg inpainting --dry-run
     uv run python gen_attack_experiments.py --attacks gcg --shards 4
-    pixi run --frozen jobs submit attack-gcg-shard0 --dry-run
+    uv run python condor_jobs.py submit attack-gcg-shard0 --bid 25
 
 Defaults attack the eight-model selection from round 2. `--defense coop_probe` runs the attack
 against the full pipeline instead of the raw model; GCG is meant to be run undefended and then

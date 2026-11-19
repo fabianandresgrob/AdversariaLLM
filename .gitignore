@@ -1,4 +1,4 @@
-outputs/
+/outputs
 *.pyc
 __pycache__
 multirun/
@@ -12,12 +12,13 @@ cache
 viz
 wandb
 embeddings/
-checkpoints_coop/
+/checkpoints_coop
+/checkpoints_cat
 checkpoints/
 .DS_Store
 slurm_logs/
-wandb_logs/
-checkpoints_probe/
+/wandb_logs
+/checkpoints_probe
 checkpoints_baselines/
 .venv/
 *.egg-info/

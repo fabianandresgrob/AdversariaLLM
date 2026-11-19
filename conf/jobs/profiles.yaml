@@ -70,3 +70,7 @@ run_generate_benign_targets.py:
 judge_flagged_raw.py:
   config_name: judge_flagged_raw
   name_key: name
+adversariallm.jobs.smoke:      # test job for condor_jobs.py, no Hydra
+  name_key: name
+  hydra_dir: false
+  uses_db: true

@@ -1,0 +1,9 @@
+# Test job for condor_jobs.py on the MPI cluster (adversariallm/jobs/smoke.py): no model, about a minute on one core.
+# smoke-r1 exits with 3 on its first start, so it also tests the hold and release of the submit file.
+entrypoint: adversariallm.jobs.smoke
+name: smoke-r{restart}
+time_per_run: "00:10:00"
+sweep:
+  restart: [0, 1]
+artifacts:
+  - outputs/smoke/{name}.txt

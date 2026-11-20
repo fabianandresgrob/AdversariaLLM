@@ -195,19 +195,36 @@ def condor_queue() -> dict[str, tuple[str, str]] | None:
     return jobs
 
 
-def run_status(record: dict, queue: dict | None) -> tuple[str, str]:
-    """(status, detail) of an attempt from its run.json and, if available, the condor queue."""
+QUEUE_LAG_S = 300  # condor_q reads a per-user cache of job ads that is refreshed about once a minute
+
+
+def since_last_event(record: dict, now: datetime | None = None) -> float:
+    """Seconds since the attempt was submitted or its latest start began or ended."""
+    stamps = [record.get("submitted_at")]
+    for start in record.get("starts") or []:
+        stamps += [start.get("started_at"), start.get("ended_at")]
+    stamps = [datetime.fromisoformat(s) for s in stamps if s]
+    if not stamps:
+        return float("inf")
+    return ((now or datetime.now(timezone.utc)) - max(stamps)).total_seconds()
+
+
+def run_status(record: dict, queue: dict | None, now: datetime | None = None) -> tuple[str, str]:
+    """(status, detail) of an attempt from its run.json and, if available, the condor queue. An attempt that is
+    not in the queue within QUEUE_LAG_S of its last event counts as submitted: condor_q may not show it yet."""
     in_queue = queue.get(record.get("condor_job")) if queue is not None else None
     if in_queue and in_queue[0] in ("held", "idle", "running"):
         state, reason = in_queue
         if state == "idle" and record.get("starts"):
             return "requeued", f"start {len(record['starts'])} ended with {record.get('exit_code')}"
         return state, reason
+    if not record.get("condor_job"):
+        return "not submitted", ""
+    if queue is None and "exit_code" not in record:
+        return "submitted", "condor_q not available"
+    if record.get("exit_code") in (None, CHECKPOINT_EXIT_CODE) and since_last_event(record, now) < QUEUE_LAG_S:
+        return "submitted", "not in condor_q yet (its cache lags about a minute)"
     if "exit_code" not in record:
-        if not record.get("condor_job"):
-            return "not submitted", ""
-        if queue is None:
-            return "submitted", "condor_q not available"
         return ("lost", "left the queue without an exit code") if record.get("starts") else \
             ("removed", "left the queue before starting")
     if record["exit_code"] == 0:

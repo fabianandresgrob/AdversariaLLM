@@ -92,6 +92,19 @@ def test_run_status(record, queue, expected):
     assert run_status(record, queue)[0] == expected
 
 
+def test_run_status_waits_for_the_condor_q_cache():
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime(2026, 11, 20, 18, 5, tzinfo=timezone.utc)
+    ago = lambda s: (now - timedelta(seconds=s)).isoformat()
+    started = {"condor_job": "7.0", "submitted_at": ago(90), "starts": [{"started_at": ago(60)}]}
+    assert run_status(started, {}, now)[0] == "submitted"            # just started, not in the cached queue yet
+    assert run_status({**started, "starts": [{"started_at": ago(600)}], "submitted_at": ago(700)}, {}, now)[0] == "lost"
+    requeued = {"condor_job": "7.0", "exit_code": 3, "starts": [{"started_at": ago(400), "ended_at": ago(30)}]}
+    assert run_status(requeued, {}, now)[0] == "submitted"           # exit 3, release not visible yet
+    assert run_status({**requeued, "exit_code": 0, "missing_artifacts": []}, {}, now)[0] == "done"
+
+
 def test_experiment_expands_with_profile_name_key():
     spec = load_experiment(REPO / "experiments" / "coop-W-coop.yaml")
     profile = get_profile(load_profiles(REPO), spec.entrypoint)

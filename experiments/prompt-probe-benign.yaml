@@ -1,0 +1,9 @@
+# R1.2 (context/next_steps_2026-11-10.md): EuroSafeGuard's released prompt probe on the benign sets, under their
+# template. xs_test also validates the copied loader against their released scores (paper/scores, xstest_safe).
+entrypoint: score_prompt_probe.py
+name: prompt-probe-{source}
+time_per_run: "01:00:00"
+sweep:
+  source: [xs_test, or_bench, alpaca]
+artifacts:
+  - outputs/eval/prompt_probe/eurosafeguard/{source}.0-of-1.jsonl

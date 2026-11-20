@@ -1,0 +1,151 @@
+"""EuroSafeGuard's released prompt probe on stored attack prompts and benign prompt sets (round 1, R1.2):
+
+    uv run python score_prompt_probe.py source=pair                       # every stored PAIR attempt
+    uv run python score_prompt_probe.py source=xs_test
+    uv run python score_prompt_probe.py source=gcg shard=0 num_shards=4
+
+Sources: an attack name (the user message of every attempt in outputs/<attack>__*/**/run.json; the probe reads
+the prompt only, so attempts on different systems that sent the same prompt are scored once) or a benign set
+(xs_test, or_bench, alpaca). The probe reads base Llama-3.1-8B-Instruct under their template
+(adversariallm/defenses/monitors/eurosafeguard_probe.py).
+
+Writes <out>/<source>.<shard>-of-<num_shards>.jsonl, one row per distinct prompt: sha1 of the prompt text, score (the
+probe logit), n_tokens, truncated, and for benign sets the dataset label. Rows are appended and flushed after every
+batch, and a restart skips the prompts already in the file. The analysis joins the scores back to the attempts by
+sha1(prompt text).
+"""
+
+import glob
+import hashlib
+import json
+import logging
+import os
+from pathlib import Path
+
+import hydra
+import torch
+from omegaconf import DictConfig, OmegaConf
+
+log = logging.getLogger(__name__)
+BENIGN = ("xs_test", "or_bench", "alpaca")
+
+
+def sha1(text: str) -> str:
+    return hashlib.sha1(text.encode()).hexdigest()
+
+
+def attack_prompts(outputs_dir: str, attack: str) -> dict[str, dict]:
+    """{sha1: row} of the distinct user messages sent in every stored attempt of `attack`."""
+    rows = {}
+    files = sorted(glob.glob(os.path.join(outputs_dir, f"{attack}__*", "**", "run.json"), recursive=True))
+    for path in files:
+        with open(path) as f:
+            runs = json.load(f)["runs"]
+        for run in runs:
+            for step in run["steps"]:
+                user = [m["content"] for m in step.get("model_input") or [] if m["role"] == "user"]
+                if len(user) != 1:
+                    raise ValueError(f"{path}: expected one user message, got {len(user)}")
+                rows.setdefault(sha1(user[0]), {"prompt": user[0]})
+    log.info("%s: %d distinct prompts in %d run files", attack, len(rows), len(files))
+    return rows
+
+
+def benign_prompts(name: str, alpaca_n: int, seed: int) -> dict[str, dict]:
+    """The same loads as adversariallm/dataset/*.py, all rows (alpaca: a seeded sample of alpaca_n)."""
+    from datasets import load_dataset
+
+    if name == "xs_test":
+        ds = load_dataset("walledai/XSTest")["test"]
+        items = [(r["prompt"], {"label": r["label"], "type": r["type"]}) for r in ds]
+    elif name == "or_bench":
+        ds = load_dataset("bench-llm/or-bench", "or-bench-hard-1k")["train"]
+        items = [(r["prompt"], {"category": r["category"]}) for r in ds]
+    elif name == "alpaca":
+        ds = load_dataset("tatsu-lab/alpaca")["train"].shuffle(seed=seed).select(range(alpaca_n))
+        items = [(r["instruction"], {}) for r in ds]  # instruction only, as AlpacaDataset
+    else:
+        raise ValueError(f"unknown benign set {name!r}; known: {BENIGN}")
+    return {sha1(p): {"prompt": p, **meta} for p, meta in items}
+
+
+def shard_of(rows: dict[str, dict], shard: int, num_shards: int) -> list[str]:
+    return [h for h in sorted(rows) if int(h, 16) % num_shards == shard]
+
+
+def done_hashes(path: Path) -> set[str]:
+    if not path.exists():
+        return set()
+    out = set()
+    for line in path.read_text().splitlines():
+        try:
+            out.add(json.loads(line)["sha1"])
+        except (json.JSONDecodeError, KeyError):
+            pass  # a line cut by a kill: scored again
+    return out
+
+
+def batches(order: list[str], lengths: dict[str, int], token_budget: int, max_rows: int):
+    """Length-sorted batches with rows x longest row <= token_budget."""
+    cur, longest = [], 0
+    for h in sorted(order, key=lengths.get):
+        n = lengths[h]
+        if cur and (len(cur) >= max_rows or (len(cur) + 1) * max(longest, n) > token_budget):
+            yield cur
+            cur, longest = [], 0
+        cur.append(h)
+        longest = max(longest, n)
+    if cur:
+        yield cur
+
+
+@hydra.main(config_path="conf", config_name="score_prompt_probe", version_base="1.3")
+def main(cfg: DictConfig) -> None:
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    from adversariallm.defenses.monitors.eurosafeguard_probe import load_probe, prompt_ids, score_ids, snapshot
+
+    log.info("config:\n%s", OmegaConf.to_yaml(cfg))
+    torch.manual_seed(cfg.seed)
+    if cfg.source in BENIGN:
+        rows = benign_prompts(cfg.source, cfg.alpaca_n, cfg.seed)
+    else:
+        rows = attack_prompts(cfg.outputs_dir, cfg.source)
+    todo = shard_of(rows, cfg.shard, cfg.num_shards)
+    out = Path(cfg.out) / f"{cfg.source}.{cfg.shard}-of-{cfg.num_shards}.jsonl"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    done = done_hashes(out)
+    todo = [h for h in todo if h not in done]
+    log.info("shard %d/%d: %d prompts left (%d already in %s)", cfg.shard, cfg.num_shards, len(todo), len(done), out)
+    if not todo:
+        return
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    root = snapshot(cfg.probe_repo)
+    probe, pcfg = load_probe(root, device)
+    tok = AutoTokenizer.from_pretrained(pcfg["base_model"])
+    model = AutoModelForCausalLM.from_pretrained(pcfg["base_model"], dtype=torch.bfloat16).to(device).eval()
+    pad = tok.pad_token_id if tok.pad_token_id is not None else tok.eos_token_id
+
+    full_len, ids = {}, {}
+    for h in todo:
+        x = prompt_ids(tok, rows[h]["prompt"], 10**9)
+        full_len[h], ids[h] = len(x), x[-pcfg["max_len"]:]
+    lengths = {h: len(x) for h, x in ids.items()}
+    n = 0
+    with out.open("a") as f:
+        for batch in batches(todo, lengths, cfg.token_budget, cfg.max_rows):
+            scores = score_ids(model, probe, [ids[h] for h in batch], pcfg["layers"], pcfg["M"], pad)
+            for h, s in zip(batch, scores.tolist()):
+                meta = {k: v for k, v in rows[h].items() if k != "prompt"}
+                f.write(json.dumps({"sha1": h, "score": s, "n_tokens": lengths[h],
+                                    "truncated": full_len[h] > lengths[h], **meta}) + "\n")
+            f.flush()
+            n += len(batch)
+            if n // cfg.log_every != (n - len(batch)) // cfg.log_every:
+                log.info("%d / %d prompts", n, len(todo))
+    log.info("done: %d prompts -> %s", n, out)
+
+
+if __name__ == "__main__":
+    main()

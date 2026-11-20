@@ -74,3 +74,6 @@ adversariallm.jobs.smoke:      # test job for condor_jobs.py, no Hydra
   name_key: name
   hydra_dir: false
   uses_db: true
+score_prompt_probe.py:
+  config_name: score_prompt_probe
+  name_key: name

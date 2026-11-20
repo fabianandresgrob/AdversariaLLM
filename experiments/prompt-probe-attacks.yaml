@@ -1,0 +1,12 @@
+# R1.2: EuroSafeGuard's released prompt probe on every distinct prompt of the stored attack attempts (PAIR 157k,
+# Jailbreak-R1 20k, GCG 182k, adaptive GCG 148k distinct prompts), under their template, in 4 shards per attack.
+entrypoint: score_prompt_probe.py
+name: prompt-probe-{source}-{shard}
+time_per_run: "04:00:00"
+overrides:
+  num_shards: 4
+sweep:
+  source: [pair, jailbreak_r1, gcg, gcg_adaptive]
+  shard: [0, 1, 2, 3]
+artifacts:
+  - outputs/eval/prompt_probe/eurosafeguard/{source}.{shard}-of-4.jsonl

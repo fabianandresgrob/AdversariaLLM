@@ -120,11 +120,16 @@ def main(cfg: DictConfig) -> None:
     if not todo:
         return
 
+    if not torch.cuda.is_available() and not cfg.allow_cpu:
+        raise RuntimeError("no GPU visible (allow_cpu=true to score on the CPU anyway)")
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    log.info("device %s (%s)", device, torch.cuda.get_device_name(0) if device == "cuda" else "cpu")
     root = snapshot(cfg.probe_repo)
     probe, pcfg = load_probe(root, device)
-    tok = AutoTokenizer.from_pretrained(pcfg["base_model"])
-    model = AutoModelForCausalLM.from_pretrained(pcfg["base_model"], dtype=torch.bfloat16).to(device).eval()
+    base = cfg.base_model or pcfg["base_model"]
+    log.info("probe trained on %s, reading %s", pcfg["base_model"], base)
+    tok = AutoTokenizer.from_pretrained(base)
+    model = AutoModelForCausalLM.from_pretrained(base, dtype=torch.bfloat16).to(device).eval()
     pad = tok.pad_token_id if tok.pad_token_id is not None else tok.eos_token_id
 
     full_len, ids = {}, {}

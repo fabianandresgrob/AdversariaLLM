@@ -6,6 +6,10 @@ defaults:
 source: null              # attack name (pair, jailbreak_r1, gcg, gcg_adaptive, ...) or xs_test | or_bench | alpaca
 outputs_dir: ${root_dir}/outputs   # where the stored attack runs are (<attack>__<defense>__<model>/**/run.json)
 probe_repo: EuroSafeAI/EuroSafeGuard-v1
+# The probe's base_model is meta-llama/Llama-3.1-8B-Instruct; the cache holds its weights under the older repo name,
+# the same commit (0e9e39f). null = the probe's own base_model.
+base_model: meta-llama/Meta-Llama-3.1-8B-Instruct
+allow_cpu: false
 alpaca_n: 2000            # seeded sample of Alpaca instructions
 shard: 0
 num_shards: 1

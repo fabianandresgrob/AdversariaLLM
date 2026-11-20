@@ -27,6 +27,18 @@ MODELS = {
     "meta-llama/Llama-3.1-8B-Instruct": ("chat_template_id: tokenizer only", ["*.safetensors", "original/*"]),
     "qylu4156/strongreject-15k-v1": ("StrongREJECT judge, LoRA adapter (judgezoo)", []),
     "google/gemma-2b": ("base model of the StrongREJECT adapter", ["*.gguf", "*.bin"]),
+    "lmsys/vicuna-13b-v1.5": ("PAIR attacker (conf/attacks/attacks.yaml), only .bin weights", []),
+    "GraySwanAI/Llama-3-8B-Instruct-RR": ("Circuit Breakers baseline (models.yaml cb-llama3-8b-rr)", []),
+    "cais/HarmBench-Llama-2-13b-cls": ("HarmBench judge (judgezoo, conf/judge.yaml)", ["training_args.bin"]),
+}
+
+# Adapters the configs load from a directory instead of the hub cache: repo id -> (why, path in the repo). The path
+# is under a symlink into /fast (conf/jobs/mpi.yaml links), created here when it is missing.
+FAST = "/fast/fgrob/coop-detect/AdversariaLLM"
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LOCAL_MODELS = {
+    "INSAIT-Institute/Llama3.1-8B-MixAT": ("MixAT baseline adapter (models.yaml mixat-llama31-8b)",
+                                           "checkpoints_baselines/mixat-llama31-8b"),
 }
 
 # name -> python code that loads it exactly like adversariallm/dataset/*.py does. Not mmlu: the experiments only use
@@ -66,6 +78,18 @@ def fetch_models() -> None:
         path = snapshot_download(repo, revision="main", ignore_patterns=skip)
         size = sum(os.path.getsize(os.path.join(d, f)) for d, _, fs in os.walk(path) for f in fs) / 1e9
         log(f"  done: commit {os.path.basename(path)}, {size:.1f} GB, {(time.time() - start) / 60:.0f} min")
+    for repo, (why, rel) in LOCAL_MODELS.items():
+        log(f"model {repo} ({why}) -> {rel}")
+        top = rel.split("/")[0]
+        link = os.path.join(REPO, top)
+        if not os.path.islink(link):
+            if os.path.exists(link):
+                raise SystemExit(f"{link} exists and is not a symlink into {FAST}")
+            os.makedirs(os.path.join(FAST, top), exist_ok=True)
+            os.symlink(os.path.join(FAST, top), link)
+            log(f"  created the symlink {link} -> {FAST}/{top}")
+        info = snapshot_download(repo, revision="main", local_dir=os.path.join(REPO, rel), ignore_patterns=["assets/*"])
+        log(f"  done: {info}")
 
 
 def fetch_datasets() -> None:
@@ -84,10 +108,14 @@ def check() -> bool:
         if "*.safetensors" not in MODELS[repo][1]:  # weights expected
             code += ("from huggingface_hub import snapshot_download\nimport glob\n"
                      f"p = snapshot_download({repo!r}, local_files_only=True)\n"
-                     "assert glob.glob(p + '/*.safetensors'), 'no safetensors'\n")
+                     "assert glob.glob(p + '/*.safetensors') or glob.glob(p + '/*.bin'), 'no weights'\n")
         out = run_python(code, offline=True)
         ok &= out.returncode == 0
         log(f"check model   {repo}: " + ("ok" if out.returncode == 0 else "FAIL\n" + out.stderr[-1500:]))
+    for repo, (_, rel) in LOCAL_MODELS.items():
+        found = os.path.exists(os.path.join(REPO, rel, "adapter_model.safetensors"))
+        ok &= found
+        log(f"check model   {repo}: " + ("ok" if found else f"FAIL: no adapter_model.safetensors in {rel}"))
     for name, call in DATASETS.items():
         out = run_python(f"from datasets import load_dataset\n{call}", offline=True)
         ok &= out.returncode == 0

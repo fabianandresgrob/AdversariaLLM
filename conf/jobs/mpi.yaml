@@ -5,7 +5,7 @@ jobs_root: /home/fgrob/Projects/coop-detect/runs       # <exp>/<run>/attempts/<n
 db_root: /home/fgrob/Projects/coop-detect/runs_db      # ADVLLM_DB for profiles with uses_db (needs locks: not /fast)
 home: /home/fgrob                                      # jobs start without $HOME
 # symlinks of the checkout into /fast, recreated in every frozen copy of the code
-links: [checkpoints_cat, checkpoints_coop, checkpoints_probe, outputs, wandb_logs]
+links: [checkpoints_baselines, checkpoints_cat, checkpoints_coop, checkpoints_probe, outputs, wandb_logs]
 env:                                                   # set in every run before the entrypoint is imported
   HF_HOME: /fast/fgrob/huggingface
   HF_HUB_OFFLINE: "1"                                  # download before submitting; jobs only see a slow proxy

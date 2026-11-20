@@ -218,7 +218,7 @@ def run_status(record: dict, queue: dict | None, now: datetime | None = None) ->
         if state == "idle" and record.get("starts"):
             return "requeued", f"start {len(record['starts'])} ended with {record.get('exit_code')}"
         return state, reason
-    if not record.get("condor_job"):
+    if not record.get("condor_job") and "exit_code" not in record:
         return "not submitted", ""
     if queue is None and "exit_code" not in record:
         return "submitted", "condor_q not available"

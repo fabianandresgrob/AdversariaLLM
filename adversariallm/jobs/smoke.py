@@ -24,7 +24,8 @@ def main(args: dict[str, str]) -> int:
     cwd = Path.cwd()
     checks = {
         "code from the frozen copy": "/_code/" in adversariallm.__file__ and Path(adversariallm.__file__).is_relative_to(cwd),
-        "PWD is the working dir": os.environ.get("PWD") == str(cwd),
+        # Condor starts the job in the /lustre real path; PWD keeps the /home path that root_dir should use
+        "PWD is the working dir": Path(os.environ.get("PWD", "")).resolve() == cwd.resolve(),
         "HOME is /home/fgrob": os.environ.get("HOME") == "/home/fgrob",
         "HF_HOME on /fast": os.environ.get("HF_HOME", "").startswith("/fast/"),
         "HF_HUB_OFFLINE=1": os.environ.get("HF_HUB_OFFLINE") == "1",

@@ -4,6 +4,7 @@
     uv run python condor_jobs.py submit coop-W-coop --bid 25 --submit        # on a login node: really submit
     uv run python condor_jobs.py submit coop-W-coop --bid 25 --only 'W-coop-s0' --rerun --submit
     uv run python condor_jobs.py status [coop-W-coop] [-v]
+    uv run python condor_jobs.py prune                                       # remove unused frozen code copies
 
 One HTCondor job per run, all runs of an experiment in one submission (`queue attempt_dir from runs.txt`). Every
 submission is a new attempt: <jobs_root>/<exp>/<run>/attempts/<n>/ holds run.json (command, commit, condor job,
@@ -11,7 +12,8 @@ every start with its exit code), the condor logs of each start, and the Hydra an
 copy of the committed code (<jobs_root>/_code/<commit>), so commit before submitting. Paths, environment and
 resources are in conf/jobs/mpi.yaml, the per-script arguments in conf/jobs/profiles.yaml.
 
-Runs that are done, or still in the queue, are skipped unless --rerun is given.
+Runs that are done, or still in the queue, are skipped unless --rerun is given. Every submission (and `prune`)
+removes the frozen copies that no queued or running run uses anymore.
 """
 
 import argparse
@@ -24,6 +26,7 @@ from pathlib import Path
 import yaml
 
 from adversariallm.jobs.condor import (
+    ACTIVE,
     SITE_FILE,
     Limits,
     Resources,
@@ -36,6 +39,7 @@ from adversariallm.jobs.condor import (
     load_site,
     now_iso,
     parse_cluster_id,
+    prune_frozen_checkouts,
     render_submit,
     run_status,
 )
@@ -50,7 +54,6 @@ from adversariallm.jobs.spec import (
 )
 
 REPO = Path(__file__).resolve().parent
-ACTIVE = {"idle", "running", "held", "requeued", "submitted"}
 
 
 def experiment_path(name: str) -> Path:
@@ -152,6 +155,7 @@ def cmd_submit(args) -> int:
     if dirty and not args.allow_dirty:
         sys.exit(f"uncommitted changes (jobs run the committed code):\n{dirty}\ncommit, or pass --allow-dirty")
     commit = git(REPO, "rev-parse", "HEAD")
+    print_pruned(prune_frozen_checkouts(site, store, queue, keep=commit))
     workdir = frozen_checkout(site, commit)
 
     stamp = now_iso().replace(":", "")
@@ -180,6 +184,22 @@ def cmd_submit(args) -> int:
     print(f"cluster {cluster}: {len(attempt_dirs)} job(s), files in {submit_dir}")
     return 0
 
+
+def print_pruned(result) -> None:
+    for path, outcome in result:
+        print(f"frozen copy {path.name}: {outcome}")
+
+
+def cmd_prune(args) -> int:
+    site = load_site(REPO)
+    queue = condor_queue()
+    if queue is None:
+        sys.exit("condor_q not available: cannot tell which frozen copies are still in use")
+    result = prune_frozen_checkouts(site, RunStore(site["jobs_root"]), queue)
+    print_pruned(result)
+    if not result:
+        print("nothing to remove")
+    return 0
 
 
 def cmd_status(args) -> int:
@@ -230,6 +250,9 @@ def main(argv=None) -> int:
     p.add_argument("experiment", nargs="?")
     p.add_argument("-v", "--verbose", action="store_true")
     p.set_defaults(func=cmd_status)
+
+    p = sub.add_parser("prune", help="remove frozen code copies that no queued or running run uses")
+    p.set_defaults(func=cmd_prune)
 
     args = parser.parse_args(argv)
     return args.func(args)

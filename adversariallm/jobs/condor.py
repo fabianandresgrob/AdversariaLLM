@@ -166,6 +166,13 @@ class RunStore:
         d = self.root / exp
         return sorted(p.name for p in d.iterdir() if (p / "attempts").is_dir()) if d.is_dir() else []
 
+    def records(self):
+        """run.json of every attempt of every run (older attempts can still be queued after --rerun)."""
+        for exp in self.experiments():
+            for run in self.runs(exp):
+                for attempt in self.attempts(exp, run):
+                    yield json.loads((self.run_dir(exp, run) / "attempts" / str(attempt) / RECORD).read_text())
+
 
 # ---- status ----
 
@@ -230,6 +237,29 @@ def frozen_checkout(site: dict, commit: str) -> Path:
         if source.exists() and not link.exists():  # the link's own target (/fast/...), not the /lustre real path
             os.symlink(os.readlink(source) if source.is_symlink() else source, link)
     return path
+
+
+ACTIVE = {"idle", "running", "held", "requeued", "submitted"}  # run_status values of attempts that can still start
+
+
+def prune_frozen_checkouts(site: dict, store: RunStore, queue, keep: str | None = None) -> list[tuple[Path, str]]:
+    """Remove the frozen copies under <jobs_root>/_code that no queued or running attempt uses. Without the condor
+    queue (queue is None) nothing is removed. `git worktree remove` refuses a copy with files git does not ignore,
+    and that copy is kept. Returns [(path, "removed" or the reason it was kept)]."""
+    base = Path(site["jobs_root"]) / "_code"
+    if queue is None or not base.is_dir():
+        return []
+    in_use = {record.get("workdir") for record in store.records() if run_status(record, queue)[0] in ACTIVE}
+    result = []
+    for path in sorted(p for p in base.iterdir() if p.is_dir()):
+        if str(path) in in_use or (keep and path.name == keep[:12]):
+            continue
+        try:
+            git(Path(site["repo"]), "worktree", "remove", str(path))
+            result.append((path, "removed"))
+        except subprocess.CalledProcessError as e:
+            result.append((path, e.stderr.strip() or "git worktree remove failed"))
+    return result
 
 
 def parse_cluster_id(output: str) -> int:

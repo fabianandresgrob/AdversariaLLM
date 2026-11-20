@@ -16,6 +16,7 @@ from adversariallm.jobs.condor import (
     frozen_checkout,
     load_site,
     parse_cluster_id,
+    prune_frozen_checkouts,
     render_submit,
     run_status,
 )
@@ -181,6 +182,41 @@ def test_launcher_records_a_crash_and_missing_artifacts(tmp_path):
     assert _launch(attempt_dir).returncode == 0
     record = json.loads((attempt_dir / "run.json").read_text())
     assert record["missing_artifacts"] == ["never.pt"] and run_status(record, {})[0] == "failed"
+
+
+def _repo_with_commits(tmp_path, n):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git = lambda *a: subprocess.run(["git", "-C", str(repo), *a], check=True, capture_output=True, text=True)
+    git("init", "-q")
+    commits = []
+    for i in range(n):
+        (repo / "code.py").write_text(f"v{i}\n")
+        git("add", "code.py")
+        git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", f"v{i}")
+        commits.append(git("rev-parse", "HEAD").stdout.strip())
+    return repo, commits
+
+
+def test_prune_removes_only_unused_frozen_copies(tmp_path):
+    repo, (old, used, current) = _repo_with_commits(tmp_path, 3)
+    site = {"repo": str(repo), "jobs_root": str(tmp_path / "runs"), "links": []}
+    paths = {c: frozen_checkout(site, c) for c in (old, used, current)}
+    (paths[used] / "stray.txt").write_text("not ignored by git\n")
+    store = RunStore(tmp_path / "runs")
+    store.create_attempt("e", "done", 1, {"condor_job": "1.0", "workdir": str(paths[old]), "exit_code": 0})
+    store.create_attempt("e", "queued", 1, {"condor_job": "2.0", "workdir": str(paths[used])})
+    queue = {"2.0": ("idle", "")}
+
+    assert prune_frozen_checkouts(site, store, None) == []            # no condor_q: never remove
+    result = dict(prune_frozen_checkouts(site, store, queue, keep=current))
+    assert result == {paths[old]: "removed"}                           # used and current are kept
+    assert not paths[old].exists() and paths[used].exists() and paths[current].exists()
+
+    queue = {}                                                         # the queued run is gone
+    result = dict(prune_frozen_checkouts(site, store, queue))
+    assert result[paths[current]] == "removed"
+    assert result[paths[used]] != "removed" and paths[used].exists()   # untracked file: git refuses, copy kept
 
 
 def test_frozen_checkout_is_a_worktree_with_the_fast_links(tmp_path):

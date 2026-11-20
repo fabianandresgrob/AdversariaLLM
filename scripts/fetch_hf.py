@@ -32,6 +32,11 @@ MODELS = {
     "cais/HarmBench-Llama-2-13b-cls": ("HarmBench judge (judgezoo, conf/judge.yaml)", ["training_args.bin"]),
 }
 
+# Repos without a tokenizer or model of their own: repo id -> why. Checked only for being complete in the cache.
+FILES = {
+    "EuroSafeAI/EuroSafeGuard-v1": "EuroSafeGuard probes on Llama-3.1-8B-Instruct (next steps R1.2), with their code",
+}
+
 # Adapters the configs load from a directory instead of the hub cache: repo id -> (why, path in the repo). The path
 # is under a symlink into /fast (conf/jobs/mpi.yaml links), created here when it is missing.
 FAST = "/fast/fgrob/coop-detect/AdversariaLLM"
@@ -78,6 +83,10 @@ def fetch_models() -> None:
         path = snapshot_download(repo, revision="main", ignore_patterns=skip)
         size = sum(os.path.getsize(os.path.join(d, f)) for d, _, fs in os.walk(path) for f in fs) / 1e9
         log(f"  done: commit {os.path.basename(path)}, {size:.1f} GB, {(time.time() - start) / 60:.0f} min")
+    for repo, why in FILES.items():
+        log(f"files {repo} ({why})")
+        path = snapshot_download(repo, revision="main")
+        log(f"  done: commit {os.path.basename(path)}")
     for repo, (why, rel) in LOCAL_MODELS.items():
         log(f"model {repo} ({why}) -> {rel}")
         top = rel.split("/")[0]
@@ -112,6 +121,10 @@ def check() -> bool:
         out = run_python(code, offline=True)
         ok &= out.returncode == 0
         log(f"check model   {repo}: " + ("ok" if out.returncode == 0 else "FAIL\n" + out.stderr[-1500:]))
+    for repo in FILES:
+        out = run_python(f"from huggingface_hub import snapshot_download\nsnapshot_download({repo!r})", offline=True)
+        ok &= out.returncode == 0
+        log(f"check files   {repo}: " + ("ok" if out.returncode == 0 else "FAIL\n" + out.stderr[-1500:]))
     for repo, (_, rel) in LOCAL_MODELS.items():
         found = os.path.exists(os.path.join(REPO, rel, "adapter_model.safetensors"))
         ok &= found

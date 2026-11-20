@@ -27,6 +27,8 @@ MODELS = {
     "meta-llama/Llama-3.1-8B-Instruct": ("chat_template_id: tokenizer only", ["*.safetensors", "original/*"]),
     "qylu4156/strongreject-15k-v1": ("StrongREJECT judge, LoRA adapter (judgezoo)", []),
     "google/gemma-2b": ("base model of the StrongREJECT adapter", ["*.gguf", "*.bin"]),
+    "yukiyounai/Jailbreak-R1": ("Jailbreak-R1 attacker, only for prompts not in the prompt cache (gated: accept terms)",
+                                ["*.pth", "*.pt", "zero_to_fp32.py", "latest"]),
     "lmsys/vicuna-13b-v1.5": ("PAIR attacker (conf/attacks/attacks.yaml), only .bin weights", []),
     "GraySwanAI/Llama-3-8B-Instruct-RR": ("Circuit Breakers baseline (models.yaml cb-llama3-8b-rr)", []),
     "cais/HarmBench-Llama-2-13b-cls": ("HarmBench judge (judgezoo, conf/judge.yaml)", ["training_args.bin"]),

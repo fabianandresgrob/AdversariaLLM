@@ -29,13 +29,13 @@ MODELS = {
     "google/gemma-2b": ("base model of the StrongREJECT adapter", ["*.gguf", "*.bin"]),
 }
 
-# name -> python code that loads it exactly like adversariallm/dataset/*.py does
+# name -> python code that loads it exactly like adversariallm/dataset/*.py does. Not mmlu: the experiments only use
+# it through lm_eval (run_utility_eval.py), which loads its own task data.
 DATASETS = {
     "alpaca": 'load_dataset("tatsu-lab/alpaca")',
     "magpie": 'load_dataset("Magpie-Align/Magpie-Llama-3.1-Pro-300K-Filtered", split="train")',
     "or_bench": 'load_dataset("bench-llm/or-bench", "or-bench-hard-1k")',
     "xs_test": 'load_dataset("walledai/XSTest")',
-    "mmlu": 'load_dataset("cais/mmlu", "all")',
     "strong_reject": ('load_dataset("csv", data_files="https://raw.githubusercontent.com/alexandrasouly/strongreject/'
                       'main/strongreject_dataset/strongreject_dataset.csv")'),
     "jbb_behaviors": "__import__('jailbreakbench').read_dataset().as_dataframe()",

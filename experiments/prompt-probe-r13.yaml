@@ -1,0 +1,17 @@
+# R1.3 (context/next_steps_2026-11-10.md): EuroSafeGuard's prompt probe reading our trained models instead of base
+# Llama, under their template and ours. Each job scores the benign sets and the stored model-alone attempts sent to
+# that system (prompt_system = model). base-llama31-8b under their template repeats R1.2 through our model loader.
+entrypoint: score_prompt_probe.py
+name: pp13-{model}-{template}
+time_per_run: "01:00:00"
+overrides:
+  sources: [xs_test, or_bench, alpaca, pair, jailbreak_r1, gcg]
+  prompt_system: ${model}
+  out: ${root_dir}/outputs/eval/prompt_probe/eurosafeguard_r13/${model}__${template}
+sweep:
+  model: [base-llama31-8b, W-coop-s0-ema, W-abl-norep-s0-ema, W-posthoc-noprobe-s0-ema, W-posthoc-cat-s0-ema,
+          mixat-llama31-8b]
+  template: [theirs, ours]
+artifacts:
+  - outputs/eval/prompt_probe/eurosafeguard_r13/{model}__{template}/xs_test.0-of-1.jsonl
+  - outputs/eval/prompt_probe/eurosafeguard_r13/{model}__{template}/gcg.0-of-1.jsonl

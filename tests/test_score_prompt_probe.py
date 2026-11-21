@@ -64,6 +64,7 @@ def test_attack_prompts_dedupes_the_user_message(tmp_path):
     rows = attack_prompts(str(tmp_path), "pair")
     assert sorted(r["prompt"] for r in rows.values()) == ["a", "b", "c"]
     assert set(rows) == {sha1(p) for p in "abc"}
+    assert sorted(r["prompt"] for r in attack_prompts(str(tmp_path), "pair", "base-llama31-8b").values()) == ["a", "b"]
 
 
 def test_shards_partition_and_batches_respect_the_budget():

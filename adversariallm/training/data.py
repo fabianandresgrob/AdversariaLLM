@@ -183,7 +183,11 @@ class AdvTupleStream(Dataset):
     y_h with y_safe as before. Rows without an answer keep y_h alone."""
 
     def __init__(self, data_dir, behaviors_csv, targets_json, safe_csv, tokenizer, model_name):
-        beh = pd.read_csv(os.path.join(data_dir, behaviors_csv), usecols=["Behavior", "BehaviorID"])
+        beh = pd.read_csv(os.path.join(data_dir, behaviors_csv))
+        # behavior -> Category (HarmBench's column; "copyright" for the lyrics/book requests), "" if unset
+        cat = beh["Category"].fillna("").astype(str) if "Category" in beh else pd.Series("", index=beh.index)
+        self.categories = dict(zip(beh["Behavior"], cat))
+        beh = beh[["Behavior", "BehaviorID"]]
         targets = pd.read_json(os.path.join(data_dir, targets_json), typ="series").reset_index()
         targets.columns = ["BehaviorID", "target"]
         safe = pd.read_csv(os.path.join(data_dir, safe_csv))  # columns: Behavior, Safe_Response

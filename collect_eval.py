@@ -78,6 +78,14 @@ TRAIN_METRICS = {
     "pipeline/case_B": "train_case_B",
     "pipeline/case_C": "train_case_C",
     "pipeline/case_D": "train_case_D",
+    # runs from 2026-11-24 (coop_loop._coop_validate): the above where they still exist, plus these
+    "model/no_refusal_rate": "train_no_refusal_rate",
+    "model/no_refusal_rate_noncopyright": "train_no_refusal_rate_noncopyright",
+    "pipeline/asr_noncopyright": "train_pipeline_asr_noncopyright",
+    "detector/flag_rate_complied": "train_flag_rate_complied",
+    "detector/flag_rate_complied_noncopyright": "train_flag_rate_complied_noncopyright",
+    "detector/recall_on_targets@1fpr": "train_recall_targets_1fpr",
+    "detector/fpr_xstest_answers": "train_fpr_xstest_answers",
 }
 UTILITY_TASKS = {
     "mmlu_pct": ("mmlu_llama", "exact_match,strict_match"),

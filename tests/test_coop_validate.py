@@ -93,3 +93,48 @@ def test_score_answers_marks_only_the_generated_tokens_and_caps_them():
     assert scores == pytest.approx([0.7, 0.7])
     assert seen[0] == (5, [0, 0, 0, 10, 11])          # prompt positions 0, answer tokens marked
     assert seen[1] == (7, [0, 0, 0, 10, 11, 12, 13])  # capped at 4 answer tokens
+
+
+def test_attack_rates_split_copyright_and_use_the_right_denominators():
+    from adversariallm.training.coop_loop import _attack_rates
+
+    # 4 attacks: 2 non-copyright (one complied and missed, one refused), 2 copyright (both complied, one flagged)
+    comply = [True, False, True, True]
+    miss = [True, True, False, True]
+    targets = [0.9, 0.1, 0.9, 0.9]
+    benign = [i / 100 for i in range(100)]  # 1%-FPR threshold just under 0.99
+    out = _attack_rates(comply, miss, targets, benign, [False, False, True, True])
+    assert out["model/no_refusal_rate"] == 3 / 4
+    assert out["pipeline/asr"] == 2 / 4
+    assert out["detector/flag_rate_complied"] == 1 / 3
+    assert out["model/no_refusal_rate_noncopyright"] == 1 / 2
+    assert out["pipeline/asr_noncopyright"] == 1 / 2
+    assert out["detector/flag_rate_complied_noncopyright"] == 0.0
+    assert out["pipeline/asr_copyright"] == 1 / 2
+    assert out["detector/flag_rate_complied_copyright"] == 1 / 2
+    assert out["detector/recall_on_targets@1fpr"] == 0.0  # no target score above the benign 99th percentile
+
+
+def test_attack_rates_without_copyright_behaviors_have_no_copyright_keys():
+    from adversariallm.training.coop_loop import _attack_rates
+
+    out = _attack_rates([False, False], [True, True], [0.5, 0.5], [0.1] * 10, [False, False])
+    assert not any(k.endswith("_copyright") for k in out)
+    assert "detector/flag_rate_complied" not in out  # nothing complied: no denominator
+    assert out["pipeline/asr_noncopyright"] == 0.0
+
+
+def test_adv_tuple_stream_reads_the_copyright_category():
+    from adversariallm.training.data import AdvTupleStream
+
+    ds = AdvTupleStream(
+        "data",
+        "behavior_datasets/extra_behavior_datasets/adv_training_behaviors.csv",
+        "optimizer_targets/extra_targets/adv_training_targets.json",
+        "safe_responses/adv_training_behaviors_safe_responses_longer.csv",
+        tokenizer=None,
+        model_name=None,
+    )
+    copyright = {b for b, c in ds.categories.items() if c == "copyright"}
+    assert len(ds.categories) == 100 and len(copyright) == 11
+    assert all(b in {r[0] for r in ds.rows} for b in copyright)

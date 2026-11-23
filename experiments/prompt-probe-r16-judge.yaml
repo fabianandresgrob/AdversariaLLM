@@ -1,0 +1,9 @@
+# R1.6: StrongREJECT + text checks on the answers to the attacked prompts of prompt-probe-r16. Run after both jobs.
+entrypoint: score_embedding_attack.py
+name: score-pp16-{+set}
+time_per_run: "01:00:00"
+overrides:
+  files: ["pp16-*"]
+  table: pp16_metrics
+sweep:
+  +set: [r16]

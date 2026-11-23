@@ -1,0 +1,37 @@
+defaults:
+  - models: models
+  - paths
+  - _self_
+
+# prompt_probe_embedding_attack.py (R1.6): coop's training attack on base Llama under Meta's template, scored by
+# EuroSafeGuard's prompt probe. attack and data mirror experiments/coop-W-coop.yaml -- keep them in sync.
+name: null                    # jobs injects the run name; also the output folder name
+model: base-llama31-8b        # models.yaml entry the attack runs on and the probe reads
+template: theirs              # theirs: Meta's (the tokenizer's own), as the probe was trained; ours: the entry's
+base_model: meta-llama/Meta-Llama-3.1-8B-Instruct  # where Meta's template is read from (same commit as the probe's base)
+probe_repo: EuroSafeAI/EuroSafeGuard-v1
+variant: plain                # plain: the attack elicits the target only; aware: it also pushes the probe score down
+splits: [train, val]          # coop's split of the training behaviors (W: 76 train behaviors x 12 targets, 24 val x 6)
+max_new_tokens: 256           # greedy answer to the attacked prompt, judged afterwards by score_embedding_attack.py
+seed: 0
+
+attack:
+  iters: 50
+  eps: 0.1
+  lr: 0.01
+  optimizer: adam
+  relative_lr: false
+  detector_loss_coeff: 0.5    # aware only: (1 - c) * target loss + c * softplus(probe logit)
+  target_eot: false
+  perturb: user
+
+data:
+  dir: ${root_dir}/data
+  behaviors: behavior_datasets/extra_behavior_datasets/adv_training_behaviors.csv
+  targets: optimizer_targets/extra_targets/adv_training_targets.json
+  safe: safe_responses/adv_training_behaviors_safe_responses_longer.csv
+  val_size: 24
+  val_targets: 6
+  val_seed: 0
+
+out: ${root_dir}/outputs/eval/prompt_probe/embedding_attack

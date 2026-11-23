@@ -1,0 +1,12 @@
+# R1.6 (context/next_steps_2026-11-10.md): EuroSafeGuard's prompt probe on prompts under coop's training attack (W's
+# settings: eps 0.1, 50 iterations, user message only), base Llama under Meta's template, coop's train and val
+# behaviors. plain: the attack elicits the target only; aware: it also pushes the probe's score down. Judge afterwards
+# with prompt-probe-r16-judge. The name carries eps and iterations for score_embedding_attack.py's table.
+entrypoint: prompt_probe_embedding_attack.py
+name: pp16-{variant}-eps0p1-it50
+time_per_run: "03:00:00"
+overrides: {}
+sweep:
+  variant: [plain, aware]
+artifacts:
+  - outputs/eval/embedding_attack/{name}.json

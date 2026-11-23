@@ -77,3 +77,6 @@ adversariallm.jobs.smoke:      # test job for condor_jobs.py, no Hydra
 score_prompt_probe.py:
   config_name: score_prompt_probe
   name_key: name
+prompt_probe_embedding_attack.py:
+  config_name: prompt_probe_embedding_attack
+  name_key: name

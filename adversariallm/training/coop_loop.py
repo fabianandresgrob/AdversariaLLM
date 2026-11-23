@@ -708,6 +708,10 @@ def run_coop_training(cfg):
     # self-describing checkpoint dir: the eval side reads THIS, never the directory name
     with open(os.path.join(out_dir, "run_config.json"), "w") as fh:
         json.dump(container, fh, indent=2, default=str)
+    if own_answers:  # what the probe saw as benign and what set the threshold, for later inspection
+        for fname, rows in (("own_answers_train.jsonl", easy_rows), ("own_answers_calib.jsonl", zip(calib_prompts, calib_resp))):
+            with open(os.path.join(out_dir, fname), "w") as fh:
+                fh.writelines(json.dumps({"prompt": p, "answer": a}) + "\n" for p, a in rows)
     wandb_run = _init_wandb(cfg, container)
 
     val_every = int(cfg.training.val_every)

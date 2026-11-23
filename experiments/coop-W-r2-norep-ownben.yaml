@@ -38,6 +38,8 @@ overrides:
   lambda_rep: 0.0
   data.benign_answers: model
   training.detector_perturb_benign: true
+  wandb.group: round2
+  wandb.tags: [R2.6]
 sweep:
   seed: [0]
 artifacts:

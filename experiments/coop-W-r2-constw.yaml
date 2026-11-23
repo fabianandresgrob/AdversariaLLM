@@ -36,6 +36,8 @@ overrides:
   output.checkpoint_path: ${root_dir}/checkpoints_coop/W-r2
   lambda_beh: 0.1
   lambda_rep: 0.0
+  wandb.group: round2
+  wandb.tags: [R2.1, check-A]
 sweep:
   seed: [0]
 artifacts:

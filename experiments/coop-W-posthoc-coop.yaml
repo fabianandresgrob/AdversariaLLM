@@ -36,6 +36,8 @@ overrides:
   output.checkpoint_path: ${root_dir}/checkpoints_coop/W-posthoc-coop
   init_adapter: ${root_dir}/checkpoints_coop/W/W-coop-s${seed}/ema_adapter
   training.train_model: false
+  wandb.group: round2
+  wandb.tags: [R2.5]
 sweep:
   seed: [0]
 artifacts:

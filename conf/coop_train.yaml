@@ -109,6 +109,8 @@ output:
 
 wandb:
   enabled: true
-  project: detector-ma
+  project: coop-detect   # runs before 2026-11-23 are in detector-ma
   entity: null
+  group: null             # set per experiment, e.g. round2
+  tags: []                # set per experiment, e.g. [R2.1, check-A]
   dir: ${root_dir}/wandb_logs

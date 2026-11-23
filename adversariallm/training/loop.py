@@ -218,9 +218,11 @@ def _init_wandb(cfg, config_dict):
     if wandb_dir:
         os.makedirs(wandb_dir, exist_ok=True)
     return wandb.init(
-        project=wcfg.get("project", "detector-ma"),
+        project=wcfg.get("project", "coop-detect"),
         entity=wcfg.get("entity", None),
         name=config_dict.get("name") or "run",
+        group=wcfg.get("group", None),           # e.g. round2: the runs one plan round compares
+        tags=list(wcfg.get("tags", None) or []),  # e.g. the plan item (R2.1) and the check it serves
         dir=wandb_dir,
         config=config_dict,
         resume="allow",

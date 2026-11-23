@@ -11,7 +11,7 @@ env:                                                   # set in every run before
   HF_HUB_OFFLINE: "1"                                  # download before submitting; jobs only see a slow proxy
   HF_DATASETS_OFFLINE: "1"
   TRANSFORMERS_OFFLINE: "1"
-  WANDB_MODE: offline
+  WANDB_MODE: online     # compute nodes reach W&B through the proxy (checked 2026-11-23); login via ~/.netrc
   SOFTFILELOCK: "1"
 resources:                                             # per job; 8 cores + 64 GB + 1 GPU = 32 computing units
   cpus: 8

@@ -35,6 +35,8 @@ overrides:
   output.checkpoint_path: ${root_dir}/checkpoints_coop/W-r2-test
   data.benign_answers: model
   training.detector_perturb_benign: true
+  wandb.group: round2-test
+  wandb.tags: [test]
 sweep:
   seed: [0]
 artifacts:

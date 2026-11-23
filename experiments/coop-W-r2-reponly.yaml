@@ -33,6 +33,8 @@ overrides:
   lambda_benign_perturb: 1.0
   epsilon: 1.0
   output.checkpoint_path: ${root_dir}/checkpoints_coop/W-r2
+  wandb.group: round2
+  wandb.tags: [R2.3, check-A]
 sweep:
   seed: [0]
 artifacts:

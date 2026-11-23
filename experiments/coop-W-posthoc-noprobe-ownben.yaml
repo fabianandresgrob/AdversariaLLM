@@ -37,6 +37,8 @@ overrides:
   training.train_model: false
   data.benign_answers: model
   training.detector_perturb_benign: true
+  wandb.group: round2
+  wandb.tags: [R2.6]
 sweep:
   seed: [0]
 artifacts:

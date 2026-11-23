@@ -1,0 +1,43 @@
+# R2.1 (context/next_steps_2026-11-10.md, check A): non-coop (gate off, no representation term, attack ignores the probe) with a
+# constant refusal weight of 0.1, the coop gate's average from step 300 on (w_miss 0.04-0.07, epsilon 0.05). The probe
+# trains alongside but never touches the model. If GCG reaches about 0.10, the gate's gain is just a smaller weight.
+# Everything else as coop-W-coop (W-coop's config, our chat template), seed 0, round 2.
+entrypoint: run_coop_train.py
+name: W-r2-constw0p1-s{seed}
+time_per_run: "12:00:00"
+overrides:
+  attack.enabled: true
+  attack.perturb: user
+  attack.target_eot: false
+  attack.eps: 0.1
+  attack.iters: 50
+  attack.use_detector: false
+  reader.readout: response_window
+  reader.readout_k: 512
+  reader.window: 16
+  probe_init: random
+  data.answer_pool: ${root_dir}/outputs/eval/answer_pool/pool-heretic.jsonl
+  data.answer_max_tokens: 512
+  training.detector_refusal_negatives: true
+  training.rep_warmup_steps: 50
+  training.n_detector_steps: 6
+  training.n_steps: 1000
+  training.val_every: 50
+  training.checkpoint_every: 250
+  training.benign_gen_n: 40
+  training.ema_decay: 0.995
+  data.kl_source: magpie
+  data.kl_max_length: 1024
+  data.val_size: 24
+  data.val_targets: 6
+  data.val_batch_size: 16
+  lambda_benign_perturb: 1.0
+  epsilon: 1.0
+  output.checkpoint_path: ${root_dir}/checkpoints_coop/W-r2
+  lambda_beh: 0.1
+  lambda_rep: 0.0
+sweep:
+  seed: [0]
+artifacts:
+  - checkpoints_coop/W-r2/{name}/final_adapter
+  - checkpoints_coop/W-r2/{name}/final_reader.pt

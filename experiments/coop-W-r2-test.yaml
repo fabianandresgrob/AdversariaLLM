@@ -1,0 +1,42 @@
+# Test run for round 2 on the MPI cluster: W-coop's config with all three switches on (the heaviest variant) plus own
+# benign answers and benign noise (the R2.6 path), 20 steps with validation and a checkpoint every 10. Measures memory
+# and time per step; its checkpoints go to checkpoints_coop/W-r2-test and are not used.
+entrypoint: run_coop_train.py
+name: W-r2-test-s{seed}
+time_per_run: "00:30:00"
+overrides:
+  attack.enabled: true
+  attack.perturb: user
+  attack.target_eot: false
+  attack.eps: 0.1
+  attack.iters: 50
+  attack.use_detector: true
+  reader.readout: response_window
+  reader.readout_k: 512
+  reader.window: 16
+  probe_init: random
+  data.answer_pool: ${root_dir}/outputs/eval/answer_pool/pool-heretic.jsonl
+  data.answer_max_tokens: 512
+  training.detector_refusal_negatives: true
+  training.rep_warmup_steps: 5   # test only: the representation term from step 5, so its memory is measured
+  training.n_detector_steps: 6
+  training.n_steps: 20
+  training.val_every: 10
+  training.checkpoint_every: 10
+  training.benign_gen_n: 40
+  training.ema_decay: 0.995
+  data.kl_source: magpie
+  data.kl_max_length: 1024
+  data.val_size: 24
+  data.val_targets: 6
+  data.val_batch_size: 16
+  lambda_benign_perturb: 1.0
+  epsilon: 0.05
+  output.checkpoint_path: ${root_dir}/checkpoints_coop/W-r2-test
+  data.benign_answers: model
+  training.detector_perturb_benign: true
+sweep:
+  seed: [0]
+artifacts:
+  - checkpoints_coop/W-r2-test/{name}/final_adapter
+  - checkpoints_coop/W-r2-test/{name}/final_reader.pt

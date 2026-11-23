@@ -173,6 +173,14 @@ def main(cfg: DictConfig) -> None:
                     emb = model.get_input_embeddings()(batch["h_ids"][:1, :prompt_len]) * embedding_scale(model)
                     check = float(probe_logit(model, probe, layers, M, emb, ones[:1])[0])
                     log.info("clean score via tokens %.4f, via embeddings %.4f", score_clean, check)
+                    # the attack may move the user message only: no change at any template position
+                    user = batch["h_perturb_mask"][0, :prompt_len].bool()
+                    moved = (adv - emb.to(adv.dtype)).abs().amax(dim=-1).gt(0).any(dim=0)
+                    log.info("user tokens: %r", tok.decode(batch["h_ids"][0, :prompt_len][user]))
+                    log.info("template tokens: %r", tok.decode(batch["h_ids"][0, :prompt_len][~user]))
+                    if (moved & ~user).any():
+                        raise RuntimeError(f"attack moved template positions {(moved & ~user).nonzero().tolist()}")
+                    log.info("moved positions %d of %d user tokens, 0 template", int(moved.sum()), int(user.sum()))
             answers = generate(model, tok, int(cfg.max_new_tokens), inputs_embeds=adv)
 
             with path.open("a") as f:

@@ -25,3 +25,8 @@ sweep:
   - W-abl-norep-s0-ema
   - W-abl-norep-s1-ema
   - W-abl-norep-s2-ema
+  - W-r2-constw0p1-s0-ema
+  - W-r2-gateonly-s0-ema
+  - W-r2-reponly-s0-ema
+  - W-r2-attackonly-s0-ema
+  - W-r2-norep-ownben-s0-ema

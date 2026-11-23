@@ -1,0 +1,11 @@
+# Round 2: as probe-answers-pair-W, each run's own probe on its model-alone PAIR answers (attack-pair-b0-20). Run after PAIR.
+entrypoint: rescore_answer_probe.py
+name: answers-pair-{model}
+time_per_run: "01:30:00"
+overrides:
+  attack_names: [pair]
+  save_answer_scores: true
+sweep:
+  model: [W-r2-constw0p1-s0-ema, W-r2-gateonly-s0-ema, W-r2-reponly-s0-ema, W-r2-attackonly-s0-ema, W-r2-norep-ownben-s0-ema]
+artifacts:
+  - outputs/eval/answer_probe_rescore/{model}_answers.jsonl

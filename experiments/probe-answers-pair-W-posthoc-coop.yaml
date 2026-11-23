@@ -1,0 +1,13 @@
+# Round 2: W-posthoc-coop-s0-ema's new probe on the stored model-alone PAIR answers of its frozen model (W-coop-s0-ema, attack-pair-b0-20).
+# The model is the same, so these are the answers the system would give; no new attack. As probe-answers-pair-W.
+entrypoint: rescore_answer_probe.py
+name: answers-pair-{model}
+time_per_run: "01:30:00"
+overrides:
+  attack_names: [pair]
+  save_answer_scores: true
+  answers_from: W-coop-s0-ema
+sweep:
+  model: [W-posthoc-coop-s0-ema]
+artifacts:
+  - outputs/eval/answer_probe_rescore/{model}_on_W-coop-s0-ema_answers.jsonl

@@ -1,0 +1,13 @@
+# Round 2 (R2.1 to R2.4, R2.6 no-rep): as eval-calib-W-coop.
+entrypoint: run_calibrate_probe.py
+name: calib-{+run}-ema
+time_per_run: 01:30:00
+overrides:
+  +block: W-r2
+  adapter_path: ${root_dir}/checkpoints_coop/${block}/${run}/ema_adapter
+  checkpoint_path: ${root_dir}/checkpoints_coop/${block}/${run}/ema_reader.pt
+  calibration_window: calib
+artifacts:
+- checkpoints_coop/{+block}/{+run}/threshold_1pct_calib.json
+sweep:
+  +run: [W-r2-constw0p1-s0, W-r2-gateonly-s0, W-r2-reponly-s0, W-r2-attackonly-s0, W-r2-norep-ownben-s0]

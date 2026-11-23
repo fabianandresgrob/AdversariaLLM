@@ -1878,6 +1878,85 @@ W-sens-rep2p0-s0-ema:
   trust_remote_code: true
   adapter_path: ${root_dir}/checkpoints_coop/W-sens/W-sens-rep2.0-s0/ema_adapter
   reader_path: ${root_dir}/checkpoints_coop/W-sens/W-sens-rep2.0-s0/ema_reader.pt
+# Round 2 (R2.1 to R2.6, context/next_steps_2026-11-10.md): final EMA model + probe. The posthoc runs keep their
+# frozen model (W-coop-s0, R-noprobe-it50-s0) and add a new probe.
+W-r2-constw0p1-s0-ema:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/W-r2/W-r2-constw0p1-s0/ema_adapter
+  reader_path: ${root_dir}/checkpoints_coop/W-r2/W-r2-constw0p1-s0/ema_reader.pt
+W-r2-gateonly-s0-ema:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/W-r2/W-r2-gateonly-s0/ema_adapter
+  reader_path: ${root_dir}/checkpoints_coop/W-r2/W-r2-gateonly-s0/ema_reader.pt
+W-r2-reponly-s0-ema:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/W-r2/W-r2-reponly-s0/ema_adapter
+  reader_path: ${root_dir}/checkpoints_coop/W-r2/W-r2-reponly-s0/ema_reader.pt
+W-r2-attackonly-s0-ema:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/W-r2/W-r2-attackonly-s0/ema_adapter
+  reader_path: ${root_dir}/checkpoints_coop/W-r2/W-r2-attackonly-s0/ema_reader.pt
+W-r2-norep-ownben-s0-ema:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/W-r2/W-r2-norep-ownben-s0/ema_adapter
+  reader_path: ${root_dir}/checkpoints_coop/W-r2/W-r2-norep-ownben-s0/ema_reader.pt
+W-posthoc-coop-s0-ema:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/W-posthoc-coop/W-posthoc-coop-s0/ema_adapter
+  reader_path: ${root_dir}/checkpoints_coop/W-posthoc-coop/W-posthoc-coop-s0/ema_reader.pt
+W-posthoc-noprobe-ownben-s0-ema:
+  id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  tokenizer_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+  short_name: Llama
+  developer_name: Meta
+  compile: false
+  dtype: bfloat16
+  chat_template: llama-3-instruct
+  trust_remote_code: true
+  adapter_path: ${root_dir}/checkpoints_coop/W-posthoc/W-posthoc-noprobe-ownben-s0/ema_adapter
+  reader_path: ${root_dir}/checkpoints_coop/W-posthoc/W-posthoc-noprobe-ownben-s0/ema_reader.pt
 # X (other models): final EMA model + its probe, one per arm. Tokenizer's own chat template, as in training.
 X-coop-qwen25-7b-s0-ema:
   id: Qwen/Qwen2.5-7B-Instruct

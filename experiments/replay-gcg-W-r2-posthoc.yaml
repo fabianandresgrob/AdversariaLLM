@@ -1,0 +1,16 @@
+# Round 2 posthoc runs (R2.5 W-posthoc-coop, R2.6 W-posthoc-noprobe-ownben): as replay-gcg-b0-20, detector-aware GCG
+# against each run's own new probe. Plain GCG does not depend on the probe and the models are frozen, so it is the
+# stored run of the same model, replayed in replay-gcg-W-posthoc-coop and replay-gcg-W-posthoc-noprobe-ownben.
+entrypoint: run_attacks.py
+name: replay-{+src}-{model}-b0-20
+time_per_run: "02:00:00"
+overrides:
+  attack: replay
+  defense: coop_probe
+  dataset: jbb_behaviors
+  datasets.jbb_behaviors.idx: list(range(0,20))
+  attacks.replay.all_steps: true
+  attacks.replay.source: ${root_dir}/outputs/${src}__none__${model}
+sweep:
+  +src: [gcg_adaptive]
+  model: [W-posthoc-coop-s0-ema, W-posthoc-noprobe-ownben-s0-ema]

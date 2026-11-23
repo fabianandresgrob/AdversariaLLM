@@ -1,0 +1,14 @@
+# Round 2: plain GCG (model alone) through the pipeline of W-posthoc-coop-s0-ema. Its model is frozen and identical to W-coop-s0-ema's,
+# so the GCG suffixes are that model's stored run (gcg__none__W-coop-s0-ema), scored against the new probe.
+entrypoint: run_attacks.py
+name: replay-gcg-{model}-b0-20
+time_per_run: "02:00:00"
+overrides:
+  attack: replay
+  defense: coop_probe
+  dataset: jbb_behaviors
+  datasets.jbb_behaviors.idx: list(range(0,20))
+  attacks.replay.all_steps: true
+  attacks.replay.source: ${root_dir}/outputs/gcg__none__W-coop-s0-ema
+sweep:
+  model: [W-posthoc-coop-s0-ema]

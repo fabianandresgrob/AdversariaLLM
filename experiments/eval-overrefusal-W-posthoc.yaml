@@ -13,4 +13,4 @@ overrides:
 artifacts:
 - outputs/eval/overrefusal/{+block}/{+run}-ema/overrefusal.json
 sweep:
-  +run: [W-posthoc-noprobe-s0, W-posthoc-noprobe-s1, W-posthoc-noprobe-s2]
+  +run: [W-posthoc-noprobe-s0, W-posthoc-noprobe-s1, W-posthoc-noprobe-s2, W-posthoc-noprobe-ownben-s0]

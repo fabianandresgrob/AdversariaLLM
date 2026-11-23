@@ -1,0 +1,15 @@
+# R2.5, probe trained on the frozen coop model: as eval-overrefusal-W-coop.
+entrypoint: run_overrefusal_eval.py
+name: overrefusal-{+run}-ema
+time_per_run: 02:00:00
+overrides:
+  +block: W-posthoc-coop
+  ~checkpoints.base: base
+  +checkpoints.model: ${root_dir}/checkpoints_coop/${block}/${run}/ema_adapter
+  +readers.model: ${root_dir}/checkpoints_coop/${block}/${run}/ema_reader.pt
+  out: ${root_dir}/outputs/eval/overrefusal/${block}/${run}-ema
+  judge.enabled: true
+artifacts:
+- outputs/eval/overrefusal/{+block}/{+run}-ema/overrefusal.json
+sweep:
+  +run: [W-posthoc-coop-s0]

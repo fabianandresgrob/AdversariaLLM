@@ -1,0 +1,15 @@
+# Round 2 (R2.1 to R2.4, R2.6 no-rep): as eval-overrefusal-W-coop.
+entrypoint: run_overrefusal_eval.py
+name: overrefusal-{+run}-ema
+time_per_run: 02:00:00
+overrides:
+  +block: W-r2
+  ~checkpoints.base: base
+  +checkpoints.model: ${root_dir}/checkpoints_coop/${block}/${run}/ema_adapter
+  +readers.model: ${root_dir}/checkpoints_coop/${block}/${run}/ema_reader.pt
+  out: ${root_dir}/outputs/eval/overrefusal/${block}/${run}-ema
+  judge.enabled: true
+artifacts:
+- outputs/eval/overrefusal/{+block}/{+run}-ema/overrefusal.json
+sweep:
+  +run: [W-r2-constw0p1-s0, W-r2-gateonly-s0, W-r2-reponly-s0, W-r2-attackonly-s0, W-r2-norep-ownben-s0]

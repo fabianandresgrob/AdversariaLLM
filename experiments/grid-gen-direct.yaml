@@ -10,6 +10,7 @@ overrides:
   datasets.coop_behaviors.exclude_categories: [copyright]
   datasets.alpaca.idx: list(range(0,400))
   datasets.or_bench.idx: list(range(0,400))
+  datasets.or_bench.assistant_turn: true  # the direct attack needs a (prompt, target) pair
   judge_own_runs_only: true
 sweep:
   dataset: [coop_behaviors, alpaca, or_bench]

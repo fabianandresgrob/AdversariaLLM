@@ -21,6 +21,7 @@ class ORBenchConfig:
     seed: int = 0
     idx: list[int] | int | str | None = None
     shuffle: bool = True
+    assistant_turn: bool = False  # append an empty assistant turn: direct and jailbreak_r1 need (prompt, target) pairs
 
 
 @PromptDataset.register("or_bench")
@@ -43,4 +44,6 @@ class ORBenchDataset(PromptDataset):
         conversation = [
             {"role": "user", "content": msg},
         ]
+        if getattr(self.config, "assistant_turn", False):
+            conversation.append({"role": "assistant", "content": ""})
         return conversation

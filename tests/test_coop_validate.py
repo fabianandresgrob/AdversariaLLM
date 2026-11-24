@@ -162,3 +162,25 @@ def test_coop_behaviors_dataset_matches_the_training_split():
     no_cr = load(OmegaConf.create({**cfg, "split": "train", "exclude_categories": ["copyright"]}))
     assert len(no_cr) == 70 and not any(stream.categories[b] == "copyright" for b in no_cr.messages)
     assert len(load(OmegaConf.create({**cfg, "split": "val", "exclude_categories": []}))) == 24
+
+
+def test_probe_key_ignores_where_the_repo_lives():
+    from adversariallm.training.probe_scoring import _probe_key
+
+    key = "checkpoints_coop/W-r2/W-r2-constw0p1-s0/ema_reader.pt"
+    assert _probe_key("/home/u/runs/_code/3f8cb91fc7a7/" + key) == key
+    assert _probe_key("/p/project1/hai_1370/grob1/AdversariaLLM/" + key) == key
+    assert _probe_key("/home/u/runs/_code/aaa/checkpoints_coop/W-r2/W-r2-gateonly-s0/ema_reader.pt") != key
+
+
+def test_or_bench_assistant_turn_is_off_by_default():
+    from omegaconf import OmegaConf
+
+    from adversariallm.dataset.or_bench import ORBenchDataset
+
+    ds = ORBenchDataset.__new__(ORBenchDataset)
+    ds.messages = ["a prompt"]
+    ds.config = OmegaConf.create({"assistant_turn": False})
+    assert len(ds[0]) == 1
+    ds.config = OmegaConf.create({"assistant_turn": True})
+    assert ds[0][1] == {"role": "assistant", "content": ""}

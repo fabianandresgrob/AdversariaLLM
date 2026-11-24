@@ -38,9 +38,20 @@ def calibrated_threshold(reader_path: str) -> float:
     2000 own Alpaca answers). One run dir holds one calibration file, so it must name this reader."""
     path = Path(reader_path).parent / "threshold_1pct_calib.json"
     data = json.loads(path.read_text())
-    if os.path.normpath(str(data["checkpoint_path"])) != os.path.normpath(str(reader_path)):
+    if _probe_key(data["checkpoint_path"]) != _probe_key(reader_path):
         raise ValueError(f"{path} calibrates {data['checkpoint_path']}, not {reader_path}")
     return float(data["threshold"])
+
+
+def _probe_key(reader_path) -> str:
+    """A probe's identity independent of where the repo lives: the path from checkpoints_*/ on (block/run/file).
+    The same probe is recorded under different roots by jobs from different frozen code copies (runs/_code/<commit>/,
+    removed once unused) and by other clusters (JURECA's /p/project1/...)."""
+    parts = os.path.normpath(str(reader_path)).split(os.sep)
+    for i in range(len(parts) - 1, -1, -1):
+        if parts[i].startswith("checkpoints_"):
+            return "/".join(parts[i:])
+    return os.path.normpath(str(reader_path))
 
 
 def operating_point_path(checkpoint_path, fpr, calibration_window):

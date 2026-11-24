@@ -344,6 +344,8 @@ def _coop_validate(
                                  answer to the clean XSTest prompt (the probe's share of over-refusal)
     detector/fpr_xstest_prompts  prompt-only probes: flagged / XSTest prompts
     model/refusal_rate_xstest / _alpaca   refused / clean benign prompts (free generation, refusal phrases)
+    attack/val_target_loss       the val attack's final CE on the target, mean over the val attacks: how hard the
+                                 model is to attack, also when it refuses everything (all behaviors, no split)
 
     Not @torch.no_grad(): the val attack needs gradients w.r.t. input embeddings. Model params
     are frozen for the whole call and restored after."""
@@ -367,8 +369,11 @@ def _coop_validate(
     # harmful: attacked as the run defines it; the probe scores the attacked prompt + target
     # (as in training), the model continues the attacked prompt for real
     h_feats, harmful_scores, miss_flags, adv_prompts, val_prompts = [], [], [], [], []
+    attack_losses = []  # (final target loss of the val attack on this batch, batch size)
     for b in harmful_batches:
         adv_embeds = _adv_embeds(attack, model, b, reader=reader, use_detector=use_detector)
+        if attack is not None:
+            attack_losses.append((attack.last_target_loss, b["h_ids"].size(0)))
         with torch.no_grad():
             h_hidden, _ = _hidden_and_logits(model, layer, inputs_embeds=adv_embeds, attention_mask=b["h_attn"])
             if has_feats:
@@ -389,6 +394,8 @@ def _coop_validate(
         miss_flags = [s <= thr for s in gen_scores]
 
     metrics = {"detector/thr_1fpr": thr}
+    if attack_losses:  # weighted by batch size: the mean over all val attacks
+        metrics["attack/val_target_loss"] = sum(v * n for v, n in attack_losses) / sum(n for _, n in attack_losses)
     metrics.update(_attack_rates(comply, miss_flags, harmful_scores, benign_scores,
                                  [p in copyright_prompts for p in val_prompts]))
 

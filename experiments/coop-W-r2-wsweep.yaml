@@ -1,0 +1,45 @@
+# Refusal-weight sweep (round 2 follow-up, vault note "Where the GCG gain comes from"): the constw0p1 recipe (non-coop:
+# gate off, no representation term, attack ignores the probe) with other constant refusal weights. constw0p1 got GCG
+# 0.05 at weight 0.1, non-coop 0.40 at weight 1 (3 seeds; on the model side the same recipe as this one, so 1.0 is not
+# rerun). Does GCG fall steadily with the weight? Seed 0, 1000 steps, everything else as coop-W-r2-constw.
+entrypoint: run_coop_train.py
+name: W-r2-constw{lambda_beh}-s{seed}
+time_per_run: "12:00:00"
+overrides:
+  attack.enabled: true
+  attack.perturb: user
+  attack.target_eot: false
+  attack.eps: 0.1
+  attack.iters: 50
+  attack.use_detector: false
+  reader.readout: response_window
+  reader.readout_k: 512
+  reader.window: 16
+  probe_init: random
+  data.answer_pool: ${root_dir}/outputs/eval/answer_pool/pool-heretic.jsonl
+  data.answer_max_tokens: 512
+  training.detector_refusal_negatives: true
+  training.rep_warmup_steps: 50
+  training.n_detector_steps: 6
+  training.n_steps: 1000
+  training.val_every: 50
+  training.checkpoint_every: 250
+  training.benign_gen_n: 40
+  training.ema_decay: 0.995
+  data.kl_source: magpie
+  data.kl_max_length: 1024
+  data.val_size: 24
+  data.val_targets: 6
+  data.val_batch_size: 16
+  lambda_benign_perturb: 1.0
+  epsilon: 1.0
+  output.checkpoint_path: ${root_dir}/checkpoints_coop/W-r2
+  lambda_rep: 0.0
+  wandb.group: round2
+  wandb.tags: [R2.1, wsweep]
+sweep:
+  lambda_beh: [0.03, 0.3]
+  seed: [0]
+artifacts:
+  - checkpoints_coop/W-r2/{name}/final_adapter
+  - checkpoints_coop/W-r2/{name}/final_reader.pt

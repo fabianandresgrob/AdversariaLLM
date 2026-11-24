@@ -36,3 +36,5 @@ sweep:
   - W-r2-reponly-s0-ema
   - W-r2-attackonly-s0-ema
   - W-r2-norep-ownben-s0-ema
+  - W-r2-constw0p03-s0-ema
+  - W-r2-constw0p3-s0-ema

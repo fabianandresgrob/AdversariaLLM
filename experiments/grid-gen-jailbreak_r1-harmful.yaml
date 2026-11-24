@@ -1,0 +1,16 @@
+# Content-probe grid (vault note "Content probe on a prompt-by-answer grid"): Jailbreak-R1 prompts for coop's training
+# behaviors (train split as in the W runs, copyright left out: 70 behaviors) and the frozen model's own answers, judged
+# by StrongREJECT. 16 prompts per behavior, fresh from the Jailbreak-R1 attacker (the JBB cache does not cover them).
+# Answers of 256 tokens (the attacks' default), as the stored PAIR answers the probe is tested on.
+entrypoint: run_attacks.py
+name: grid-jbr1-harmful-{model}
+time_per_run: "04:00:00"
+overrides:
+  attack: jailbreak_r1
+  dataset: coop_behaviors
+  datasets.coop_behaviors.split: train
+  datasets.coop_behaviors.exclude_categories: [copyright]
+  attacks.jailbreak_r1.num_steps: 16
+  judge_own_runs_only: true
+sweep:
+  model: [W-posthoc-noprobe-s0-ema, W-coop-s0-ema]

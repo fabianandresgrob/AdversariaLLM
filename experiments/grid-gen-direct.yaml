@@ -1,0 +1,16 @@
+# Content-probe grid: the frozen model's own answers to the plain prompts. coop's training behaviors (train split,
+# copyright left out), Alpaca and OR-Bench-hard train windows (rows 0-399; OR-Bench answers count as benign by
+# construction, run_judges does not score or_bench with StrongREJECT). Answers of 256 tokens, the default.
+entrypoint: run_attacks.py
+name: grid-direct-{dataset}-{model}
+time_per_run: "01:30:00"
+overrides:
+  attack: direct
+  datasets.coop_behaviors.split: train
+  datasets.coop_behaviors.exclude_categories: [copyright]
+  datasets.alpaca.idx: list(range(0,400))
+  datasets.or_bench.idx: list(range(0,400))
+  judge_own_runs_only: true
+sweep:
+  dataset: [coop_behaviors, alpaca, or_bench]
+  model: [W-posthoc-noprobe-s0-ema, W-coop-s0-ema]

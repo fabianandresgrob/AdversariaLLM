@@ -6,6 +6,19 @@ adv_behaviors:
   seed: 0
   idx: null
   shuffle: true
+coop_behaviors:  # coop's training behaviors, split as in training (adversariallm/dataset/coop_behaviors.py)
+  name: coop_behaviors
+  data_dir: ${root_dir}/data
+  behaviors: behavior_datasets/extra_behavior_datasets/adv_training_behaviors.csv
+  targets: optimizer_targets/extra_targets/adv_training_targets.json
+  safe: safe_responses/adv_training_behaviors_safe_responses_longer.csv
+  split: train
+  val_size: 24
+  val_seed: 0
+  exclude_categories: []
+  seed: 0
+  idx: null
+  shuffle: false
 alpaca:
   name: alpaca
   seed: 0

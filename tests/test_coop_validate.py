@@ -138,3 +138,27 @@ def test_adv_tuple_stream_reads_the_copyright_category():
     copyright = {b for b, c in ds.categories.items() if c == "copyright"}
     assert len(ds.categories) == 100 and len(copyright) == 11
     assert all(b in {r[0] for r in ds.rows} for b in copyright)
+
+
+def test_coop_behaviors_dataset_matches_the_training_split():
+    from omegaconf import OmegaConf
+
+    from adversariallm.dataset import PromptDataset
+    from adversariallm.training.data import AdvTupleStream, split_adv_stream
+
+    paths = dict(
+        data_dir="data",
+        behaviors="behavior_datasets/extra_behavior_datasets/adv_training_behaviors.csv",
+        targets="optimizer_targets/extra_targets/adv_training_targets.json",
+        safe="safe_responses/adv_training_behaviors_safe_responses_longer.csv",
+    )
+    cfg = dict(name="coop_behaviors", val_size=24, val_seed=0, seed=0, idx=None, shuffle=False, **paths)
+    load = PromptDataset.from_name("coop_behaviors")
+    train = load(OmegaConf.create({**cfg, "split": "train", "exclude_categories": []}))
+    stream = AdvTupleStream(*paths.values(), None, None)
+    tr, _ = split_adv_stream(stream, val_size=24, seed=0, val_targets=6)
+    assert train.messages == list(dict.fromkeys(stream.rows[i][0] for i in tr.indices))  # same order as training
+    assert len(train) == 76 and train[0][1]["content"]  # behavior + its first target
+    no_cr = load(OmegaConf.create({**cfg, "split": "train", "exclude_categories": ["copyright"]}))
+    assert len(no_cr) == 70 and not any(stream.categories[b] == "copyright" for b in no_cr.messages)
+    assert len(load(OmegaConf.create({**cfg, "split": "val", "exclude_categories": []}))) == 24

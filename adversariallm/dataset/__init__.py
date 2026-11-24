@@ -1,5 +1,6 @@
 from .adv_behaviors import AdvBehaviorsConfig, AdvBehaviorsDataset
 from .alpaca import AlpacaConfig, AlpacaDataset
+from .coop_behaviors import CoopBehaviorsConfig, CoopBehaviorsDataset
 from .jbb_behaviors import JBBBehaviorsConfig, JBBBehaviorsDataset
 from .magpie import MagpieConfig, MagpieDataset
 from .mmlu import MMLUConfig, MMLUDataset
@@ -27,6 +28,8 @@ __all__ = [
     "XSTestDataset",
     "AlpacaConfig",
     "AlpacaDataset",
+    "CoopBehaviorsConfig",
+    "CoopBehaviorsDataset",
     "MagpieConfig",
     "MagpieDataset",
 ]

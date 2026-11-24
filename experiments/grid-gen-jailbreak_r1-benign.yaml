@@ -1,0 +1,14 @@
+# Content-probe grid: Jailbreak-R1 prompts for harmless goals (Alpaca train window, rows 0-399) and the frozen model's
+# own answers, so the attacker's wrapping style appears with both labels. 4 prompts per goal. OR-Bench is not used here:
+# run_judges skips StrongREJECT on or_bench, and these answers need a judge.
+entrypoint: run_attacks.py
+name: grid-jbr1-benign-{model}
+time_per_run: "04:00:00"
+overrides:
+  attack: jailbreak_r1
+  dataset: alpaca
+  datasets.alpaca.idx: list(range(0,400))
+  attacks.jailbreak_r1.num_steps: 4
+  judge_own_runs_only: true
+sweep:
+  model: [W-posthoc-noprobe-s0-ema, W-coop-s0-ema]

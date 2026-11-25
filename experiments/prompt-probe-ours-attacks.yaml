@@ -1,0 +1,14 @@
+# Our retrained prompt probe (pretrain_prompt_probe.py, esg-probe-llama31-s0: EuroSafeGuard's design and prompts) on the
+# stored attack prompts, exactly as prompt-probe-attacks scored their released probe: base Llama, their template.
+entrypoint: score_prompt_probe.py
+name: prompt-probe-ours-{source}-{shard}
+time_per_run: "00:30:00"
+overrides:
+  num_shards: 4
+  probe_repo: ${root_dir}/checkpoints_probe/prompt_mlp/esg-probe-llama31-s0
+  out: ${root_dir}/outputs/eval/prompt_probe/esg-probe-llama31-s0
+sweep:
+  source: [pair, jailbreak_r1, gcg]
+  shard: [0, 1, 2, 3]
+artifacts:
+  - outputs/eval/prompt_probe/esg-probe-llama31-s0/{source}.{shard}-of-4.jsonl

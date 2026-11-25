@@ -1,0 +1,11 @@
+# Our retrained prompt probe on the benign sets, as prompt-probe-benign did for their released probe.
+entrypoint: score_prompt_probe.py
+name: prompt-probe-ours-{source}
+time_per_run: "00:15:00"
+overrides:
+  probe_repo: ${root_dir}/checkpoints_probe/prompt_mlp/esg-probe-llama31-s0
+  out: ${root_dir}/outputs/eval/prompt_probe/esg-probe-llama31-s0
+sweep:
+  source: [xs_test, or_bench, alpaca]
+artifacts:
+  - outputs/eval/prompt_probe/esg-probe-llama31-s0/{source}.0-of-1.jsonl

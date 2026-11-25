@@ -28,3 +28,12 @@ limit: null               # only n random rows (test runs)
 log_every: 200
 save_every: 1000
 overwrite: false
+
+wandb:
+  enabled: true
+  project: coop-detect
+  entity: null
+  group: prompt-probe
+  tags: []
+  dir: ${root_dir}/wandb_logs
+  every: 10               # log the loss every n steps

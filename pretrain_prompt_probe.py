@@ -10,7 +10,9 @@ are cut from the left. The released data has no validation split, so val_frac of
 
 Writes <out>/<name>/final_reader.pt (loads with load_reader, and as probe_init of coop training), metrics.json, and
 probe/probe.safetensors with probe_config.json in the layout of their release, so score_prompt_probe.py reads it
-with probe_repo=<out>/<name>. A checkpoint every save_every steps lets a restarted job continue.
+with probe_repo=<out>/<name>. A checkpoint every save_every steps lets a restarted job continue. The loss goes to W&B
+(project coop-detect, group prompt-probe); a job that continues from a checkpoint starts a new W&B run of the same
+name at the checkpoint's step.
 """
 
 import json
@@ -115,6 +117,7 @@ def save_release_layout(reader, out_dir: str, cfg: dict) -> None:
 def main(cfg: DictConfig) -> None:
     import pandas as pd
 
+    from adversariallm.training.loop import _init_wandb
     from adversariallm.training.readers import build_reader, parse_layer
     from generate_answers import load
 
@@ -161,6 +164,8 @@ def main(cfg: DictConfig) -> None:
         step = int(state["step"])
         log.info("continuing from step %d of %d", step, len(starts))
 
+    wandb_run = _init_wandb(cfg, {**OmegaConf.to_container(cfg, resolve=True), "models": None, "n_train": len(tr),
+                                  "n_val": len(val_idx), "steps_total": len(starts), "start_step": step})
     reader.train()
     for b in starts[step:]:
         bi = order[b:b + bs]
@@ -175,6 +180,9 @@ def main(cfg: DictConfig) -> None:
         loss.backward()
         opt.step()
         step += 1
+        if wandb_run is not None and step % int(cfg.wandb.every) == 0:
+            wandb_run.log({"probe/loss": loss.item(), "probe/batch_rows": len(bi), "probe/batch_tokens": int(att.sum())},
+                          step=step)
         if step % int(cfg.log_every) == 0:
             log.info("step %d of %d, loss %.4f", step, len(starts), loss.item())
         if step % int(cfg.save_every) == 0:
@@ -186,6 +194,9 @@ def main(cfg: DictConfig) -> None:
     y_va = [harmful[i] for i in val_idx]
     val_auroc = auroc(y_va, scores)
     log.info("val AUROC %.4f on %d rows", val_auroc, len(val_idx))
+    if wandb_run is not None:
+        wandb_run.log({"probe/val_auroc": val_auroc}, step=step)
+        wandb_run.finish()
 
     meta = {"reader": reader_cfg, "name": cfg.name, "model": cfg.model, "template": cfg.template,
             "prompts": str(cfg.prompts), "seed": int(cfg.seed)}

@@ -72,6 +72,7 @@ run_generate_benign_targets.py:
 pretrain_prompt_probe.py:
   config_name: pretrain_prompt_probe
   name_key: name
+  wandb_dir_key: wandb.dir
   rerun_overrides:
     overwrite: true
 generate_answers.py:

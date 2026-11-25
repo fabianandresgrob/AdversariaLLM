@@ -76,6 +76,20 @@ def benign_prompts(name: str, alpaca_n: int, seed: int) -> dict[str, dict]:
     return {sha1(p): {"prompt": p, **meta} for p, meta in items}
 
 
+def esg_val_prompts(path: str, val_frac: float, seed: int) -> dict[str, dict]:
+    """The rows of EuroSafeGuard's probe set that pretrain_prompt_probe.py held out (same split_groups call), with
+    their label, source and their own split column."""
+    import pandas as pd
+
+    from pretrain_prompt_probe import split_groups
+
+    df = pd.read_parquet(path, columns=["row_id", "text", "label", "source", "input_id", "split"])
+    df = df[df.text.fillna("").str.strip() != ""].sort_values("row_id").reset_index(drop=True)
+    _, val_idx = split_groups(df.input_id.tolist(), val_frac, seed)
+    return {sha1(r.text): {"prompt": r.text, "row_id": r.row_id, "label": int(r.label), "esg_source": r.source,
+                           "esg_split": r.split} for r in df.iloc[val_idx].itertuples()}
+
+
 def shard_of(rows: dict[str, dict], shard: int, num_shards: int) -> list[str]:
     return [h for h in sorted(rows) if int(h, 16) % num_shards == shard]
 
@@ -146,6 +160,8 @@ def main(cfg: DictConfig) -> None:
     for source in sources:
         if source in BENIGN:
             rows = benign_prompts(source, cfg.alpaca_n, cfg.seed)
+        elif source == "esg_val":
+            rows = esg_val_prompts(cfg.esg_prompts, cfg.esg_val_frac, cfg.esg_seed)
         else:
             rows = attack_prompts(cfg.outputs_dir, source, cfg.prompt_system)
         out = Path(cfg.out) / f"{source}.{cfg.shard}-of-{cfg.num_shards}.jsonl"

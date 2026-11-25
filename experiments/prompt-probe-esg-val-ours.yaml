@@ -1,0 +1,10 @@
+# Our retrained prompt probe (esg-probe-llama31-s0) on the ESG rows its pretraining held out, per ESG source.
+entrypoint: score_prompt_probe.py
+name: prompt-probe-esg-val-ours
+time_per_run: "00:20:00"
+overrides:
+  source: esg_val
+  probe_repo: ${root_dir}/checkpoints_probe/prompt_mlp/esg-probe-llama31-s0
+  out: ${root_dir}/outputs/eval/prompt_probe/esg-probe-llama31-s0
+artifacts:
+  - outputs/eval/prompt_probe/esg-probe-llama31-s0/esg_val.0-of-1.jsonl

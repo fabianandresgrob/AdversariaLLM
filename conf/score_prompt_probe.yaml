@@ -15,6 +15,10 @@ probe_repo: EuroSafeAI/EuroSafeGuard-v1
 # the same commit (0e9e39f). null = the probe's own base_model.
 base_model: meta-llama/Meta-Llama-3.1-8B-Instruct
 allow_cpu: false
+# esg_val: the rows pretrain_prompt_probe.py held out (same file, val_frac and seed as conf/pretrain_prompt_probe.yaml)
+esg_prompts: /fast/fgrob/coop-detect/esg_data/probe_train_full.parquet
+esg_val_frac: 0.05
+esg_seed: 0
 alpaca_n: 2000            # seeded sample of Alpaca instructions
 shard: 0
 num_shards: 1

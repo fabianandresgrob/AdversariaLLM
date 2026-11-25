@@ -1,0 +1,9 @@
+# EuroSafeGuard's released prompt probe on the ESG rows our pretraining held out, to compare both probes per ESG
+# source. Their probe may have seen these rows in training (the output keeps their split column as esg_split).
+entrypoint: score_prompt_probe.py
+name: prompt-probe-esg-val-theirs
+time_per_run: "00:20:00"
+overrides:
+  source: esg_val
+artifacts:
+  - outputs/eval/prompt_probe/eurosafeguard/esg_val.0-of-1.jsonl

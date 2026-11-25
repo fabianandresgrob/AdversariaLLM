@@ -15,6 +15,7 @@ max_new_tokens: 256       # as the attacks' default and the stored PAIR answers
 max_prompt_tokens: 2048   # longer prompts are stored as too_long (EuroSafeGuard's probe also reads at most 2048)
 token_budget: 24000       # rows x longest prompt per batch
 max_rows: 64
+allow_cpu: false          # stop when the model did not load on a GPU
 shard: 0
 num_shards: 1
 limit: null               # only the first n unanswered prompts of the shard (timing runs)

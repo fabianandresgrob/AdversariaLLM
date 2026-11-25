@@ -50,6 +50,9 @@ def load(cfg):
     if cfg.adapter_path:
         params["adapter_path"] = cfg.adapter_path
     model, tok = load_model_and_tokenizer(params)  # chat_template: ours (the entry's)
+    device = next(model.parameters()).device
+    if device.type != "cuda" and not cfg.allow_cpu:  # device_map=auto falls back to the CPU without an error
+        raise RuntimeError(f"model loaded on {device}, not on a GPU (allow_cpu=true to run anyway)")
     if cfg.template == "theirs":
         tok.chat_template = AutoTokenizer.from_pretrained(params["tokenizer_id"]).chat_template
     elif cfg.template != "ours":

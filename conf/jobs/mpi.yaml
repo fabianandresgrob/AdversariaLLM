@@ -20,6 +20,7 @@ resources:                                             # per job; 8 cores + 64 G
   disk_gb: 50
 default_time_per_run: "04:00:00"                       # when an experiment sets no time_per_run
 gpus:                                                  # --gpu name -> CUDADeviceName, minimum bid (condor_nodes, 2026-11-19)
+  rtx6000: {device: Quadro RTX 6000, min_bid: 15}        # 24 GB: judges and small models only
   a100-40: {device: NVIDIA A100-SXM4-40GB, min_bid: 15}
   a100-80: {device: NVIDIA A100-SXM4-80GB, min_bid: 25}
   h100: {device: NVIDIA H100 80GB HBM3, min_bid: 35}

@@ -1,0 +1,10 @@
+# Prompt probe of EuroSafeGuard's design, trained in our framework on their probe prompts (withheld rows filled except
+# CeSIA), on base Llama-3.1-8B-Instruct under Meta's template. Vault note "Next steps 2026-11-25", step 3.
+entrypoint: pretrain_prompt_probe.py
+name: esg-probe-llama31-s{seed}
+time_per_run: "06:00:00"
+overrides: {}
+sweep:
+  seed: [0]
+artifacts:
+  - checkpoints_probe/prompt_mlp/{name}/final_reader.pt

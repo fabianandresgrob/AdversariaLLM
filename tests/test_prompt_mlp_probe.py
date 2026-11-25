@@ -102,3 +102,55 @@ def test_build_and_reload(tmp_path):
     torch.save({"reader": reader.state_dict(), "cfg": {"reader": cfg}}, path)
     again = load_reader(str(path))
     assert isinstance(again, PromptMLPProbe) and again.W1.weight.equal(reader.W1.weight)
+
+
+def test_pretraining_split_and_twins():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("ppp", Path(__file__).resolve().parents[1] / "pretrain_prompt_probe.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    groups = [f"g{i // 3}" for i in range(300)]  # 100 groups of 3 rows
+    train, val = mod.split_groups(groups, 0.05, seed=0)
+    assert len(val) == 15 and len(train) == 285
+    assert not {groups[i] for i in train} & {groups[i] for i in val}
+    assert mod.split_groups(groups, 0.05, seed=0) == (train, val)
+    twins = mod.plain_twins(["a", "a", "b", "c", "c"], ["plain", "redact_jb", "jf", "dan_h", "plain"])
+    assert twins == {1: 0, 3: 4}
+    assert mod.auroc([1, 1, 0, 0], [0.9, 0.8, 0.1, 0.2]) == 1.0
+    assert mod.auroc([1, 0, 1, 0], [0.5, 0.5, 0.9, 0.1]) == 0.875  # one tie counts half: (0.5 + 1 + 1 + 1) / 4
+    assert mod.auroc([1, 1], [0.1, 0.2]) != mod.auroc([1, 1], [0.1, 0.2])  # nan
+
+
+def test_pretraining_steps_on_a_tiny_model():
+    """features, rms_scale and a few probe updates on a random 2-layer model: the loss falls and scores separate."""
+    import importlib.util
+
+    from transformers import GPT2Config, GPT2LMHeadModel
+
+    spec = importlib.util.spec_from_file_location("ppp", Path(__file__).resolve().parents[1] / "pretrain_prompt_probe.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    torch.manual_seed(0)
+    model = GPT2LMHeadModel(GPT2Config(n_layer=2, n_embd=16, n_head=2, vocab_size=50)).eval()
+    layer = parse_layer("all", 2)
+    harmful = [[3, 4, 5, 6, 7] * k for k in (2, 5, 8, 3)]      # token 3..7 patterns
+    benign = [[20, 21, 22, 23] * k for k in (3, 6, 2, 7)]
+    items, labels = harmful + benign, torch.tensor([0] * 4 + [1] * 4)
+    psi, tgt, att = mod.features(model, items, layer, pad_id=0)
+    assert psi.shape == (8, 40, 32) and tgt.sum() == 0 and att.sum(dim=1).tolist() == [len(x) for x in items]
+    reader = build_reader({"type": "prompt_mlp", "layer": "all", "hidden": 8}, 16, 2)
+    scale = mod.rms_scale(model, items, layer, 0, 16, bs=4)
+    assert scale.shape == (32,) and scale[:16].unique().numel() == 1
+    reader.set_scale(scale)
+    opt = torch.optim.AdamW(reader.parameters(), lr=1e-2)
+    first = None
+    for _ in range(60):
+        loss = reader.example_loss(psi, tgt, att, labels).mean()
+        first = first if first is not None else loss.item()
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+    scores = mod.score_all(model, reader.eval(), items, layer, 0, bs=3)
+    assert loss.item() < 0.5 * first
+    assert min(scores[:4]) > max(scores[4:])

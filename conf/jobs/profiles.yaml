@@ -69,6 +69,11 @@ run_gate_diagnostics.py:
   config_name: gate_diagnostics
 run_generate_benign_targets.py:
   config_name: generate_benign_targets
+pretrain_prompt_probe.py:
+  config_name: pretrain_prompt_probe
+  name_key: name
+  rerun_overrides:
+    overwrite: true
 generate_answers.py:
   config_name: generate_answers
   name_key: name

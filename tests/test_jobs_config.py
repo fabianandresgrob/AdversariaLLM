@@ -13,7 +13,7 @@ EXPECTED_ENTRYPOINTS = {
     "run_cross_attack_eval.py", "run_overrefusal_eval.py", "run_pretrain_probe.py", "run_calibrate_probe.py",
     "run_gate_diagnostics.py", "run_generate_benign_targets.py", "run_utility_eval.py",
     "probe_diagnose.py", "train_response_head.py", "inspect_embedding_attack.py", "build_answer_pool.py", "rescore_answer_probe.py", "rejudge_answers.py", "score_embedding_attack.py", "probe_prompt_conditions.py", "reread_monitor_eval.py", "offline_probe_study.py", "judge_flagged_raw.py", "score_prompt_probe.py", "prompt_probe_embedding_attack.py",
-    "generate_answers.py",
+    "generate_answers.py", "pretrain_prompt_probe.py",
 }
 _MISSING = object()
 

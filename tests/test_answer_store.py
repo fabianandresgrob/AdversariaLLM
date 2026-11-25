@@ -66,3 +66,19 @@ def test_sample_strata_twins_and_judge_text():
     assert out.loc["p2", "judge_text"] == "plain one" and out.loc["p2", "judge_against"] == "plain_twin"
     assert out.loc["p3", "judge_text"] == "plain two" and out.loc["p3", "entry_type"] == "dual_use_harmful"
     assert out.loc["p4", "judge_against"] == "self" and out.loc["p1", "judge_against"] == "self"
+
+
+def test_sample_takes_the_wildjailbreak_plain_request():
+    mod = _load("scripts/esg_build_sample.py", "esg_build_sample")
+    probe = pd.DataFrame([
+        {"row_id": "w1", "input_id": "g1", "source": "wjb_adversarial_harmful", "label": "1", "category": "Cyber",
+         "text": " a long role play "},
+        {"row_id": "w2", "input_id": "g2", "source": "wjb_vanilla_harmful", "label": "1", "category": "Cyber",
+         "text": "plain request"},
+    ])
+    gate = pd.DataFrame(columns=["input_id", "source", "entry_type", "text"])
+    wjb = pd.DataFrame([{"vanilla": "plain request", "adversarial": "a long role play"},
+                        {"vanilla": "plain request", "adversarial": ""}])
+    out = mod.build(probe, gate, per_stratum=5, seed=0, wildjailbreak=wjb).set_index("row_id")
+    assert out.loc["w1", "judge_text"] == "plain request" and out.loc["w1", "judge_against"] == "plain_twin"
+    assert out.loc["w2", "judge_against"] == "self"

@@ -12,7 +12,8 @@ Reads the filled probe and gate files (context/results/esg_data_counts/fill_with
 
 Civil Comments and ToxicChat are left out: toxic text, not requests. Every row keeps the dataset's `row_id`, the key
 of the answer store, so a later sample can add rows to the same store. `judge_text` is what the judge reads as the
-request: the plain twin where one exists (probe set first, then gate set), else the prompt itself (`judge_against`).
+request: the plain twin where one exists (probe set first, then gate set; for WildJailbreak's adversarial prompts the
+`vanilla` column of its own train file), else the prompt itself (`judge_against`).
 `entry_type` comes from the gate set by `input_id` (empty where the gate set has no such group).
 """
 
@@ -33,8 +34,10 @@ def source_group(source: str) -> str:
     return f"obf_{m.group(1)}" if m else source
 
 
-def build(probe: pd.DataFrame, gate: pd.DataFrame, per_stratum: int, seed: int) -> pd.DataFrame:
-    """probe: row_id, input_id, source, label, category, text. gate: input_id, source, entry_type, text."""
+def build(probe: pd.DataFrame, gate: pd.DataFrame, per_stratum: int, seed: int,
+          wildjailbreak: pd.DataFrame | None = None) -> pd.DataFrame:
+    """probe: row_id, input_id, source, label, category, text. gate: input_id, source, entry_type, text.
+    wildjailbreak: its train file with `vanilla` (the plain request) and `adversarial` (the rewrite)."""
     probe = probe[probe.text.fillna("").str.strip() != ""].copy()
     probe["label"] = probe.label.astype(int)
     probe["group"] = probe.source.map(source_group)
@@ -56,6 +59,11 @@ def build(probe: pd.DataFrame, gate: pd.DataFrame, per_stratum: int, seed: int) 
     plain = pd.concat([probe.loc[probe.source == "plain", ["input_id", "text"]],
                        gate.loc[gate.source == "plain", ["input_id", "text"]]]).drop_duplicates("input_id")
     twin_text = out.input_id.map(plain.set_index("input_id").text)
+    if wildjailbreak is not None:
+        wjb = wildjailbreak[wildjailbreak.vanilla.str.strip() != ""].assign(key=lambda d: d.adversarial.str.strip())
+        vanilla = wjb.drop_duplicates("key").set_index("key").vanilla.str.strip()
+        is_wjb = out.source.str.startswith("wjb_adversarial")
+        twin_text = twin_text.where(~is_wjb, out.text.str.strip().map(vanilla))
     has_twin = twin_text.notna() & (out.source != "plain")
     out["judge_text"] = out.text.where(~has_twin, twin_text)
     out["judge_against"] = has_twin.map({True: "plain_twin", False: "self"})
@@ -69,13 +77,18 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--probe", default=f"{DATA}/probe_train_full.parquet")
     ap.add_argument("--gate", default=f"{DATA}/gate_train_full.parquet")
+    ap.add_argument("--wildjailbreak", default=None, help="allenai/wildjailbreak train/train.tsv (optional)")
     ap.add_argument("--out", required=True)
     ap.add_argument("--per-stratum", type=int, default=500)
     ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args()
     probe = pd.read_parquet(a.probe, columns=["row_id", "input_id", "source", "label", "category", "text"])
     gate = pd.read_parquet(a.gate, columns=["input_id", "source", "entry_type", "text"])
-    out = build(probe, gate, a.per_stratum, a.seed)
+    wjb = None
+    if a.wildjailbreak:
+        wjb = pd.read_csv(a.wildjailbreak, sep="\t", dtype=str, keep_default_na=False, on_bad_lines="skip",
+                          usecols=["vanilla", "adversarial"])
+    out = build(probe, gate, a.per_stratum, a.seed, wjb)
     out.to_parquet(a.out, index=False)
     table = out.groupby("stratum").agg(rows=("row_id", "size"), judged_against_twin=("judge_against", lambda s: int((s == "plain_twin").sum())),
                                        strictly_harmful=("entry_type", lambda s: int((s == "harmful").sum())),

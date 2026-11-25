@@ -29,4 +29,5 @@ gpus:                                                  # --gpu name -> CUDADevic
 default_gpu: a100-80
 # GPU nodes no job is sent to. g155: on slot1_5 torch could not use the GPU in three jobs on 2026-11-25
 # ("Device 0 seems unavailable", then the model on the CPU), while nvidia-smi showed it idle.
-exclude_machines: [g155.internal.cluster.is.localnet]
+# i205: "CUDA unknown error" at torch's CUDA init in two jobs on slot1_6 and slot1_7, 2026-11-25.
+exclude_machines: [g155.internal.cluster.is.localnet, i205.internal.cluster.is.localnet]

@@ -27,6 +27,14 @@ def test_append_and_resume_after_a_cut_line(tmp_path):
     assert [r["row_id"] for r in answer_store.read_jsonl(str(tmp_path / "answers.*.jsonl"))] == ["a", "c"]
 
 
+def test_done_ids_find_the_judge_file(tmp_path):
+    """The judge writes judge.<name>.jsonl with no shard part; a restart must see its rows as done."""
+    answer_store.append(str(tmp_path / "judge.strong_reject.jsonl"), [{"row_id": "a", "p_harmful": 0.9}])
+    answer_store.append(str(tmp_path / "answers.0of2.jsonl"), [{"row_id": "b", "answer": "x"}])
+    assert answer_store.done_ids(str(tmp_path), "judge.strong_reject.") == {"a"}
+    assert answer_store.done_ids(str(tmp_path), "answers.") == {"b"}
+
+
 def test_meta_is_fixed_by_the_first_run(tmp_path):
     store = str(tmp_path / "s")
     answer_store.check_meta(store, {"model": "m", "max_new_tokens": 256, "note": 1}, ("model", "max_new_tokens"))

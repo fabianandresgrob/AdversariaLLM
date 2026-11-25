@@ -28,8 +28,9 @@ def read_jsonl(pattern: str) -> list[dict]:
 
 
 def done_ids(store: str, prefix: str) -> set:
-    """Row ids already in the store's `<prefix>*.jsonl` files (prefix `answers.` or `judge.<name>.`)."""
-    return {r["row_id"] for r in read_jsonl(os.path.join(store, f"{prefix}*.jsonl"))}
+    """Row ids already in the store's `<prefix>*jsonl` files (prefix `answers.` or `judge.<name>.`, which also
+    matches the unsharded judge.<name>.jsonl)."""
+    return {r["row_id"] for r in read_jsonl(os.path.join(store, f"{prefix}*jsonl"))}
 
 
 def append(path: str, rows: list[dict]) -> None:

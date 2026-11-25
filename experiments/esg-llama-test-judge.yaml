@@ -1,0 +1,11 @@
+# StrongREJECT on the harmful rows of esg-llama-test, each answer judged against the plain twin of its prompt where one
+# exists. Run after both shards. Benign rows only carry the refusal flag written at generation.
+entrypoint: generate_answers.py
+name: esg-llama-test-judge-{+set}
+time_per_run: "01:00:00"
+overrides:
+  stage: judge
+  prompts: /fast/fgrob/coop-detect/esg_data/samples/llama_test_v1.parquet
+  store: esg-llama31-base
+sweep:
+  +set: [v1]

@@ -1,0 +1,25 @@
+defaults:
+  - models: models
+  - paths
+  - _self_
+
+# generate_answers.py: a model's own greedy answers to a prompt file, and a judge on them, in an answer store.
+stage: generate           # generate | judge
+prompts: null             # required: parquet with row_id, text (and judge_text, judge_against, label for the judge)
+store: null               # required: folder name under `out`, one per model and generation setting
+out: ${root_dir}/outputs/answers
+model: meta-llama/Meta-Llama-3.1-8B-Instruct   # models.yaml entry
+adapter_path: null        # LoRA adapter on top of the entry (a trained coop model)
+template: theirs          # theirs: the tokenizer's own chat template (Meta's); ours: the entry's chat_template
+max_new_tokens: 256       # as the attacks' default and the stored PAIR answers
+max_prompt_tokens: 2048   # longer prompts are stored as too_long (EuroSafeGuard's probe also reads at most 2048)
+token_budget: 24000       # rows x longest prompt per batch
+max_rows: 64
+shard: 0
+num_shards: 1
+limit: null               # only the first n unanswered prompts of the shard (timing runs)
+log_every: 500
+judge: strong_reject      # judgezoo name
+judge_labels: [1]         # judge only rows with these labels (null: all); benign rows get the refusal flag only
+judge_chunk: 256
+name: null                # jobs injects the run name

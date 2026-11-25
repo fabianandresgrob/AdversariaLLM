@@ -1,0 +1,12 @@
+# Llama test (vault note "Next steps 2026-11-25", step 1): base Llama-3.1-8B-Instruct under Meta's template answers a
+# stratified sample of EuroSafeGuard's probe prompts (scripts/esg_build_sample.py), greedy, 256 tokens. The answers go
+# to the store outputs/answers/esg-llama31-base, keyed by the dataset's row_id. Judge afterwards with esg-llama-test-judge.
+entrypoint: generate_answers.py
+name: esg-llama-test-s{shard}
+time_per_run: "01:30:00"
+overrides:
+  prompts: /fast/fgrob/coop-detect/esg_data/samples/llama_test_v1.parquet
+  store: esg-llama31-base
+  num_shards: 2
+sweep:
+  shard: [0, 1]

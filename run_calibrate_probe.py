@@ -44,6 +44,13 @@ def write_operating_points(cfg, scores, window, generated):
         log.info(f"{float(fpr):.1%}-FPR threshold tau={out['threshold']:.6f}; wrote {out_path}")
 
 
+def default_threshold_path(cfg) -> str:
+    """threshold_<p>pct[_<window>].json next to the probe. val keeps the historical name; other windows get a suffix
+    so both operating points can coexist."""
+    suffix = "" if cfg.calibration_window == "val" else f"_{cfg.calibration_window}"
+    return os.path.join(os.path.dirname(cfg.checkpoint_path), f"threshold_{int(float(cfg.fpr) * 100)}pct{suffix}.json")
+
+
 @torch.no_grad()
 @hydra.main(version_base=None, config_path="conf", config_name="calibrate_probe")
 def main(cfg: DictConfig) -> None:
@@ -51,6 +58,7 @@ def main(cfg: DictConfig) -> None:
     from adversariallm.io_utils import load_model_and_tokenizer
     from adversariallm.training.coop_metrics import threshold_at_fpr
     from adversariallm.training.data import load_dataset_prompts
+    from adversariallm.training.probe_scoring import operating_point_path
 
     model_params = OmegaConf.to_container(cfg.models[cfg.model], resolve=True)  # plain dict (unlock struct)
     model_params["adapter_path"] = cfg.adapter_path
@@ -64,6 +72,13 @@ def main(cfg: DictConfig) -> None:
             "batch_size": cfg.batch_size,
         }
     )
+
+    # the defense reads these files for every later evaluation: never replace one silently
+    targets = ([operating_point_path(cfg.checkpoint_path, f, cfg.calibration_window) for f in cfg.fprs]
+               if cfg.get("fprs") else [default_threshold_path(cfg)])
+    existing = [t for t in targets if os.path.exists(t)]
+    if existing and not cfg.get("overwrite", False):
+        raise FileExistsError(f"{existing} exist; pass overwrite=true to recalibrate (condor_jobs --rerun does)")
 
     window = cfg.splits[cfg.calibration_benign][cfg.calibration_window]
     prompts, _ = load_dataset_prompts(cfg.datasets, cfg.calibration_benign, window=window, seed=cfg.val_seed)
@@ -89,11 +104,7 @@ def main(cfg: DictConfig) -> None:
         "adapter_path": cfg.adapter_path,
         "calibrated_on": "generated_responses" if any(responses) else "prompts_only",
     }
-    # val keeps the historical name; other windows get a suffix so both operating points can coexist
-    suffix = "" if cfg.calibration_window == "val" else f"_{cfg.calibration_window}"
-    out_path = os.path.join(
-        os.path.dirname(cfg.checkpoint_path), f"threshold_{int(float(cfg.fpr) * 100)}pct{suffix}.json"
-    )
+    out_path = default_threshold_path(cfg)
     with open(out_path, "w") as fh:
         json.dump(out, fh, indent=2)
     log.info(

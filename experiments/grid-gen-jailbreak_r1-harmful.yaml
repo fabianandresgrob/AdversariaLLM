@@ -12,5 +12,6 @@ overrides:
   datasets.coop_behaviors.exclude_categories: [copyright]
   attacks.jailbreak_r1.num_steps: 16
   judge_own_runs_only: true
+  save_dir: ${root_dir}/outputs/grid/  # own folder: not mixed into the evaluation cells <attack>__<defense>__<model>
 sweep:
   model: [W-posthoc-noprobe-s0-ema, W-coop-s0-ema]

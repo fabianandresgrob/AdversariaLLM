@@ -12,6 +12,7 @@ overrides:
   datasets.or_bench.idx: list(range(0,400))
   datasets.or_bench.assistant_turn: true  # the direct attack needs a (prompt, target) pair
   judge_own_runs_only: true
+  save_dir: ${root_dir}/outputs/grid/  # own folder: not mixed into the evaluation cells <attack>__<defense>__<model>
 sweep:
   dataset: [coop_behaviors, alpaca, or_bench]
   model: [W-posthoc-noprobe-s0-ema, W-coop-s0-ema]

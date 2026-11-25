@@ -98,3 +98,23 @@ def test_an_extra_operating_point_is_picked_explicitly_and_leaves_the_default_al
     assert _calibrated_threshold(cfg, 0.5, calibration_window="calib", calibration_fpr=0.05) == pytest.approx(0.1)
     with pytest.raises(FileNotFoundError):
         _calibrated_threshold(cfg, 0.5, calibration_window="calib", calibration_fpr=0.005)
+
+
+def test_default_threshold_path_names_the_window():
+    from omegaconf import OmegaConf
+
+    from run_calibrate_probe import default_threshold_path
+
+    cfg = OmegaConf.create({"checkpoint_path": "/x/checkpoints_coop/W/W-coop-s0/ema_reader.pt", "fpr": 0.01,
+                            "calibration_window": "calib"})
+    assert default_threshold_path(cfg) == "/x/checkpoints_coop/W/W-coop-s0/threshold_1pct_calib.json"
+    cfg.calibration_window = "val"
+    assert default_threshold_path(cfg) == "/x/checkpoints_coop/W/W-coop-s0/threshold_1pct.json"
+
+
+def test_calibration_rerun_may_overwrite():
+    import yaml
+
+    profiles = yaml.safe_load(open("conf/jobs/profiles.yaml"))
+    assert profiles["run_calibrate_probe.py"]["rerun_overrides"]["overwrite"] is True
+    assert yaml.safe_load(open("conf/calibrate_probe.yaml"))["overwrite"] is False

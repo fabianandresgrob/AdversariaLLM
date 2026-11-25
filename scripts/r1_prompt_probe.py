@@ -66,12 +66,17 @@ def load_scores(scores_dir: Path) -> dict[str, dict]:
     return out
 
 
-def behavior_runs(cell: Path) -> dict[str, dict]:
-    """{behavior prompt: run} from the newest run of each behavior (as pareto_sweep.py)."""
+def behavior_runs(cell: Path, dataset: str | None = None) -> dict[str, dict]:
+    """{behavior prompt: run} from the newest run of each behavior (as pareto_sweep.py). dataset: keep only runs on that
+    dataset (config.dataset), since other jobs can write into the same cell (e.g. the content-probe grid's Jailbreak-R1
+    runs on coop_behaviors and alpaca against W-coop-s0-ema)."""
     out, when = {}, {}
     for f in glob.glob(str(cell / "*" / "*" / "*" / "run.json")):
         stamp = str(Path(f).parent.parent)
-        for run in json.loads(Path(f).read_text())["runs"]:
+        data = json.loads(Path(f).read_text())
+        if dataset is not None and data.get("config", {}).get("dataset") != dataset:
+            continue
+        for run in data["runs"]:
             op = run["original_prompt"]
             key = op[-1]["content"] if isinstance(op, list) else str(op)
             if key not in when or stamp > when[key]:

@@ -157,6 +157,8 @@ def main(cfg: DictConfig) -> None:
             "first_prompts": str(cfg.prompts)}
     answer_store.check_meta(store, meta, FIXED)
     rows = pd.read_parquet(cfg.prompts).sort_values("row_id").to_dict("records")
+    if not cfg.allow_cpu:  # before any model loads: a GPU that cannot be used sends model and judge to the CPU
+        torch.zeros(1, device="cuda")
     if cfg.stage == "generate":
         generate(cfg, rows, store)
     elif cfg.stage == "judge":

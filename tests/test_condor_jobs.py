@@ -63,6 +63,13 @@ def test_submit_file_has_resources_and_all_limits(tmp_path):
     assert text.rstrip().endswith("queue attempt_dir from runs.txt")
 
 
+def test_excluded_machines_are_in_the_requirements(tmp_path):
+    site = {**load_site(REPO), "exclude_machines": ["g1.x", "g2.x"]}
+    text = render_submit(site, tmp_path / "code", tmp_path / "sub", "x", RES, LIMITS)
+    assert ('requirements   = TARGET.CUDADeviceName == "NVIDIA A100-SXM4-80GB" && TARGET.Machine != "g1.x"'
+            ' && TARGET.Machine != "g2.x"') in text
+
+
 def test_cpu_job_has_no_gpu_lines(tmp_path):
     text = render_submit(load_site(REPO), tmp_path, tmp_path, "x", Resources(4, 16, 0, 10, None), LIMITS)
     assert "request_gpus" not in text and "CUDADeviceName" not in text and "concurrency_limits" not in text

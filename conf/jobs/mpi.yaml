@@ -26,3 +26,6 @@ gpus:                                                  # --gpu name -> CUDADevic
   h100-4: {device: NVIDIA H100, min_bid: 35}
   b200: {device: NVIDIA B200, min_bid: 55}
 default_gpu: a100-80
+# GPU nodes no job is sent to. g155: on slot1_5 torch could not use the GPU in three jobs on 2026-11-25
+# ("Device 0 seems unavailable", then the model on the CPU), while nvidia-smi showed it idle.
+exclude_machines: [g155.internal.cluster.is.localnet]

@@ -96,8 +96,9 @@ def render_submit(site: dict, workdir: Path, submit_dir: Path, exp: str, res: Re
         f"request_disk   = {res.disk_gb}G",
     ]
     if res.gpus:
+        avoid = "".join(f' && TARGET.Machine != "{m}"' for m in site.get("exclude_machines") or [])
         lines += [f"request_gpus   = {res.gpus}",
-                  f'requirements   = TARGET.CUDADeviceName == "{site["gpus"][res.gpu]["device"]}"']
+                  f'requirements   = TARGET.CUDADeviceName == "{site["gpus"][res.gpu]["device"]}"{avoid}']
     lines += [
         "",
         "# price limit per computing unit and hour (IT page 'Limit the running price of a job')",

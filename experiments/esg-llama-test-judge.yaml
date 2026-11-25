@@ -5,7 +5,8 @@ name: esg-llama-test-judge-{+set}
 time_per_run: "01:00:00"
 overrides:
   stage: judge
-  prompts: /fast/fgrob/coop-detect/esg_data/samples/llama_test_v1.parquet
+  # same rows as llama_test_v1.parquet, with WildJailbreak's plain request as judge_text for its adversarial prompts
+  prompts: /fast/fgrob/coop-detect/esg_data/samples/llama_test_v1_twins.parquet
   store: esg-llama31-base
 sweep:
   +set: [v1]

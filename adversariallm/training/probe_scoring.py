@@ -8,6 +8,8 @@ from pathlib import Path
 
 import torch
 
+from .readers import select_hidden
+
 
 def score_pairs(model, tokenizer, readers: dict, pairs, layer: int = -1, max_answer_tokens: int = 512,
                 batch_size: int = 8) -> dict[str, list[float]]:
@@ -26,8 +28,8 @@ def score_pairs(model, tokenizer, readers: dict, pairs, layer: int = -1, max_ans
             items.append(dict(zip(keys, (t[: p_len + max_answer_tokens] for t in (ids, tgt, attn)))))
         batch = {k: v.to(device) for k, v in pad_collate(items, keys, pad_id=0).items()}
         with torch.no_grad():
-            hidden = model(input_ids=batch["ids"], attention_mask=batch["attn"],
-                           output_hidden_states=True).hidden_states[layer]
+            hidden = select_hidden(model(input_ids=batch["ids"], attention_mask=batch["attn"],
+                                         output_hidden_states=True).hidden_states, layer)
             for name, reader in readers.items():
                 out[name] += reader.p_harmful(hidden, batch["tgt"], batch["attn"]).tolist()
     return out

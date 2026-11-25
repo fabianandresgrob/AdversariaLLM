@@ -3,6 +3,8 @@ import logging
 import torch
 from torch.optim.optimizer import Optimizer
 
+from .readers import select_hidden
+
 # wandb_logger and wandb removed: optional logging only used when use_detector=True
 # If wandb logging is needed, pass a wandb_run object to EmbeddingSpaceAttack.__init__.
 
@@ -253,7 +255,7 @@ class EmbeddingSpaceAttack:
         output = model(inputs_embeds=self.to_model(input_embeds), attention_mask=attention_mask, output_hidden_states=True)
         logits = output.logits
         all_hidden_states = output.hidden_states
-        hidden_states = all_hidden_states[self.hidden_state_detector_index]
+        hidden_states = select_hidden(all_hidden_states, self.hidden_state_detector_index)  # int or list of layers
 
         # ------- Compute target loss -------
         # 1. shift targets by 1

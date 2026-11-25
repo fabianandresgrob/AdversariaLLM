@@ -25,7 +25,7 @@ from .coop_metrics import fresh_refit_recall, is_refusal, recall_at_fpr, refusal
 from .gating import avg_logprob, behavior_gate, rep_gate, w_harm, w_miss
 from .loop import _benign_under_adv_prompt, _cycle, _init_wandb, _to_device
 from .losses import backward_utility_kl, utility_kl
-from .readers import build_reader
+from .readers import build_reader, parse_layer, select_hidden
 
 log = logging.getLogger(__name__)
 
@@ -69,7 +69,7 @@ def _hidden_and_logits(model, layer, *, inputs_embeds=None, input_ids=None, atte
     out = model(
         inputs_embeds=inputs_embeds, input_ids=input_ids, attention_mask=attention_mask, output_hidden_states=True
     )
-    return out.hidden_states[layer], out.logits
+    return select_hidden(out.hidden_states, layer), out.logits
 
 
 def _detector_step(model, reader, opt_det, layer, adv_embeds, adv_batch, easy_batch, device, feature_sink=None,
@@ -86,45 +86,39 @@ def _detector_step(model, reader, opt_det, layer, adv_embeds, adv_batch, easy_ba
     benign. The harmful class is always perturbed (attacked) and the benign class never is, so without these
     the probe can separate the classes by "perturbed or not" instead of "harmful or not"."""
     opt_det.zero_grad(set_to_none=True)
-    logits_parts, labels_parts = [], []
+    losses = []
+
+    def add(hidden, target_ids, attn, label):  # the reader's own loss per example; harmful = 0, benign = 1
+        labels = torch.full((hidden.size(0),), label, dtype=torch.long, device=device)
+        losses.append(reader.example_loss(hidden, target_ids, attn, labels))
 
     with torch.no_grad():
         h_hidden, _ = _hidden_and_logits(model, layer, inputs_embeds=adv_embeds, attention_mask=adv_batch["h_attn"])
-    logits_h = reader.logits(h_hidden, adv_batch["h_targetids"], adv_batch["h_attn"])
+    add(h_hidden, adv_batch["h_targetids"], adv_batch["h_attn"], 0)  # harmful = 0
     if feature_sink is not None and hasattr(reader, "readout"):
         feature_sink["harmful"].append(reader.readout(h_hidden, adv_batch["h_targetids"], adv_batch["h_attn"]).detach())
-    logits_parts.append(logits_h)
-    labels_parts.append(torch.zeros(logits_h.size(0), dtype=torch.long, device=device))  # harmful = 0
 
     if refusal_negatives:
         with torch.no_grad():
             s_embeds, s_attn, s_labels = _benign_under_adv_prompt(model, adv_embeds, adv_batch)
             s_hidden, _ = _hidden_and_logits(model, layer, inputs_embeds=s_embeds, attention_mask=s_attn)
         s_target = (s_labels != -100).long()  # nonzero on the refusal: where the reader's answer readout looks
-        logits_s = reader.logits(s_hidden, s_target, s_attn)
-        logits_parts.append(logits_s)
-        labels_parts.append(torch.ones(logits_s.size(0), dtype=torch.long, device=device))  # refusal = benign
+        add(s_hidden, s_target, s_attn, 1)  # refusal = benign
 
     if easy_batch is not None:
         with torch.no_grad():
             b_hidden, _ = _hidden_and_logits(model, layer, input_ids=easy_batch["d_ids"], attention_mask=easy_batch["d_attn"])
-        logits_b = reader.logits(b_hidden, easy_batch["d_targetids"], easy_batch["d_attn"])
+        add(b_hidden, easy_batch["d_targetids"], easy_batch["d_attn"], 1)  # benign = 1
         if feature_sink is not None and hasattr(reader, "readout"):
             feature_sink["benign"].append(reader.readout(b_hidden, easy_batch["d_targetids"], easy_batch["d_attn"]).detach())
-        logits_parts.append(logits_b)
-        labels_parts.append(torch.ones(logits_b.size(0), dtype=torch.long, device=device))  # benign = 1
         if perturb_radius is not None:
             with torch.no_grad():
                 emb = _perturb_user(model.get_input_embeddings()(easy_batch["d_ids"]), easy_batch["d_perturb_mask"],
                                     perturb_radius)
                 p_hidden, _ = _hidden_and_logits(model, layer, inputs_embeds=emb, attention_mask=easy_batch["d_attn"])
-            logits_p = reader.logits(p_hidden, easy_batch["d_targetids"], easy_batch["d_attn"])
-            logits_parts.append(logits_p)
-            labels_parts.append(torch.ones(logits_p.size(0), dtype=torch.long, device=device))  # still benign
+            add(p_hidden, easy_batch["d_targetids"], easy_batch["d_attn"], 1)  # still benign
 
-    logits = torch.cat(logits_parts, dim=0)
-    labels = torch.cat(labels_parts, dim=0)
-    loss = detector_ce(logits, labels)
+    loss = torch.cat(losses, dim=0).mean()
     loss.backward()
     opt_det.step()
     return loss.item()
@@ -388,7 +382,7 @@ def _coop_validate(
     comply = [not is_refusal(g) for g in attacked_gens]
 
     # a probe that reads the answer scores what the model actually said under the attack
-    reads_answer = getattr(reader, "readout_mode", "prompt_last") != "prompt_last"
+    reads_answer = getattr(reader, "reads_answer", getattr(reader, "readout_mode", "prompt_last") != "prompt_last")
     gen_scores = _score_answers(model, reader, layer, adv_prompts, attacked_gens, tokenizer) if reads_answer else None
     if gen_scores is not None:
         miss_flags = [s <= thr for s in gen_scores]
@@ -616,7 +610,7 @@ def run_coop_training(cfg):
 
     # reader; input_dim = target hidden size. probe_init: "random" or a pretrained probe.pt.
     hidden_dim = model.get_input_embeddings().weight.shape[-1]
-    reader = build_reader(container.get("reader"), hidden_dim).to(device)
+    reader = build_reader(container.get("reader"), hidden_dim, model.config.num_hidden_layers).to(device)
     probe_init = container.get("probe_init") or "random"
     if probe_init != "random":
         log.info(f"loaded pretrained probe from {probe_init} "
@@ -694,7 +688,7 @@ def run_coop_training(cfg):
     # in-distribution over-refusal: free generation on the calibration alpaca prompts
     alpaca_prompts = calib_prompts[: int(cfg.training.benign_gen_n)]
 
-    layer = int(container["reader"].get("layer", -1)) if container.get("reader") else -1
+    layer = parse_layer((container.get("reader") or {}).get("layer", -1), model.config.num_hidden_layers)
 
     # attack (Stage B: model-only; Stage C: also detector-aware via attack.use_detector) or None (Stage A)
     # benign-perturbation radius: per token, like the attack's (eps x mean embedding norm)

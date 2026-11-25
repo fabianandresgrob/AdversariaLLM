@@ -25,6 +25,9 @@ any response position scores prompt *and* response. `readout` picks between them
 A second reader type, DualProbe (type "dual"), keeps the prompt_last probe unchanged and adds a
 separate response channel with its own weights; see its docstring.
 
+A third type, PromptMLPProbe (type "prompt_mlp"), is EuroSafeGuard's prompt probe: an MLP on the outputs of
+several layers, scoring every prompt token. It reads `layer: all` (or a list of layers); see select_hidden.
+
 Every mode derives its positions from target_ids/attention_mask, so all of them are
 invariant to right padding and to variable prompt/response lengths.
 
@@ -51,6 +54,28 @@ DEFAULT_READOUT_K = 24
 # token cannot fire the channel, short enough that a harmful paragraph deep in a refusal-prefixed
 # answer still dominates its window.
 DEFAULT_RESPONSE_WINDOW = 16
+
+
+def parse_layer(layer, num_layers: int):
+    """The reader config's `layer` as select_hidden takes it: an int, or a list of ints for "all" (the output of
+    every block, hidden_states[1..num_layers], as EuroSafeGuard's probe reads) or a list of layers."""
+    if layer is None:
+        return -1
+    if isinstance(layer, str):
+        if layer != "all":
+            raise ValueError(f"layer must be an int, a list of ints or 'all', got {layer!r}")
+        return list(range(1, num_layers + 1))
+    if isinstance(layer, int):
+        return layer
+    return [int(i) for i in layer]
+
+
+def select_hidden(hidden_states, layer) -> torch.Tensor:
+    """What a reader is given from a forward with output_hidden_states: one layer (B, T, D) for an int, the layers
+    concatenated along the feature axis (B, T, len(layer) * D) for a list. Gradients flow in both cases."""
+    if isinstance(layer, int):
+        return hidden_states[layer]
+    return torch.cat([hidden_states[i] for i in layer], dim=-1)
 
 
 def readout_index(target_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
@@ -136,6 +161,12 @@ class Reader(ABC):
     def p_harmful(self, hidden: torch.Tensor, target_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
         """P(harmful) per row = softmax(logits)[:, HARMFUL_COL]."""
         return torch.softmax(self.logits(hidden, target_ids, attention_mask).float(), dim=-1)[:, HARMFUL_COL]
+
+    def example_loss(self, hidden: torch.Tensor, target_ids: torch.Tensor, attention_mask: torch.Tensor,
+                     labels: torch.Tensor) -> torch.Tensor:
+        """The reader's own training loss per example, (B,). labels: 0 = harmful, 1 = benign. Cross-entropy on
+        logits() unless a reader has its own loss (PromptMLPProbe)."""
+        return nn.functional.cross_entropy(self.logits(hidden, target_ids, attention_mask), labels, reduction="none")
 
     def evasion_loss(
         self,
@@ -295,6 +326,91 @@ class DualProbe(Reader, nn.Module):
         return out if HARMFUL_COL == 0 else out.flip(-1)
 
 
+class PromptMLPProbe(Reader, nn.Module):
+    """EuroSafeGuard's prompt probe (Waibl et al. 2026; github.com/EuroSafeAI/EuroSafeGuard, Apache-2.0, commit
+    2a69489: eurosafeguard/guard.py MLPProbe and ema_max, training/probe_lib.py swim and probe_loss).
+
+        z_t    = w2 . gelu(W1 (scale * psi_t) + b1) + b2     one logit per prompt token, psi_t = the outputs of
+                                                             several layers at token t, concatenated
+        score  = max_t EMA_t(z), alpha = 2 / (M + 1)         the prompt's score when the probe is used
+        loss   = sum_t softmax_t(zbar_t) * BCE(y, zbar_t)    training; zbar_t = mean of the last M logits
+
+    Scored positions are the prompt up to and including the assistant header: every attended token before the
+    answer (target_ids == 0), so the score does not change with what follows the prompt. `scale` is a fixed
+    1/RMS per feature, set once from unlabelled data (set_scale). Parameter names are theirs, so the released
+    probe.safetensors loads with load_state_dict.
+
+    In the (B, 2) logits layout the score is the harmful column and the benign column is 0, so
+    softmax(logits)[:, 0] = sigmoid(score), CE toward harmful = softplus(-score), and evasion_loss = softplus(score).
+    """
+
+    readout_mode = "prompt_tokens"
+    reads_answer = False
+
+    def __init__(self, input_dim: int, hidden: int = 256, window: int = DEFAULT_RESPONSE_WINDOW, tau: float = 1.0):
+        nn.Module.__init__(self)
+        self.window = int(window)  # M
+        self.tau = float(tau)
+        self.W1 = nn.Linear(input_dim, hidden)
+        self.w2 = nn.Linear(hidden, 1)
+        self.register_buffer("scale", torch.ones(input_dim))
+        nn.init.normal_(self.W1.weight, std=1.0 / input_dim ** 0.5)  # their training initialisation
+        nn.init.zeros_(self.w2.weight)
+
+    def set_scale(self, scale: torch.Tensor) -> None:
+        self.scale.copy_(scale.to(self.scale))
+
+    @staticmethod
+    def prompt_mask(target_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+        """(B, T) bool: attended positions up to the last prompt token. A prompt-only row: every attended token."""
+        pos = torch.arange(target_ids.size(1), device=target_ids.device).unsqueeze(0)
+        return (pos <= readout_index(target_ids, attention_mask).unsqueeze(1)) & attention_mask.bool()
+
+    def token_logits(self, hidden: torch.Tensor) -> torch.Tensor:
+        """(B, T) logit per token from (B, T, input_dim) features, in fp32 after the first layer."""
+        w = (self.W1.weight * self.scale).to(hidden.dtype)
+        return self.w2(nn.functional.gelu((hidden @ w.T).float() + self.W1.bias)).squeeze(-1)
+
+    def score(self, hidden: torch.Tensor, target_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+        """(B,) max over prompt tokens of the moving average of the token logits."""
+        z, mask = self.token_logits(hidden), self.prompt_mask(target_ids, attention_mask)
+        a = 2.0 / (self.window + 1)
+        state = torch.zeros_like(z[:, 0])
+        started = torch.zeros_like(mask[:, 0])
+        best = torch.full_like(z[:, 0], -1e9)
+        for t in range(z.size(1)):
+            m = mask[:, t]
+            state = torch.where(m, torch.where(started, (1 - a) * state + a * z[:, t], z[:, t]), state)
+            started = started | m
+            best = torch.where(m, torch.maximum(best, state), best)
+        return best
+
+    def logits(self, hidden: torch.Tensor, target_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+        s = self.score(hidden, target_ids, attention_mask)
+        cols = [s, torch.zeros_like(s)]
+        return torch.stack(cols if HARMFUL_COL == 0 else cols[::-1], dim=-1)
+
+    def example_loss(self, hidden: torch.Tensor, target_ids: torch.Tensor, attention_mask: torch.Tensor,
+                     labels: torch.Tensor) -> torch.Tensor:
+        z, mask = self.token_logits(hidden), self.prompt_mask(target_ids, attention_mask)
+        M = self.window
+        zc = torch.cumsum(z * mask, dim=1)
+        n = torch.cumsum(mask.to(z.dtype), dim=1)
+        pad = nn.functional.pad
+        zbar = (zc - pad(zc, (M, 0))[:, :-M]) / (n - pad(n, (M, 0))[:, :-M]).clamp(min=1)
+        valid = mask & (n >= M)
+        short = mask.sum(dim=1) < M  # fewer than M prompt tokens: one prediction from their mean, at the last one
+        if short.any():
+            last = (torch.cumsum(mask.long(), dim=1) * mask).argmax(dim=1)
+            valid = valid.clone()
+            valid[short] = False
+            valid[short, last[short]] = True
+        y = (labels == HARMFUL_COL).to(zbar.dtype)[:, None].expand_as(zbar)
+        per = nn.functional.binary_cross_entropy_with_logits(zbar, y, reduction="none")
+        w = torch.softmax((zbar / self.tau).masked_fill(~valid, -1e9), dim=1)
+        return (w * per.masked_fill(~valid, 0.0)).sum(dim=1)
+
+
 def load_reader(checkpoint_path: str, readout: str | None = None, readout_k: int | None = None,
                 window: int | None = None) -> Reader:
     """Build a reader from a pair checkpoint ({"reader", "cfg"}) or a bare LinearProbe state_dict.
@@ -306,10 +422,13 @@ def load_reader(checkpoint_path: str, readout: str | None = None, readout_k: int
     is_pair = isinstance(ckpt, dict) and "reader" in ckpt
     state = ckpt["reader"] if is_pair else ckpt
     trained = ((ckpt.get("cfg") or {}).get("reader") or {}) if is_pair else {}
-    if trained.get("type") == "dual":
+    if trained.get("type") == "prompt_mlp":
+        reader: Reader = PromptMLPProbe(state["W1.weight"].shape[1], hidden=state["W1.weight"].shape[0],
+                                        window=trained.get("window") or DEFAULT_RESPONSE_WINDOW)
+    elif trained.get("type") == "dual":
         if readout or readout_k:
             raise ValueError("a dual probe reads fixed positions; readout overrides do not apply")
-        reader: Reader = DualProbe(
+        reader = DualProbe(
             state["prompt.linear.weight"].shape[1],
             response_window=trained.get("response_window") or DEFAULT_RESPONSE_WINDOW,
         )
@@ -324,13 +443,24 @@ def load_reader(checkpoint_path: str, readout: str | None = None, readout_k: int
     return reader.eval()
 
 
-def build_reader(cfg: dict | None, input_dim: int) -> Reader:
-    """Construct the reader from config. v1 supports "linear"; MLP/gemma slot in here.
+def build_reader(cfg: dict | None, input_dim: int, num_layers: int | None = None) -> Reader:
+    """Construct the reader from config. input_dim is the model's hidden size.
 
-    cfg keys: type ("linear" | "dual"), readout (see READOUT_MODES), readout_k (response_mean
-    window), response_window (dual only)."""
+    cfg keys: type ("linear" | "dual" | "prompt_mlp"), layer (int, list or "all"; a list or "all" multiplies the
+    reader's input by the number of layers, and "all" needs num_layers), readout (see READOUT_MODES), readout_k
+    (response_mean window), response_window (dual only), window and hidden (prompt_mlp)."""
     cfg = cfg or {}
     kind = cfg.get("type", "linear")
+    layer = parse_layer(cfg.get("layer", -1), num_layers or 0)
+    if kind == "prompt_mlp":
+        if isinstance(layer, int):
+            layer = [layer]
+        if not layer:
+            raise ValueError("reader.layer='all' needs the model's number of layers")
+        return PromptMLPProbe(input_dim * len(layer), hidden=int(cfg.get("hidden") or 256),
+                              window=cfg.get("window") or DEFAULT_RESPONSE_WINDOW)
+    if not isinstance(layer, int):
+        raise ValueError(f"a {kind} reader reads one layer, got layer={cfg.get('layer')!r}")  # noqa: TRY004 (a config value)
     if kind == "linear":
         return LinearProbe(
             input_dim,

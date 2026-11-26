@@ -23,7 +23,8 @@ lr: 0.001
 weight_decay: 0.01
 twins: true               # add the plain twin of every rewritten prompt to its batch
 val_frac: 0.05            # share of input_id groups held out
-seed: 0
+seed: 0                   # probe init and batch order
+split_seed: 0             # which input_id groups are held out; fixed, so all seeds share the held-out rows
 limit: null               # only n random rows (test runs)
 log_every: 200
 save_every: 1000

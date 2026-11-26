@@ -133,7 +133,7 @@ def main(cfg: DictConfig) -> None:
     df = df[df.text.fillna("").str.strip() != ""].sort_values("row_id").reset_index(drop=True)
     if cfg.limit:
         df = df.sample(n=int(cfg.limit), random_state=int(cfg.seed)).sort_values("row_id").reset_index(drop=True)
-    train_idx, val_idx = split_groups(df.input_id.tolist(), float(cfg.val_frac), int(cfg.seed))
+    train_idx, val_idx = split_groups(df.input_id.tolist(), float(cfg.val_frac), int(cfg.split_seed))
     harmful = df.label.astype(int).tolist()  # their label: 1 = harmful
 
     model, tok = load(cfg)
@@ -199,7 +199,7 @@ def main(cfg: DictConfig) -> None:
         wandb_run.finish()
 
     meta = {"reader": reader_cfg, "name": cfg.name, "model": cfg.model, "template": cfg.template,
-            "prompts": str(cfg.prompts), "seed": int(cfg.seed)}
+            "prompts": str(cfg.prompts), "seed": int(cfg.seed), "split_seed": int(cfg.split_seed)}
     torch.save({"reader": reader.state_dict(), "cfg": meta, "step": step}, os.path.join(out_dir, "final_reader.pt"))
     save_release_layout(reader, out_dir, {
         "kind": "mlp", "hidden": int(reader_cfg.get("hidden") or 256), "activation": "gelu",

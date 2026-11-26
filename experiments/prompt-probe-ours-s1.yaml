@@ -1,0 +1,14 @@
+# Seed 1 of our retrained prompt probe (esg-probe-llama31-s1) on the benign sets and on the ESG rows held out in
+# pretraining (split_seed 0, the same rows as for seed 0). One job, one model load. The attack prompts are left out.
+entrypoint: score_prompt_probe.py
+name: prompt-probe-ours-s1
+time_per_run: "00:30:00"
+overrides:
+  sources: [xs_test, or_bench, alpaca, esg_val]
+  probe_repo: ${root_dir}/checkpoints_probe/prompt_mlp/esg-probe-llama31-s1
+  out: ${root_dir}/outputs/eval/prompt_probe/esg-probe-llama31-s1
+artifacts:
+  - outputs/eval/prompt_probe/esg-probe-llama31-s1/xs_test.0-of-1.jsonl
+  - outputs/eval/prompt_probe/esg-probe-llama31-s1/or_bench.0-of-1.jsonl
+  - outputs/eval/prompt_probe/esg-probe-llama31-s1/alpaca.0-of-1.jsonl
+  - outputs/eval/prompt_probe/esg-probe-llama31-s1/esg_val.0-of-1.jsonl

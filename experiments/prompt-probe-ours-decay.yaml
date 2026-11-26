@@ -1,0 +1,16 @@
+# Our prompt probes trained with learning rate decay (esg-probe-pretrain-decay) on the benign sets and on the ESG rows
+# held out in pretraining, as prompt-probe-ours-s1. One job and one model load per probe.
+entrypoint: score_prompt_probe.py
+name: prompt-probe-{probe_run}
+time_per_run: "00:30:00"
+overrides:
+  sources: [xs_test, or_bench, alpaca, esg_val]
+  probe_repo: ${root_dir}/checkpoints_probe/prompt_mlp/${probe_run}
+  out: ${root_dir}/outputs/eval/prompt_probe/${probe_run}
+sweep:
+  probe_run: [esg-probe-llama31-decay-s0, esg-probe-llama31-decay-s1]
+artifacts:
+  - outputs/eval/prompt_probe/{probe_run}/xs_test.0-of-1.jsonl
+  - outputs/eval/prompt_probe/{probe_run}/or_bench.0-of-1.jsonl
+  - outputs/eval/prompt_probe/{probe_run}/alpaca.0-of-1.jsonl
+  - outputs/eval/prompt_probe/{probe_run}/esg_val.0-of-1.jsonl

@@ -11,6 +11,7 @@ template: theirs          # theirs: the tokenizer's own chat template; ours: the
 prompt_system: null       # attack prompts only from <attack>__none__<prompt_system>/ (null: every system)
 outputs_dir: ${root_dir}/outputs   # where the stored attack runs are (<attack>__<defense>__<model>/**/run.json)
 probe_repo: EuroSafeAI/EuroSafeGuard-v1
+probe_run: null           # unused by the script: experiments sweep it and build probe_repo and out from it
 # The probe's base_model is meta-llama/Llama-3.1-8B-Instruct; the cache holds its weights under the older repo name,
 # the same commit (0e9e39f). null = the probe's own base_model.
 base_model: meta-llama/Meta-Llama-3.1-8B-Instruct

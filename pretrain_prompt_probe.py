@@ -19,12 +19,28 @@ import json
 import logging
 import os
 import random
+from collections import defaultdict
 
 import hydra
 import torch
 from omegaconf import DictConfig, OmegaConf
 
 log = logging.getLogger(__name__)
+
+
+def lr_at(step: int, total: int, base: float, schedule: str) -> float:
+    """Learning rate of the update after `step` finished steps. constant: base (their recipe). linear: from base
+    down to base / total at the last step. A function of the step, so a restarted job continues the schedule."""
+    if schedule == "constant":
+        return base
+    if schedule == "linear":
+        return base * (1 - step / total)
+    raise ValueError(f"lr_schedule must be constant or linear, got {schedule!r}")
+
+
+def source_group(source: str) -> str:
+    """Source name for the loss per source: the obfuscation sources (obf_<kind>_b, obf_<kind>_h) are pooled."""
+    return f"obf_{source[-1]}" if source.startswith("obf_") else source
 
 
 def split_groups(input_ids: list, val_frac: float, seed: int) -> tuple[list[int], list[int]]:
@@ -146,6 +162,7 @@ def main(cfg: DictConfig) -> None:
     items = [encode(tok, t, int(cfg.max_len)) for t in df.text]
     tr = [items[i] for i in train_idx]
     y_tr = [harmful[i] for i in train_idx]
+    src_tr = [source_group(df.source[i]) for i in train_idx]
     twin = plain_twins([df.input_id[i] for i in train_idx], [df.source[i] for i in train_idx]) if cfg.twins else {}
     log.info("%d train rows, %d val rows, %d rewritten rows with a plain twin, %d harmful in train", len(tr),
              len(val_idx), len(twin), sum(y_tr))
@@ -167,6 +184,7 @@ def main(cfg: DictConfig) -> None:
     wandb_run = _init_wandb(cfg, {**OmegaConf.to_container(cfg, resolve=True), "models": None, "n_train": len(tr),
                                   "n_val": len(val_idx), "steps_total": len(starts), "start_step": step})
     reader.train()
+    src_sum, src_n = defaultdict(float), defaultdict(int)  # loss per source since the last source log
     for b in starts[step:]:
         bi = order[b:b + bs]
         for i in list(bi):  # a rewritten prompt trains next to its plain twin
@@ -175,14 +193,27 @@ def main(cfg: DictConfig) -> None:
                 bi.append(t)
         psi, tgt, att = features(model, [tr[j] for j in bi], layer, pad_id)
         labels = torch.tensor([0 if y_tr[j] else 1 for j in bi], device=psi.device)  # ours: 0 = harmful
-        loss = reader.example_loss(psi, tgt, att, labels).mean()
+        per_row = reader.example_loss(psi, tgt, att, labels)
+        loss = per_row.mean()
+        lr = lr_at(step, len(starts), float(cfg.lr), cfg.lr_schedule)
+        for group in opt.param_groups:
+            group["lr"] = lr
         opt.zero_grad(set_to_none=True)
         loss.backward()
         opt.step()
         step += 1
+        for j, x in zip(bi, per_row.detach().tolist()):
+            src_sum[src_tr[j]] += x
+            src_n[src_tr[j]] += 1
         if wandb_run is not None and step % int(cfg.wandb.every) == 0:
-            wandb_run.log({"probe/loss": loss.item(), "probe/batch_rows": len(bi), "probe/batch_tokens": int(att.sum())},
-                          step=step)
+            wandb_run.log({"probe/loss": loss.item(), "probe/batch_rows": len(bi), "probe/batch_tokens": int(att.sum()),
+                           "probe/lr": lr}, step=step)
+        if step % int(cfg.source_every) == 0:  # mean loss per source over the rows of the last source_every steps
+            if wandb_run is not None:
+                wandb_run.log({**{f"probe/loss_src/{k}": src_sum[k] / n for k, n in src_n.items()},
+                               **{f"probe/rows_src/{k}": n for k, n in src_n.items()}}, step=step)
+            src_sum.clear()
+            src_n.clear()
         if step % int(cfg.log_every) == 0:
             log.info("step %d of %d, loss %.4f", step, len(starts), loss.item())
         if step % int(cfg.save_every) == 0:
@@ -199,7 +230,8 @@ def main(cfg: DictConfig) -> None:
         wandb_run.finish()
 
     meta = {"reader": reader_cfg, "name": cfg.name, "model": cfg.model, "template": cfg.template,
-            "prompts": str(cfg.prompts), "seed": int(cfg.seed), "split_seed": int(cfg.split_seed)}
+            "prompts": str(cfg.prompts), "seed": int(cfg.seed), "split_seed": int(cfg.split_seed),
+            "lr_schedule": str(cfg.lr_schedule)}
     torch.save({"reader": reader.state_dict(), "cfg": meta, "step": step}, os.path.join(out_dir, "final_reader.pt"))
     save_release_layout(reader, out_dir, {
         "kind": "mlp", "hidden": int(reader_cfg.get("hidden") or 256), "activation": "gelu",

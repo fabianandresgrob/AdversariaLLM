@@ -1,0 +1,12 @@
+# As esg-probe-pretrain, with the learning rate falling linearly to zero over the epoch. Their recipe keeps it at 1e-3,
+# and two seeds of that recipe differ a lot on short harmful prompts (XSTest unsafe flagged 7.5% and 59%). Same held-out
+# rows as before (split_seed 0). Logs the loss per ESG source.
+entrypoint: pretrain_prompt_probe.py
+name: esg-probe-llama31-decay-s{seed}
+time_per_run: "06:00:00"
+overrides:
+  lr_schedule: linear
+sweep:
+  seed: [0, 1]
+artifacts:
+  - checkpoints_probe/prompt_mlp/{name}/final_reader.pt

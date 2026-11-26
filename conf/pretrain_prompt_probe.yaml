@@ -20,6 +20,7 @@ max_len: 2048             # longer prompts are cut from the left
 batch_size: 8
 epochs: 1
 lr: 0.001
+lr_schedule: constant     # constant (their recipe) | linear: from lr down to zero over all steps
 weight_decay: 0.01
 twins: true               # add the plain twin of every rewritten prompt to its batch
 val_frac: 0.05            # share of input_id groups held out
@@ -28,6 +29,7 @@ split_seed: 0             # which input_id groups are held out; fixed, so all se
 limit: null               # only n random rows (test runs)
 log_every: 200
 save_every: 1000
+source_every: 500         # W&B: mean loss per ESG source over the rows of the last n steps
 overwrite: false
 
 wandb:

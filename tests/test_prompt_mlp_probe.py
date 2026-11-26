@@ -118,6 +118,11 @@ def test_pretraining_split_and_twins():
     twins = mod.plain_twins(["a", "a", "b", "c", "c"], ["plain", "redact_jb", "jf", "dan_h", "plain"])
     assert twins == {1: 0, 3: 4}
     assert mod.auroc([1, 1, 0, 0], [0.9, 0.8, 0.1, 0.2]) == 1.0
+    assert mod.lr_at(0, 100, 1e-3, "constant") == mod.lr_at(99, 100, 1e-3, "constant") == 1e-3
+    assert mod.lr_at(0, 100, 1e-3, "linear") == 1e-3 and mod.lr_at(50, 100, 1e-3, "linear") == 5e-4
+    assert 0 < mod.lr_at(99, 100, 1e-3, "linear") < 2e-5
+    assert [mod.source_group(x) for x in ["obf_rot13_b", "obf_url_h", "redact_jb", "bon_h"]] == [
+        "obf_b", "obf_h", "redact_jb", "bon_h"]
     assert mod.auroc([1, 0, 1, 0], [0.5, 0.5, 0.9, 0.1]) == 0.875  # one tie counts half: (0.5 + 1 + 1 + 1) / 4
     assert mod.auroc([1, 1], [0.1, 0.2]) != mod.auroc([1, 1], [0.1, 0.2])  # nan
 

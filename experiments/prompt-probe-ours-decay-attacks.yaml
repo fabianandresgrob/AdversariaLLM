@@ -1,0 +1,17 @@
+# Our prompt probe trained with learning rate decay (esg-probe-llama31-decay-s0) on the stored attack prompts, as
+# prompt-probe-ours-attacks did for the constant-rate probe. One job per shard scores all three attacks.
+entrypoint: score_prompt_probe.py
+name: prompt-probe-decay-s0-attacks-{shard}
+time_per_run: "01:30:00"
+overrides:
+  sources: [pair, jailbreak_r1, gcg]
+  num_shards: 4
+  probe_run: esg-probe-llama31-decay-s0
+  probe_repo: ${root_dir}/checkpoints_probe/prompt_mlp/${probe_run}
+  out: ${root_dir}/outputs/eval/prompt_probe/${probe_run}
+sweep:
+  shard: [0, 1, 2, 3]
+artifacts:
+  - outputs/eval/prompt_probe/esg-probe-llama31-decay-s0/pair.{shard}-of-4.jsonl
+  - outputs/eval/prompt_probe/esg-probe-llama31-decay-s0/jailbreak_r1.{shard}-of-4.jsonl
+  - outputs/eval/prompt_probe/esg-probe-llama31-decay-s0/gcg.{shard}-of-4.jsonl

@@ -7,5 +7,9 @@ overrides:
   stage: judge
   prompts: /fast/fgrob/coop-detect/esg_data/samples/refusal_prompts_v1.parquet
   store: esg-llama31-base-refusals
+  # the generation settings of esg-refusals: the store refuses a run whose settings differ from the stored ones
+  system_prompt_file: ${root_dir}/conf/system_prompts/refuse.txt
+  text_column: judge_text
+  max_new_tokens: 128
 sweep:
   +set: [v1]

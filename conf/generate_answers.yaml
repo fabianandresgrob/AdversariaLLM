@@ -10,6 +10,8 @@ store: null               # required: folder name under `out`, one per model and
 out: ${root_dir}/outputs/answers
 model: meta-llama/Meta-Llama-3.1-8B-Instruct   # models.yaml entry
 adapter_path: null        # LoRA adapter on top of the entry (a trained coop model)
+system_prompt_file: null  # text file with a system message for every prompt (conf/system_prompts/refuse.txt for refusals)
+text_column: text         # the column that is answered; judge_text answers the plain request behind a rewrite
 template: theirs          # theirs: the tokenizer's own chat template (Meta's); ours: the entry's chat_template
 max_new_tokens: 256       # as the attacks' default and the stored PAIR answers
 max_prompt_tokens: 2048   # longer prompts are stored as too_long (EuroSafeGuard's probe also reads at most 2048)

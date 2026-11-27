@@ -1,0 +1,12 @@
+# Base Llama-3.1-8B-Instruct answers every strictly harmful EuroSafeGuard prompt the Llama test left out
+# (scripts/esg_build_sample.py --rest-of). Same store and settings as esg-llama-test, so the new answers join the old
+# ones. Judge afterwards with esg-llama-rest-judge.
+entrypoint: generate_answers.py
+name: esg-llama-rest-s{shard}
+time_per_run: "01:00:00"
+overrides:
+  prompts: /fast/fgrob/coop-detect/esg_data/samples/llama_rest_v1.parquet
+  store: esg-llama31-base
+  num_shards: 4
+sweep:
+  shard: [0, 1, 2, 3]

@@ -22,7 +22,7 @@ from omegaconf import DictConfig, OmegaConf
 
 log = logging.getLogger(__name__)
 
-FIXED = ("model", "adapter_path", "template", "max_new_tokens", "max_prompt_tokens")
+FIXED = ("model", "adapter_path", "template", "max_new_tokens", "max_prompt_tokens", "system_prompt", "text_column")
 
 
 def batches(lengths: list[int], token_budget: int, max_rows: int) -> list[list[int]]:
@@ -65,6 +65,20 @@ def load(cfg):
     return model.eval(), tok
 
 
+def system_prompt(cfg) -> str | None:
+    """The text of cfg.system_prompt_file, or None without one."""
+    if not cfg.system_prompt_file:
+        return None
+    with open(cfg.system_prompt_file) as fh:
+        return fh.read().strip()
+
+
+def messages(text: str, system_prompt: str | None) -> list[dict]:
+    """The chat for one prompt, with the system prompt in front if there is one."""
+    system = [{"role": "system", "content": system_prompt}] if system_prompt else []
+    return system + [{"role": "user", "content": text}]
+
+
 @torch.no_grad()
 def generate(cfg, rows, store):
     import time
@@ -82,7 +96,7 @@ def generate(cfg, rows, store):
         return
     model, tok = load(cfg)
     device = next(model.parameters()).device
-    texts = [tok.apply_chat_template([{"role": "user", "content": r["text"]}], tokenize=False,
+    texts = [tok.apply_chat_template(messages(r[cfg.text_column], system_prompt(cfg)), tokenize=False,
                                      add_generation_prompt=True) for r in rows]
     lengths = [len(ids) for ids in tok(texts, add_special_tokens=False)["input_ids"]]
     long = [i for i, n in enumerate(lengths) if n > cfg.max_prompt_tokens]
@@ -154,6 +168,7 @@ def main(cfg: DictConfig) -> None:
     meta = {"model": cfg.model, "model_id": cfg.models[cfg.model].id, "adapter_path": cfg.adapter_path,
             "template": cfg.template, "max_new_tokens": int(cfg.max_new_tokens),
             "max_prompt_tokens": int(cfg.max_prompt_tokens), "decoding": "greedy, batched with left padding",
+            "system_prompt": system_prompt(cfg), "text_column": None if cfg.text_column == "text" else cfg.text_column,
             "first_prompts": str(cfg.prompts)}
     answer_store.check_meta(store, meta, FIXED)
     rows = pd.read_parquet(cfg.prompts).sort_values("row_id").to_dict("records")

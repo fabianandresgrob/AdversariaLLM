@@ -1,0 +1,11 @@
+# StrongREJECT on the answers of esg-llama-rest, each judged against the plain request of its prompt where one is
+# known. Run after all four shards. A restarted job continues with the rows that are not judged yet.
+entrypoint: generate_answers.py
+name: esg-llama-rest-judge-{+set}
+time_per_run: "04:00:00"
+overrides:
+  stage: judge
+  prompts: /fast/fgrob/coop-detect/esg_data/samples/llama_rest_v1.parquet
+  store: esg-llama31-base
+sweep:
+  +set: [v1]

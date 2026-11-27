@@ -1,0 +1,11 @@
+# Check of the generated refusals: StrongREJECT on each refusal against the request it answers. A refusal that works
+# scores near 0. The refusal flag (a string match) is written at generation.
+entrypoint: generate_answers.py
+name: esg-refusals-judge-{+set}
+time_per_run: "00:30:00"
+overrides:
+  stage: judge
+  prompts: /fast/fgrob/coop-detect/esg_data/samples/refusal_prompts_v1.parquet
+  store: esg-llama31-base-refusals
+sweep:
+  +set: [v1]

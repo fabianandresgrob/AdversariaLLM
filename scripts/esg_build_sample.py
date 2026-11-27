@@ -15,6 +15,12 @@ of the answer store, so a later sample can add rows to the same store. `judge_te
 request: the plain twin where one exists (probe set first, then gate set; for WildJailbreak's adversarial prompts the
 `vanilla` column of its own train file), else the prompt itself (`judge_against`).
 `entry_type` comes from the gate set by `input_id` (empty where the gate set has no such group).
+
+With --rest-of <an earlier sample> the output is every strictly harmful prompt (entry_type "harmful") that the earlier
+sample does not have, stratum `rest_<source>`. Toxic comments are left out as above:
+
+    .venv/bin/python scripts/esg_build_sample.py --rest-of /fast/fgrob/coop-detect/esg_data/samples/llama_test_v1_twins.parquet \
+        --wildjailbreak <train.tsv> --out /fast/fgrob/coop-detect/esg_data/samples/llama_rest_v1.parquet
 """
 
 import argparse
@@ -26,6 +32,7 @@ DATA = "/fast/fgrob/coop-detect/esg_data"
 HARMFUL_SOURCES = ["redact_jb", "jf", "dan_h", "obf_h", "bon_h", "wjb_adversarial_harmful", "wjb_vanilla_harmful",
                    "wildguardmix_train", "aegis2_train"]
 BENIGN_SOURCES = ["plain", "redact_jb", "jf", "dan_b", "obf_b", "wjb_adversarial_benign"]
+TOXIC_TEXT = ["civil_pos", "toxicchat_train"]  # harmful label, but comments and not requests
 
 
 def source_group(source: str) -> str:
@@ -38,10 +45,7 @@ def build(probe: pd.DataFrame, gate: pd.DataFrame, per_stratum: int, seed: int,
           wildjailbreak: pd.DataFrame | None = None) -> pd.DataFrame:
     """probe: row_id, input_id, source, label, category, text. gate: input_id, source, entry_type, text.
     wildjailbreak: its train file with `vanilla` (the plain request) and `adversarial` (the rewrite)."""
-    probe = probe[probe.text.fillna("").str.strip() != ""].copy()
-    probe["label"] = probe.label.astype(int)
-    probe["group"] = probe.source.map(source_group)
-    gate = gate[gate.text.fillna("").str.strip() != ""]
+    probe, gate = with_text(probe, gate)
 
     twin_ids = set(probe.loc[(probe.source == "plain") & (probe.label == 1), "input_id"])
     in_twin = probe.input_id.isin(twin_ids) & (probe.label == 1)
@@ -55,7 +59,31 @@ def build(probe: pd.DataFrame, gate: pd.DataFrame, per_stratum: int, seed: int,
             parts.append(take.assign(stratum=f"{prefix}_{src}"))
     out = pd.concat(parts, ignore_index=True)
     assert out.row_id.is_unique
+    return finish(out, probe, gate, wildjailbreak)
 
+
+def with_text(probe: pd.DataFrame, gate: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Rows with text only, the label as int and the source group as `group`."""
+    probe = probe[probe.text.fillna("").str.strip() != ""].copy()
+    probe["label"] = probe.label.astype(int)
+    probe["group"] = probe.source.map(source_group)
+    return probe, gate[gate.text.fillna("").str.strip() != ""]
+
+
+def build_rest(probe: pd.DataFrame, gate: pd.DataFrame, exclude: set,
+               wildjailbreak: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Every strictly harmful prompt (entry_type "harmful" in the gate set) whose row_id is not in `exclude`."""
+    probe, gate = with_text(probe, gate)
+    strict = set(gate.loc[gate.entry_type == "harmful", "input_id"])
+    keep = ((probe.label == 1) & probe.input_id.isin(strict) & ~probe.group.isin(TOXIC_TEXT)
+            & ~probe.row_id.isin(exclude))
+    out = probe[keep].assign(stratum=lambda d: "rest_" + d.group).reset_index(drop=True)
+    return finish(out, probe, gate, wildjailbreak)
+
+
+def finish(out: pd.DataFrame, probe: pd.DataFrame, gate: pd.DataFrame,
+           wildjailbreak: pd.DataFrame | None) -> pd.DataFrame:
+    """Add judge_text, judge_against and entry_type to the chosen rows."""
     plain = pd.concat([probe.loc[probe.source == "plain", ["input_id", "text"]],
                        gate.loc[gate.source == "plain", ["input_id", "text"]]]).drop_duplicates("input_id")
     twin_text = out.input_id.map(plain.set_index("input_id").text)
@@ -79,6 +107,7 @@ def main():
     ap.add_argument("--gate", default=f"{DATA}/gate_train_full.parquet")
     ap.add_argument("--wildjailbreak", default=None, help="allenai/wildjailbreak train/train.tsv (optional)")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--rest-of", default=None, help="an earlier sample: write the strictly harmful prompts it lacks")
     ap.add_argument("--per-stratum", type=int, default=500)
     ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args()
@@ -88,7 +117,10 @@ def main():
     if a.wildjailbreak:
         wjb = pd.read_csv(a.wildjailbreak, sep="\t", dtype=str, keep_default_na=False, on_bad_lines="skip",
                           usecols=["vanilla", "adversarial"])
-    out = build(probe, gate, a.per_stratum, a.seed, wjb)
+    if a.rest_of:
+        out = build_rest(probe, gate, set(pd.read_parquet(a.rest_of, columns=["row_id"]).row_id), wjb)
+    else:
+        out = build(probe, gate, a.per_stratum, a.seed, wjb)
     out.to_parquet(a.out, index=False)
     table = out.groupby("stratum").agg(rows=("row_id", "size"), judged_against_twin=("judge_against", lambda s: int((s == "plain_twin").sum())),
                                        strictly_harmful=("entry_type", lambda s: int((s == "harmful").sum())),

@@ -90,3 +90,45 @@ def test_sample_takes_the_wildjailbreak_plain_request():
     out = mod.build(probe, gate, per_stratum=5, seed=0, wildjailbreak=wjb).set_index("row_id")
     assert out.loc["w1", "judge_text"] == "plain request" and out.loc["w1", "judge_against"] == "plain_twin"
     assert out.loc["w2", "judge_against"] == "self"
+
+
+def test_rest_sample_is_strictly_harmful_and_new():
+    mod = _load("scripts/esg_build_sample.py", "esg_build_sample")
+    row = {"label": "1", "category": "Cyber"}
+    probe = pd.DataFrame([
+        {"row_id": "p1", "input_id": "g1", "source": "redact_jb", "text": "wrapped one", **row},
+        {"row_id": "p2", "input_id": "g1", "source": "jf", "text": "already answered", **row},
+        {"row_id": "p3", "input_id": "g2", "source": "dan_h", "text": "dual use", **row},
+        {"row_id": "p4", "input_id": "g3", "source": "civil_pos", "text": "toxic comment", **row},
+        {"row_id": "p5", "input_id": "g4", "source": "wjb_vanilla_harmful", "text": "no type", **row},
+        {"row_id": "p6", "input_id": "g1", "source": "dan_b", "text": "benign", "label": "0", "category": "Benign"},
+    ])
+    gate = pd.DataFrame([
+        {"input_id": "g1", "source": "plain", "entry_type": "harmful", "text": "plain one"},
+        {"input_id": "g2", "source": "plain", "entry_type": "dual_use_harmful", "text": "plain two"},
+        {"input_id": "g3", "source": "civil_pos", "entry_type": "harmful", "text": "toxic comment"},
+    ])
+    out = mod.build_rest(probe, gate, exclude={"p2"}).set_index("row_id")
+    assert list(out.index) == ["p1"]
+    assert out.loc["p1", "stratum"] == "rest_redact_jb" and out.loc["p1", "judge_text"] == "plain one"
+
+
+def test_refusal_prompts_are_the_strictly_harmful_broken_ones():
+    mod = _load("scripts/esg_build_refusal_prompts.py", "esg_build_refusal_prompts")
+    sample = pd.DataFrame([
+        {"row_id": "a", "label": 1, "entry_type": "harmful"},           # broken: kept
+        {"row_id": "b", "label": 1, "entry_type": "harmful"},           # judged harmless
+        {"row_id": "c", "label": 1, "entry_type": "dual_use_harmful"},  # broken, but dual-use
+        {"row_id": "d", "label": 1, "entry_type": "harmful"},           # too long, no answer
+        {"row_id": "a", "label": 1, "entry_type": "harmful"},           # the same row in a second sample
+    ])
+    answers = pd.DataFrame([{"row_id": r, "status": "ok"} for r in "abc"] + [{"row_id": "d", "status": "too_long"}])
+    scores = pd.DataFrame([{"row_id": "a", "p_harmful": 0.8}, {"row_id": "b", "p_harmful": 0.2},
+                           {"row_id": "c", "p_harmful": 0.9}])
+    assert list(mod.build(sample, answers, scores).row_id) == ["a"]
+
+
+def test_messages_put_the_system_prompt_first():
+    mod = _load("generate_answers.py", "generate_answers")
+    assert mod.messages("hi", None) == [{"role": "user", "content": "hi"}]
+    assert [m["role"] for m in mod.messages("hi", "decline")] == ["system", "user"]

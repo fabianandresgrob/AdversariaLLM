@@ -19,6 +19,7 @@ allow_cpu: false
 # esg_val: the rows pretrain_prompt_probe.py held out (same file, val_frac and seed as conf/pretrain_prompt_probe.yaml)
 esg_prompts: /fast/fgrob/coop-detect/esg_data/probe_train_full.parquet
 esg_val_frac: 0.05
+esg_test_frac: 0.0        # esg_test: the test rows of a probe pretrained with test_frac (0.10 for the v2 probes)
 esg_seed: 0
 alpaca_n: 2000            # seeded sample of Alpaca instructions
 shard: 0

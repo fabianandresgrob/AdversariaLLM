@@ -43,13 +43,22 @@ def source_group(source: str) -> str:
     return f"obf_{source[-1]}" if source.startswith("obf_") else source
 
 
-def split_groups(input_ids: list, val_frac: float, seed: int) -> tuple[list[int], list[int]]:
-    """Row indices of train and val, with val_frac of the input_id groups (a prompt and its rewrites) held out."""
+def split_three(input_ids: list, val_frac: float, test_frac: float, seed: int) -> tuple[list[int], list[int], list[int]]:
+    """Row indices of train, val and test. The input_id groups (a prompt and its rewrites) are shuffled once with
+    `seed`: the first val_frac of them are val, the next test_frac are test. So val does not change with test_frac."""
     groups = sorted(set(input_ids))
     random.Random(seed).shuffle(groups)
-    held = set(groups[: round(val_frac * len(groups))])
-    train = [i for i, g in enumerate(input_ids) if g not in held]
-    val = [i for i, g in enumerate(input_ids) if g in held]
+    n_val, n_test = round(val_frac * len(groups)), round(test_frac * len(groups))
+    val_g, test_g = set(groups[:n_val]), set(groups[n_val:n_val + n_test])
+    train = [i for i, g in enumerate(input_ids) if g not in val_g and g not in test_g]
+    val = [i for i, g in enumerate(input_ids) if g in val_g]
+    test = [i for i, g in enumerate(input_ids) if g in test_g]
+    return train, val, test
+
+
+def split_groups(input_ids: list, val_frac: float, seed: int) -> tuple[list[int], list[int]]:
+    """Row indices of train and val, with val_frac of the input_id groups held out and no test split."""
+    train, val, _ = split_three(input_ids, val_frac, 0.0, seed)
     return train, val
 
 
@@ -149,7 +158,8 @@ def main(cfg: DictConfig) -> None:
     df = df[df.text.fillna("").str.strip() != ""].sort_values("row_id").reset_index(drop=True)
     if cfg.limit:
         df = df.sample(n=int(cfg.limit), random_state=int(cfg.seed)).sort_values("row_id").reset_index(drop=True)
-    train_idx, val_idx = split_groups(df.input_id.tolist(), float(cfg.val_frac), int(cfg.split_seed))
+    train_idx, val_idx, test_idx = split_three(df.input_id.tolist(), float(cfg.val_frac), float(cfg.test_frac),
+                                               int(cfg.split_seed))  # test rows are not read again in this script
     harmful = df.label.astype(int).tolist()  # their label: 1 = harmful
 
     model, tok = load(cfg)
@@ -231,7 +241,7 @@ def main(cfg: DictConfig) -> None:
 
     meta = {"reader": reader_cfg, "name": cfg.name, "model": cfg.model, "template": cfg.template,
             "prompts": str(cfg.prompts), "seed": int(cfg.seed), "split_seed": int(cfg.split_seed),
-            "lr_schedule": str(cfg.lr_schedule)}
+            "val_frac": float(cfg.val_frac), "test_frac": float(cfg.test_frac), "lr_schedule": str(cfg.lr_schedule)}
     torch.save({"reader": reader.state_dict(), "cfg": meta, "step": step}, os.path.join(out_dir, "final_reader.pt"))
     save_release_layout(reader, out_dir, {
         "kind": "mlp", "hidden": int(reader_cfg.get("hidden") or 256), "activation": "gelu",
@@ -239,8 +249,9 @@ def main(cfg: DictConfig) -> None:
         "feature_dim": hidden_size * len(layer), "max_len": int(cfg.max_len), "M": int(reader_cfg.get("window") or 16),
         "val_auroc": val_auroc})
     with open(os.path.join(out_dir, "metrics.json"), "w") as fh:
-        json.dump({"val_auroc": val_auroc, "n_train": len(tr), "n_val": len(val_idx), "steps": step,
-                   "val_row_ids": df.row_id[val_idx].tolist()}, fh)
+        json.dump({"val_auroc": val_auroc, "n_train": len(tr), "n_val": len(val_idx), "n_test": len(test_idx),
+                   "steps": step, "val_row_ids": df.row_id[val_idx].tolist(),
+                   "test_row_ids": df.row_id[test_idx].tolist()}, fh)
     if os.path.exists(ckpt):
         os.remove(ckpt)
 

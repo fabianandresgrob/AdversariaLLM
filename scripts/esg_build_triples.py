@@ -14,8 +14,9 @@ A prompt becomes a triple when all of this holds:
     the refusal generated with the system prompt has a refusal phrase and scores below --refusal-below
 
 `plain_request` is the plain request behind a rewritten prompt where one is known, else empty. The refusal was
-generated for the plain request where one is known, else for the prompt itself. `split` is "val" for the input_id
-groups that pretrain_prompt_probe.py holds out (same val_frac and split_seed), so the probe has not seen them.
+generated for the plain request where one is known, else for the prompt itself. `split` is "val" or "test" for the
+input_id groups that pretrain_prompt_probe.py holds out (same val_frac, test_frac and split_seed), so a probe
+pretrained with these fractions has not seen them. Pass --test-frac 0.10 for the v2 probes.
 """
 
 import argparse
@@ -30,16 +31,17 @@ COLUMNS = ["row_id", "input_id", "source", "category", "split", "prompt", "plain
            "harmful_score", "harmful_answer_cut", "refusal", "refusal_score"]
 
 
-def held_out_groups(input_ids, val_frac: float, seed: int) -> set:
-    """The input_id groups pretrain_prompt_probe.split_groups holds out, for the same ids, val_frac and seed."""
+def held_out_groups(input_ids, val_frac: float, seed: int, test_frac: float = 0.0) -> tuple[set, set]:
+    """The val and test input_id groups of pretrain_prompt_probe.split_three, for the same ids, fractions and seed."""
     groups = sorted(set(input_ids))
     random.Random(seed).shuffle(groups)
-    return set(groups[: round(val_frac * len(groups))])
+    n_val, n_test = round(val_frac * len(groups)), round(test_frac * len(groups))
+    return set(groups[:n_val]), set(groups[n_val:n_val + n_test])
 
 
 def build(sample: pd.DataFrame, answers: pd.DataFrame, scores: pd.DataFrame, refusals: pd.DataFrame,
-          refusal_scores: pd.DataFrame, held_out: set, harmful_above: float = 0.5,
-          refusal_below: float = 0.1) -> pd.DataFrame:
+          refusal_scores: pd.DataFrame, val_groups: set, test_groups: set = frozenset(),
+          harmful_above: float = 0.5, refusal_below: float = 0.1) -> pd.DataFrame:
     """sample: row_id, input_id, source, category, label, entry_type, text, judge_text, judge_against.
     answers, refusals: row_id, status, answer, refusal (the phrase flag), hit_max_new_tokens.
     scores, refusal_scores: row_id, p_harmful."""
@@ -56,7 +58,9 @@ def build(sample: pd.DataFrame, answers: pd.DataFrame, scores: pd.DataFrame, ref
             & (d.refusal_score < refusal_below))
     d = d[keep].rename(columns={"text": "prompt"}).reset_index()
     d["plain_request"] = d.judge_text.where(d.judge_against == "plain_twin")
-    d["split"] = d.input_id.isin(held_out).map({True: "val", False: "train"})
+    d["split"] = "train"
+    d.loc[d.input_id.isin(val_groups), "split"] = "val"
+    d.loc[d.input_id.isin(test_groups), "split"] = "test"
     d["harmful_answer_cut"] = d.harmful_answer_cut.astype(bool)
     return d[COLUMNS].sort_values("row_id").reset_index(drop=True)
 
@@ -72,15 +76,16 @@ def main():
     ap.add_argument("--harmful-above", type=float, default=0.5)
     ap.add_argument("--refusal-below", type=float, default=0.1)
     ap.add_argument("--val-frac", type=float, default=0.05)
+    ap.add_argument("--test-frac", type=float, default=0.0, help="0.10 for the v2 probes (esg-probe-pretrain-v2)")
     ap.add_argument("--split-seed", type=int, default=0)
     a = ap.parse_args()
     sample = pd.concat([pd.read_parquet(p) for p in a.samples], ignore_index=True)
     probe = pd.read_parquet(a.probe, columns=["input_id", "text"])
     probe = probe[probe.text.fillna("").str.strip() != ""]  # as pretrain_prompt_probe.py reads it
-    held = held_out_groups(probe.input_id.tolist(), a.val_frac, a.split_seed)
+    val_groups, test_groups = held_out_groups(probe.input_id.tolist(), a.val_frac, a.split_seed, a.test_frac)
     read = lambda store, name: pd.DataFrame(answer_store.read_jsonl(f"{store}/{name}"))
     out = build(sample, read(a.answers, "answers.*.jsonl"), read(a.answers, f"judge.{a.judge}.jsonl"),
-                read(a.refusals, "answers.*.jsonl"), read(a.refusals, f"judge.{a.judge}.jsonl"), held,
+                read(a.refusals, "answers.*.jsonl"), read(a.refusals, f"judge.{a.judge}.jsonl"), val_groups, test_groups,
                 a.harmful_above, a.refusal_below)
     out.to_parquet(a.out, index=False)
     print(pd.crosstab(out.source, out.split, margins=True).to_string())

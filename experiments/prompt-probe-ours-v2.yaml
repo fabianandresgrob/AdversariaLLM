@@ -1,0 +1,18 @@
+# The v2 prompt probes (esg-probe-pretrain-v2) on the benign sets and on their held-out ESG rows, validation and test.
+# One job and one model load per probe.
+entrypoint: score_prompt_probe.py
+name: prompt-probe-{probe_run}
+time_per_run: "00:30:00"
+overrides:
+  sources: [xs_test, or_bench, alpaca, esg_val, esg_test]
+  esg_test_frac: 0.10
+  probe_repo: ${root_dir}/checkpoints_probe/prompt_mlp/${probe_run}
+  out: ${root_dir}/outputs/eval/prompt_probe/${probe_run}
+sweep:
+  probe_run: [esg-probe-llama31-v2-s0, esg-probe-llama31-v2-s1, esg-probe-llama31-v2-s2]
+artifacts:
+  - outputs/eval/prompt_probe/{probe_run}/xs_test.0-of-1.jsonl
+  - outputs/eval/prompt_probe/{probe_run}/or_bench.0-of-1.jsonl
+  - outputs/eval/prompt_probe/{probe_run}/alpaca.0-of-1.jsonl
+  - outputs/eval/prompt_probe/{probe_run}/esg_val.0-of-1.jsonl
+  - outputs/eval/prompt_probe/{probe_run}/esg_test.0-of-1.jsonl

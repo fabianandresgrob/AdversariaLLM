@@ -1,0 +1,13 @@
+# The prompt probe for the coop runs: the recipe of esg-probe-pretrain-decay (learning rate falling linearly to zero),
+# with 10% of the input_id groups held out as a test split on top of the 5% validation groups. The validation groups
+# are the same as before (split_seed 0). Seeds differ in the probe's init and batch order only, the split is fixed.
+entrypoint: pretrain_prompt_probe.py
+name: esg-probe-llama31-v2-s{seed}
+time_per_run: "06:00:00"
+overrides:
+  lr_schedule: linear
+  test_frac: 0.10
+sweep:
+  seed: [0, 1, 2]
+artifacts:
+  - checkpoints_probe/prompt_mlp/{name}/final_reader.pt

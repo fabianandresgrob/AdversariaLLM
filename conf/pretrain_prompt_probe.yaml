@@ -23,7 +23,8 @@ lr: 0.001
 lr_schedule: constant     # constant (their recipe) | linear: from lr down to zero over all steps
 weight_decay: 0.01
 twins: true               # add the plain twin of every rewritten prompt to its batch
-val_frac: 0.05            # share of input_id groups held out
+val_frac: 0.05            # share of input_id groups held out for validation
+test_frac: 0.0            # share held out as test on top (0.10 from esg-probe-pretrain-v2 on); never read in training
 seed: 0                   # probe init and batch order
 split_seed: 0             # which input_id groups are held out; fixed, so all seeds share the held-out rows
 limit: null               # only n random rows (test runs)

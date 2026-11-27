@@ -185,3 +185,10 @@ def test_benign_sample_takes_new_sources_from_the_training_groups():
     assert set(out.label) == {0} and set(out.judge_against) == {"self"}
     _, val, test = pre.split_three(probe.input_id.tolist(), 0.1, 0.2, 0)
     assert not set(out.input_id) & {probe.input_id[i] for i in val + test}
+
+
+def test_magpie_rows_are_benign_with_stable_ids():
+    mod = _load("scripts/magpie_build_sample.py", "magpie_build_sample")
+    out = mod.rows(["first prompt", "second prompt"], "train")
+    assert list(out.row_id) == ["magpie_train_00000", "magpie_train_00001"]
+    assert set(out.label) == {0} and list(out.text) == ["first prompt", "second prompt"]

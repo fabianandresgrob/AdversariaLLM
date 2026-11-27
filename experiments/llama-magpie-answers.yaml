@@ -1,0 +1,11 @@
+# Base Llama-3.1-8B-Instruct answers the Magpie prompts of the KL stream (scripts/magpie_build_sample.py). The KL to
+# the base model is then taken on the model's own answers, as for the ESG benign prompts. Same store and settings as
+# the ESG answers.
+entrypoint: generate_answers.py
+name: llama-magpie-answers-{+set}
+time_per_run: "00:30:00"
+overrides:
+  prompts: /fast/fgrob/coop-detect/esg_data/samples/magpie_train_v1.parquet
+  store: esg-llama31-base
+sweep:
+  +set: [train]

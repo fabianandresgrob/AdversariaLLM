@@ -132,3 +132,35 @@ def test_messages_put_the_system_prompt_first():
     mod = _load("generate_answers.py", "generate_answers")
     assert mod.messages("hi", None) == [{"role": "user", "content": "hi"}]
     assert [m["role"] for m in mod.messages("hi", "decline")] == ["system", "user"]
+
+
+def test_triples_keep_broken_prompts_with_a_working_refusal():
+    mod = _load("scripts/esg_build_triples.py", "esg_build_triples")
+    row = {"label": 1, "entry_type": "harmful", "category": "Cyber", "judge_against": "self"}
+    sample = pd.DataFrame([
+        {"row_id": "a", "input_id": "g1", "source": "redact_jb", "text": "wrapped", "judge_text": "plain one",
+         **row, "judge_against": "plain_twin"},
+        {"row_id": "b", "input_id": "g2", "source": "plain", "text": "plain two", "judge_text": "plain two", **row},
+        {"row_id": "c", "input_id": "g3", "source": "dan_h", "text": "refusal fails", "judge_text": "x", **row},
+        {"row_id": "d", "input_id": "g4", "source": "plain", "text": "model refused", "judge_text": "x", **row},
+        {"row_id": "e", "input_id": "g5", "source": "plain", "text": "dual use", "judge_text": "x", **row,
+         "entry_type": "dual_use_harmful"},
+    ])
+    ans = lambda ids, text, phrase: pd.DataFrame(
+        [{"row_id": i, "status": "ok", "answer": text, "refusal": phrase, "hit_max_new_tokens": False} for i in ids])
+    answers, refusals = ans("abcde", "harmful text", False), ans("abce", "I cannot help", True)
+    scores = pd.DataFrame([{"row_id": i, "p_harmful": s} for i, s in zip("abcde", [0.8, 0.6, 0.9, 0.0, 0.9])])
+    refusal_scores = pd.DataFrame([{"row_id": i, "p_harmful": s} for i, s in zip("abce", [0.0, 0.0, 0.7, 0.0])])
+    out = mod.build(sample, answers, scores, refusals, refusal_scores, held_out={"g2"}).set_index("row_id")
+    assert list(out.index) == ["a", "b"]
+    assert out.loc["a", "plain_request"] == "plain one" and pd.isna(out.loc["b", "plain_request"])
+    assert out.split.to_dict() == {"a": "train", "b": "val"}
+    assert out.loc["a", "prompt"] == "wrapped" and out.loc["a", "refusal"] == "I cannot help"
+
+
+def test_triples_hold_out_the_groups_of_the_probe_pretraining():
+    mod = _load("scripts/esg_build_triples.py", "esg_build_triples")
+    pre = _load("pretrain_prompt_probe.py", "pretrain_prompt_probe")
+    ids = [f"g{i % 37}" for i in range(200)]
+    _, val = pre.split_groups(ids, 0.1, 3)
+    assert mod.held_out_groups(ids, 0.1, 3) == {ids[i] for i in val}

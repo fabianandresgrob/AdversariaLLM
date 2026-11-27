@@ -1,0 +1,13 @@
+# Base Llama-3.1-8B-Instruct answers benign EuroSafeGuard prompts of the sources the Llama test left out
+# (scripts/esg_build_sample.py --benign-of), from the training groups only. The answers go to the same store. They are
+# the benign side of coop training: the KL to the base model is taken on these prompts with these answers. Benign rows
+# are not judged, the refusal flag is written at generation.
+entrypoint: generate_answers.py
+name: esg-llama-benign-s{shard}
+time_per_run: "01:00:00"
+overrides:
+  prompts: /fast/fgrob/coop-detect/esg_data/samples/llama_benign_v1.parquet
+  store: esg-llama31-base
+  num_shards: 2
+sweep:
+  shard: [0, 1]

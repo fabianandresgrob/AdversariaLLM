@@ -168,3 +168,20 @@ def test_triples_hold_out_the_groups_of_the_probe_pretraining():
     assert len(val_groups) == 4 and len(test_groups) == 7
     assert not {ids[i] for i in train} & (val_groups | test_groups) and not val_groups & test_groups
     assert pre.split_groups(ids, 0.1, 3)[1] == val  # val is the same with and without a test split
+
+
+def test_benign_sample_takes_new_sources_from_the_training_groups():
+    mod = _load("scripts/esg_build_sample.py", "esg_build_sample")
+    pre = _load("pretrain_prompt_probe.py", "pretrain_prompt_probe")
+    rows = [{"row_id": f"p{i:03d}", "input_id": f"g{i}", "label": "0", "category": "Benign", "text": f"prompt {i}",
+             "source": ["falsereject", "dan_b", "civil_clean", "obf_rot13_b"][i % 4]} for i in range(80)]
+    rows.append({"row_id": "h1", "input_id": "g900", "label": "1", "category": "Cyber", "text": "harmful",
+                 "source": "falsereject"})
+    probe = pd.DataFrame(rows)
+    gate = pd.DataFrame(columns=["input_id", "source", "entry_type", "text"])
+    earlier = pd.DataFrame([{"row_id": "p001", "stratum": "b_dan_b"}])
+    out = mod.build_benign(probe, gate, earlier, per_stratum=5, seed=0, val_frac=0.1, test_frac=0.2, split_seed=0)
+    assert out.stratum.value_counts().to_dict() == {"b_falsereject": 5, "b_obf_b": 5}  # dan_b is covered, civil is out
+    assert set(out.label) == {0} and set(out.judge_against) == {"self"}
+    _, val, test = pre.split_three(probe.input_id.tolist(), 0.1, 0.2, 0)
+    assert not set(out.input_id) & {probe.input_id[i] for i in val + test}
